@@ -359,7 +359,7 @@ export default function DataImportCronForm({
                 })
               }
               placeholder="docker://registry.example.com/image:tag"
-              helperText="Container image URL (docker:// or oci://)"
+              helperText="Container image URL (docker:// or oci-archive://)"
             />
           </Grid>
         )}
