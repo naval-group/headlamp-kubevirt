@@ -44,10 +44,10 @@ export default function MandatoryTextField({
       value={value}
       helperText={showWarning ? defaultErrorMessage : helperText}
       data-mandatory-empty={showWarning ? 'true' : undefined}
-      sx={{
-        ...sx,
-        ...(showWarning && mandatoryFieldSx),
-      }}
+      sx={[
+        ...(Array.isArray(sx) ? sx : sx ? [sx] : []),
+        ...(showWarning ? [mandatoryFieldSx] : []),
+      ]}
     />
   );
 }
