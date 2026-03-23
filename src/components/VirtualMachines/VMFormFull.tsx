@@ -2879,7 +2879,7 @@ export default function VMFormFull({ resource, onChange, editMode = false }: VMF
 
                     {diskFormData.dataVolumeSourceType === 'upload' && (
                       <Grid item xs={12}>
-                        <Alert severity="info" size="small">
+                        <Alert severity="info">
                           Upload mode: Use virtctl image-upload after creation
                         </Alert>
                       </Grid>

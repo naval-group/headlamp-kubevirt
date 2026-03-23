@@ -885,61 +885,63 @@ export default function VMConsole(props: VMConsoleProps) {
         // Terminal fit handled internally by TerminalPanel
       }}
       title={
-        <Box display="flex" alignItems="center" gap={1}>
-          <span>{item.getName()}</span>
-          <Box
-            component="span"
-            sx={{
-              width: 10,
-              height: 10,
-              borderRadius: '50%',
-              backgroundColor: statusColor,
-              display: 'inline-block',
-            }}
-          />
-          <Box
-            sx={{ width: '1px', height: 24, backgroundColor: 'rgba(255,255,255,0.3)', mx: 0.5 }}
-          />
-          <ToggleButtonGroup
-            value={activeTab}
-            exclusive
-            onChange={(_, newValue) => {
-              if (newValue !== null) {
-                setActiveTab(newValue);
-                setConnectionStatus('connecting');
-              }
-            }}
-            size="small"
-            sx={{
-              height: 28,
-              '& .MuiToggleButton-root': {
-                color: 'rgba(255,255,255,0.6)',
-                borderColor: 'rgba(255,255,255,0.3)',
-                textTransform: 'none',
-                fontSize: '0.8rem',
-                px: 1.5,
-                py: 0,
-                gap: 0.5,
-                '&.Mui-selected': {
-                  color: '#fff',
-                  backgroundColor: 'rgba(255,255,255,0.15)',
-                  '&:hover': { backgroundColor: 'rgba(255,255,255,0.2)' },
+        (
+          <Box display="flex" alignItems="center" gap={1}>
+            <span>{item.getName()}</span>
+            <Box
+              component="span"
+              sx={{
+                width: 10,
+                height: 10,
+                borderRadius: '50%',
+                backgroundColor: statusColor,
+                display: 'inline-block',
+              }}
+            />
+            <Box
+              sx={{ width: '1px', height: 24, backgroundColor: 'rgba(255,255,255,0.3)', mx: 0.5 }}
+            />
+            <ToggleButtonGroup
+              value={activeTab}
+              exclusive
+              onChange={(_, newValue) => {
+                if (newValue !== null) {
+                  setActiveTab(newValue);
+                  setConnectionStatus('connecting');
+                }
+              }}
+              size="small"
+              sx={{
+                height: 28,
+                '& .MuiToggleButton-root': {
+                  color: 'rgba(255,255,255,0.6)',
+                  borderColor: 'rgba(255,255,255,0.3)',
+                  textTransform: 'none',
+                  fontSize: '0.8rem',
+                  px: 1.5,
+                  py: 0,
+                  gap: 0.5,
+                  '&.Mui-selected': {
+                    color: '#fff',
+                    backgroundColor: 'rgba(255,255,255,0.15)',
+                    '&:hover': { backgroundColor: 'rgba(255,255,255,0.2)' },
+                  },
+                  '&:hover': { backgroundColor: 'rgba(255,255,255,0.08)' },
                 },
-                '&:hover': { backgroundColor: 'rgba(255,255,255,0.08)' },
-              },
-            }}
-          >
-            <ToggleButton value="vnc">
-              <Icon icon="mdi:monitor" width={14} />
-              VNC
-            </ToggleButton>
-            <ToggleButton value="terminal">
-              <Icon icon="mdi:console" width={14} />
-              Serial
-            </ToggleButton>
-          </ToggleButtonGroup>
-          <QuickActions vm={vm} />
-        </Box>
+              }}
+            >
+              <ToggleButton value="vnc">
+                <Icon icon="mdi:monitor" width={14} />
+                VNC
+              </ToggleButton>
+              <ToggleButton value="terminal">
+                <Icon icon="mdi:console" width={14} />
+                Serial
+              </ToggleButton>
+            </ToggleButtonGroup>
+            <QuickActions vm={vm} />
+          </Box>
+        ) as unknown as string
       }
       PaperProps={{
         sx: {
