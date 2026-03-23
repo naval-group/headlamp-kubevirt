@@ -1,5 +1,5 @@
-import { Link, Resource, SectionBox } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
 import { ApiProxy } from '@kinvolk/headlamp-plugin/lib';
+import { Link, Resource, SectionBox } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
 import { Alert, Chip, Typography } from '@mui/material';
 import React, { useEffect, useState } from 'react';
 import CreateButtonWithMode from '../common/CreateButtonWithMode';
