@@ -234,7 +234,7 @@ registerSidebarEntry({
 // Overview
 registerSidebarEntry({
   parent: 'kubevirt',
-  name: 'overview',
+  name: 'kubevirt-overview',
   label: 'Overview',
   url: '/kubevirt/overview',
   icon: 'mdi:view-dashboard',
@@ -242,7 +242,7 @@ registerSidebarEntry({
 
 registerRoute({
   path: '/kubevirt/overview',
-  sidebar: 'overview',
+  sidebar: 'kubevirt-overview',
   component: () => <VirtualizationOverview />,
   exact: true,
 });
@@ -374,7 +374,7 @@ registerKubeVirtResource({
 // Settings - Last in sidebar
 registerSidebarEntry({
   parent: 'kubevirt',
-  name: 'settings',
+  name: 'kubevirt-settings',
   label: 'Settings',
   url: '/kubevirt/settings',
   icon: 'mdi:cog',
@@ -382,7 +382,7 @@ registerSidebarEntry({
 
 registerRoute({
   path: '/kubevirt/settings',
-  sidebar: 'settings',
+  sidebar: 'kubevirt-settings',
   component: () => <KubeVirtSettings />,
   exact: true,
 });
