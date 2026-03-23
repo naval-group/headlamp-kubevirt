@@ -178,6 +178,7 @@ export default function NADList() {
         initialResource={INITIAL_NAD}
         initialTab={createInitialTab}
         formComponent={NADForm}
+        validate={r => !!(r?.metadata?.name && r?.metadata?.namespace)}
       />
     </>
   );

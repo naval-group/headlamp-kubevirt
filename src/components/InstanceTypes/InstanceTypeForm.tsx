@@ -10,6 +10,7 @@ import {
 import React from 'react';
 import useResourceEditor from '../../hooks/useResourceEditor';
 import FormSection from '../common/FormSection';
+import MandatoryTextField from '../common/MandatoryTextField';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type KubeResourceBuilder = Record<string, any>;
@@ -18,12 +19,14 @@ interface InstanceTypeFormProps {
   resource: KubeResourceBuilder;
   onChange: (resource: KubeResourceBuilder) => void;
   editMode?: boolean;
+  showErrors?: boolean;
 }
 
 export default function InstanceTypeForm({
   resource,
   onChange,
   editMode = false,
+  showErrors = false,
 }: InstanceTypeFormProps) {
   const { updateMetadata } = useResourceEditor(resource, onChange);
 
@@ -103,22 +106,17 @@ export default function InstanceTypeForm({
     }
   };
 
-  // Check if fields are empty for validation styling
-  const isCPUEmpty = !resource.spec?.cpu?.guest || resource.spec?.cpu?.guest === '';
-  const isMemoryEmpty =
-    !resource.spec?.memory?.guest || resource.spec?.memory?.guest === '' || memoryValue === '';
-
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
       {/* Basic Information */}
       <FormSection icon="mdi:information-outline" title="Basic Information" color="other">
         <Grid item xs={12} md={6}>
-          <TextField
+          <MandatoryTextField
             fullWidth
-            required
             label="Name"
             value={resource.metadata?.name || ''}
             onChange={e => updateMetadata('name', e.target.value)}
+            showErrors={showErrors}
             helperText={
               editMode ? 'Name cannot be changed' : 'Unique identifier for this instance type'
             }
@@ -154,9 +152,8 @@ export default function InstanceTypeForm({
       {/* CPU & Memory */}
       <FormSection icon="mdi:chip" title="CPU & Memory" color="compute">
         <Grid item xs={12} sm={4}>
-          <TextField
+          <MandatoryTextField
             fullWidth
-            required
             label="CPU Cores"
             value={resource.spec?.cpu?.guest ?? ''}
             onChange={e => {
@@ -171,45 +168,20 @@ export default function InstanceTypeForm({
               }
             }}
             inputProps={{ min: 1, type: 'number' }}
+            showErrors={showErrors}
             helperText="Number of virtual CPU cores"
-            sx={{
-              '& .MuiOutlinedInput-root': {
-                '& fieldset': {
-                  borderColor: isCPUEmpty ? 'warning.main' : undefined,
-                },
-                '&:hover fieldset': {
-                  borderColor: isCPUEmpty ? 'warning.dark' : undefined,
-                },
-                '&.Mui-focused fieldset': {
-                  borderColor: isCPUEmpty ? 'warning.main' : undefined,
-                },
-              },
-            }}
           />
         </Grid>
 
         <Grid item xs={12} sm={6}>
-          <TextField
+          <MandatoryTextField
             fullWidth
-            required
             label="Memory"
             value={memoryValue}
             onChange={e => handleMemoryChange(e.target.value, memoryUnit)}
             inputProps={{ min: 1, type: 'number' }}
+            showErrors={showErrors}
             helperText="Amount of memory"
-            sx={{
-              '& .MuiOutlinedInput-root': {
-                '& fieldset': {
-                  borderColor: isMemoryEmpty ? 'warning.main' : undefined,
-                },
-                '&:hover fieldset': {
-                  borderColor: isMemoryEmpty ? 'warning.dark' : undefined,
-                },
-                '&.Mui-focused fieldset': {
-                  borderColor: isMemoryEmpty ? 'warning.main' : undefined,
-                },
-              },
-            }}
           />
         </Grid>
 

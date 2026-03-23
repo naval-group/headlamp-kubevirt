@@ -25,6 +25,7 @@ import React, { useState } from 'react';
 import useResourceEditor from '../../hooks/useResourceEditor';
 import { KubeListResponse } from '../../types';
 import FormSection from '../common/FormSection';
+import MandatoryTextField, { mandatoryFieldSx } from '../common/MandatoryTextField';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type KubeResourceBuilder = Record<string, any>;
@@ -37,12 +38,14 @@ interface ImportVolumeFormProps {
   resource: KubeResourceBuilder;
   onChange: (resource: KubeResourceBuilder) => void;
   editMode?: boolean;
+  showErrors?: boolean;
 }
 
 export default function ImportVolumeForm({
   resource,
   onChange,
   editMode = false,
+  showErrors = false,
 }: ImportVolumeFormProps) {
   // Parse current values from resource
   const name = resource.metadata?.name || '';
@@ -234,12 +237,12 @@ export default function ImportVolumeForm({
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
       {/* Name and Namespace */}
       <FormSection icon="mdi:information-outline" title="Basic Information" color="other" noGrid>
-        <TextField
+        <MandatoryTextField
           fullWidth
           label="Name"
-          required
           value={name}
           onChange={e => updateMetadata('name', e.target.value)}
+          showErrors={showErrors}
           helperText={editMode ? 'Name cannot be changed' : 'Unique name for the DataVolume'}
           disabled={editMode}
           sx={{ mb: 2 }}
@@ -256,7 +259,14 @@ export default function ImportVolumeForm({
               {...params}
               label="Namespace"
               required
-              helperText={editMode ? 'Namespace cannot be changed' : 'Namespace for the DataVolume'}
+              helperText={
+                showErrors && !namespace
+                  ? 'Namespace is required'
+                  : editMode
+                  ? 'Namespace cannot be changed'
+                  : 'Namespace for the DataVolume'
+              }
+              sx={showErrors && !namespace ? mandatoryFieldSx : undefined}
             />
           )}
         />
@@ -321,13 +331,13 @@ export default function ImportVolumeForm({
               Import disk image from an HTTP/HTTPS URL. Supports ISO, qcow2, and raw formats.
             </Typography>
 
-            <TextField
+            <MandatoryTextField
               fullWidth
               label="URL"
-              required
               value={httpUrl}
               onChange={e => updateSource('http', { url: e.target.value })}
               placeholder="https://example.com/disk-image.iso"
+              showErrors={showErrors}
               helperText="Full URL to the disk image (ISO, qcow2, or raw)"
             />
           </Box>
@@ -339,13 +349,13 @@ export default function ImportVolumeForm({
               Import disk image from a container registry.
             </Typography>
 
-            <TextField
+            <MandatoryTextField
               fullWidth
               label="Registry URL"
-              required
               value={registryUrl}
               onChange={e => updateSource('registry', { url: e.target.value })}
               placeholder="docker://quay.io/kubevirt/fedora-cloud-container-disk-demo:latest"
+              showErrors={showErrors}
               helperText="Container registry URL (docker:// or oci-archive://)"
             />
           </Box>
@@ -502,13 +512,13 @@ export default function ImportVolumeForm({
       {/* Storage Configuration */}
       <FormSection icon="mdi:harddisk" title="Storage Configuration" color="storage" noGrid>
         <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
-          <TextField
+          <MandatoryTextField
             fullWidth
             label="Size"
-            required
             value={storageSizeValue}
             onChange={e => updateStorageSize(e.target.value, storageSizeUnit)}
             inputProps={{ min: 1, type: 'number' }}
+            showErrors={showErrors}
             helperText="Storage size for the volume"
           />
           <Select

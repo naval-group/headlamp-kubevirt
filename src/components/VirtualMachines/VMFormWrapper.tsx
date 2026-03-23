@@ -12,8 +12,21 @@ interface VMFormWrapperProps {
   resource: KubeResourceBuilder;
   onChange: (resource: KubeResourceBuilder) => void;
   editMode?: boolean;
+  showErrors?: boolean;
 }
 
-export default function VMFormWrapper({ resource, onChange, editMode }: VMFormWrapperProps) {
-  return <VMFormFull resource={resource} onChange={onChange} editMode={editMode} />;
+export default function VMFormWrapper({
+  resource,
+  onChange,
+  editMode,
+  showErrors,
+}: VMFormWrapperProps) {
+  return (
+    <VMFormFull
+      resource={resource}
+      onChange={onChange}
+      editMode={editMode}
+      showErrors={showErrors}
+    />
+  );
 }

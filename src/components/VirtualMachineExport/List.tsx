@@ -151,6 +151,7 @@ export default function VirtualMachineExportList() {
         initialResource={INITIAL_EXPORT}
         initialTab={createInitialTab}
         formComponent={VMExportForm}
+        validate={r => !!(r?.metadata?.name && r?.metadata?.namespace && r?.spec?.source?.name)}
       />
     </>
   );

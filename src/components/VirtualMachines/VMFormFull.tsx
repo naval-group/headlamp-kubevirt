@@ -37,6 +37,7 @@ import {
 import { useSnackbar } from 'notistack';
 import React, { useState } from 'react';
 import DataSource from '../BootableVolumes/DataSource';
+import MandatoryTextField, { mandatoryFieldSx } from '../common/MandatoryTextField';
 import VirtualMachineClusterInstanceType from '../InstanceTypes/VirtualMachineClusterInstanceType';
 import NetworkAttachmentDefinition from '../NetworkAttachmentDefinitions/NetworkAttachmentDefinition';
 
@@ -116,9 +117,15 @@ interface VMFormFullProps {
   resource: KubeResourceBuilder;
   onChange: (resource: KubeResourceBuilder) => void;
   editMode?: boolean;
+  showErrors?: boolean;
 }
 
-export default function VMFormFull({ resource, onChange, editMode = false }: VMFormFullProps) {
+export default function VMFormFull({
+  resource,
+  onChange,
+  editMode = false,
+  showErrors = false,
+}: VMFormFullProps) {
   const { enqueueSnackbar } = useSnackbar();
 
   // Fetch available resources
@@ -1904,12 +1911,12 @@ export default function VMFormFull({ resource, onChange, editMode = false }: VMF
           </Box>
         </AccordionSummary>
         <AccordionDetails>
-          <TextField
+          <MandatoryTextField
             fullWidth
             label="Name"
-            required
             value={name}
             onChange={e => handleNameChange(e.target.value)}
+            showErrors={showErrors}
             helperText={editMode ? 'Name cannot be changed' : 'Unique name for the virtual machine'}
             disabled={editMode}
             sx={{ mb: 2 }}
@@ -1926,7 +1933,14 @@ export default function VMFormFull({ resource, onChange, editMode = false }: VMF
                 {...params}
                 label="Namespace"
                 required
-                helperText={editMode ? 'Namespace cannot be changed' : 'Namespace for the VM'}
+                helperText={
+                  showErrors && !namespace
+                    ? 'Namespace is required'
+                    : editMode
+                    ? 'Namespace cannot be changed'
+                    : 'Namespace for the VM'
+                }
+                sx={showErrors && !namespace ? mandatoryFieldSx : undefined}
               />
             )}
             sx={{ mb: 2 }}

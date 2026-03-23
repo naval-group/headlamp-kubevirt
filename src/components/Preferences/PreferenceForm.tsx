@@ -11,6 +11,7 @@ import {
 import React from 'react';
 import useResourceEditor from '../../hooks/useResourceEditor';
 import FormSection from '../common/FormSection';
+import MandatoryTextField from '../common/MandatoryTextField';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type KubeResourceBuilder = Record<string, any>;
@@ -19,12 +20,14 @@ interface PreferenceFormProps {
   resource: KubeResourceBuilder;
   onChange: (resource: KubeResourceBuilder) => void;
   editMode?: boolean;
+  showErrors?: boolean;
 }
 
 export default function PreferenceForm({
   resource,
   onChange,
   editMode = false,
+  showErrors = false,
 }: PreferenceFormProps) {
   const { updateMetadata } = useResourceEditor(resource, onChange);
 
@@ -159,12 +162,12 @@ export default function PreferenceForm({
         spacing={2}
       >
         <Grid item xs={12}>
-          <TextField
+          <MandatoryTextField
             fullWidth
-            required
             label="Name"
             value={resource.metadata?.name || ''}
             onChange={e => updateMetadata('name', e.target.value)}
+            showErrors={showErrors}
             helperText={
               editMode
                 ? 'Name cannot be changed'

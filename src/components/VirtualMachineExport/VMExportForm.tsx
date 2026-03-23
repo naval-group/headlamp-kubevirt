@@ -15,6 +15,7 @@ import React, { useState } from 'react';
 import useResourceEditor from '../../hooks/useResourceEditor';
 import { KubeListResponse } from '../../types';
 import FormSection from '../common/FormSection';
+import MandatoryTextField, { mandatoryFieldSx } from '../common/MandatoryTextField';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type KubeResourceBuilder = Record<string, any>;
@@ -61,9 +62,15 @@ interface VMExportFormProps {
   resource: KubeResourceBuilder;
   onChange: (resource: KubeResourceBuilder) => void;
   editMode?: boolean;
+  showErrors?: boolean;
 }
 
-export default function VMExportForm({ resource, onChange, editMode = false }: VMExportFormProps) {
+export default function VMExportForm({
+  resource,
+  onChange,
+  editMode = false,
+  showErrors = false,
+}: VMExportFormProps) {
   const name = resource.metadata?.name || '';
   const namespace = resource.metadata?.namespace || 'default';
   const sourceKind: SourceKind = resource.spec?.source?.kind || 'VirtualMachine';
@@ -128,12 +135,12 @@ export default function VMExportForm({ resource, onChange, editMode = false }: V
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
       <FormSection icon="mdi:information-outline" title="Basic Information" color="other" noGrid>
-        <TextField
+        <MandatoryTextField
           fullWidth
           label="Name"
-          required
           value={name}
           onChange={e => updateMetadata('name', e.target.value)}
+          showErrors={showErrors}
           helperText={editMode ? 'Name cannot be changed' : 'Unique name for the export'}
           disabled={editMode}
           sx={{ mb: 2 }}
@@ -149,7 +156,12 @@ export default function VMExportForm({ resource, onChange, editMode = false }: V
               {...params}
               label="Namespace"
               required
-              helperText="Namespace of the source resource"
+              helperText={
+                showErrors && !namespace
+                  ? 'Namespace is required'
+                  : 'Namespace of the source resource'
+              }
+              sx={showErrors && !namespace ? mandatoryFieldSx : undefined}
             />
           )}
         />
@@ -190,6 +202,12 @@ export default function VMExportForm({ resource, onChange, editMode = false }: V
               label={`${SOURCE_KIND_CONFIG[sourceKind].label} Name`}
               required
               placeholder={`Select a ${SOURCE_KIND_CONFIG[sourceKind].label.toLowerCase()}...`}
+              helperText={
+                showErrors && !sourceName
+                  ? `${SOURCE_KIND_CONFIG[sourceKind].label} Name is required`
+                  : ''
+              }
+              sx={showErrors && !sourceName ? mandatoryFieldSx : undefined}
             />
           )}
         />

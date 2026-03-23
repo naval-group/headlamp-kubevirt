@@ -141,6 +141,13 @@ export default function DataVolumeList() {
         resourceClass={DataVolume}
         initialResource={emptyDataVolume}
         formComponent={ImportVolumeForm}
+        validate={r =>
+          !!(
+            r?.metadata?.name &&
+            r?.metadata?.namespace &&
+            r?.spec?.storage?.resources?.requests?.storage
+          )
+        }
       />
     </>
   );

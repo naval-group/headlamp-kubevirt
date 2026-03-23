@@ -16,6 +16,7 @@ import React, { useEffect, useState } from 'react';
 import useResourceEditor from '../../hooks/useResourceEditor';
 import { KubeListResponse } from '../../types';
 import FormSection from '../common/FormSection';
+import MandatoryTextField from '../common/MandatoryTextField';
 import { CRON_PRESETS, parseCronExpression } from './cronUtils';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -29,12 +30,14 @@ interface DataImportCronFormProps {
   resource: KubeResourceBuilder;
   onChange: (resource: KubeResourceBuilder) => void;
   editMode?: boolean;
+  showErrors?: boolean;
 }
 
 export default function DataImportCronForm({
   resource,
   onChange,
   editMode = false,
+  showErrors = false,
 }: DataImportCronFormProps) {
   const [namespaces, setNamespaces] = useState<string[]>([]);
   const [storageClasses, setStorageClasses] = useState<string[]>([]);
@@ -174,35 +177,30 @@ export default function DataImportCronForm({
   const templateSource = resource.spec?.template?.spec?.source;
   const sourceType = templateSource ? Object.keys(templateSource)[0] : 'registry';
 
-  // Validation
-  const isImportsToKeepEmpty =
-    (resource.spec?.garbageCollect || 'Outdated') === 'Outdated' && !resource.spec?.importsToKeep;
-  const isStorageSizeEmpty = !storageSize || storageSizeValue === '';
-
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
       {/* Basic Information */}
       <FormSection icon="mdi:information-outline" title="Basic Information" color="other">
         <Grid item xs={12} md={6}>
-          <TextField
+          <MandatoryTextField
             fullWidth
-            required
             label="Name"
             value={resource.metadata?.name || ''}
             onChange={e => updateMetadata('name', e.target.value)}
+            showErrors={showErrors}
             helperText={editMode ? 'Name cannot be changed' : 'Unique name for the DataImportCron'}
             disabled={editMode}
           />
         </Grid>
 
         <Grid item xs={12} md={6}>
-          <TextField
+          <MandatoryTextField
             fullWidth
-            required
             select
             label="Namespace"
             value={resource.metadata?.namespace || 'default'}
             onChange={e => updateMetadata('namespace', e.target.value)}
+            showErrors={showErrors}
             helperText={
               editMode ? 'Namespace cannot be changed' : 'Namespace for the DataImportCron'
             }
@@ -213,16 +211,16 @@ export default function DataImportCronForm({
                 {ns}
               </MenuItem>
             ))}
-          </TextField>
+          </MandatoryTextField>
         </Grid>
 
         <Grid item xs={12} md={6}>
-          <TextField
+          <MandatoryTextField
             fullWidth
-            required
             label="Managed DataSource"
             value={resource.spec?.managedDataSource || ''}
             onChange={e => updateSpec({ managedDataSource: e.target.value })}
+            showErrors={showErrors}
             helperText="Name of the DataSource to manage"
           />
         </Grid>
@@ -283,13 +281,13 @@ export default function DataImportCronForm({
             </RadioGroup>
 
             {scheduleMode === 'preset' ? (
-              <TextField
+              <MandatoryTextField
                 fullWidth
-                required
                 select
                 label="Cron Preset"
                 value={currentSchedule}
                 onChange={e => updateSpec({ schedule: e.target.value })}
+                showErrors={showErrors}
                 helperText="Select a predefined schedule"
                 size="small"
               >
@@ -298,15 +296,15 @@ export default function DataImportCronForm({
                     {preset.label} ({preset.value})
                   </MenuItem>
                 ))}
-              </TextField>
+              </MandatoryTextField>
             ) : (
-              <TextField
+              <MandatoryTextField
                 fullWidth
-                required
                 label="Cron Expression"
                 value={currentSchedule}
                 onChange={e => updateSpec({ schedule: e.target.value })}
                 placeholder="*/3 * * * *"
+                showErrors={showErrors}
                 helperText={parseCronExpression(currentSchedule)}
                 size="small"
               />
@@ -350,19 +348,6 @@ export default function DataImportCronForm({
               }}
               inputProps={{ min: 0, type: 'number' }}
               helperText="Number of old imports to keep"
-              sx={{
-                '& .MuiOutlinedInput-root': {
-                  '& fieldset': {
-                    borderColor: isImportsToKeepEmpty ? 'warning.main' : undefined,
-                  },
-                  '&:hover fieldset': {
-                    borderColor: isImportsToKeepEmpty ? 'warning.dark' : undefined,
-                  },
-                  '&.Mui-focused fieldset': {
-                    borderColor: isImportsToKeepEmpty ? 'warning.main' : undefined,
-                  },
-                },
-              }}
             />
           </Grid>
         )}
@@ -399,9 +384,8 @@ export default function DataImportCronForm({
 
         {sourceType === 'registry' && (
           <Grid item xs={12}>
-            <TextField
+            <MandatoryTextField
               fullWidth
-              required
               label="Registry URL"
               value={resource.spec?.template?.spec?.source?.registry?.url || ''}
               onChange={e =>
@@ -411,6 +395,7 @@ export default function DataImportCronForm({
                 })
               }
               placeholder="docker://registry.example.com/image:tag"
+              showErrors={showErrors}
               helperText="Container image URL (docker:// or oci-archive://)"
             />
           </Grid>
@@ -418,9 +403,8 @@ export default function DataImportCronForm({
 
         {sourceType === 'http' && (
           <Grid item xs={12}>
-            <TextField
+            <MandatoryTextField
               fullWidth
-              required
               label="HTTP URL"
               value={resource.spec?.template?.spec?.source?.http?.url || ''}
               onChange={e =>
@@ -430,6 +414,7 @@ export default function DataImportCronForm({
                 })
               }
               placeholder="https://example.com/image.img"
+              showErrors={showErrors}
               helperText="HTTP(S) URL to the disk image"
             />
           </Grid>
@@ -437,9 +422,8 @@ export default function DataImportCronForm({
 
         {sourceType === 's3' && (
           <Grid item xs={12}>
-            <TextField
+            <MandatoryTextField
               fullWidth
-              required
               label="S3 URL"
               value={resource.spec?.template?.spec?.source?.s3?.url || ''}
               onChange={e =>
@@ -449,6 +433,7 @@ export default function DataImportCronForm({
                 })
               }
               placeholder="s3://bucket/path/to/image.img"
+              showErrors={showErrors}
               helperText="S3 URL to the disk image"
             />
           </Grid>
@@ -458,27 +443,14 @@ export default function DataImportCronForm({
       {/* Storage Configuration */}
       <FormSection icon="mdi:harddisk" title="Storage Configuration" color="storage">
         <Grid item xs={12} sm={6}>
-          <TextField
+          <MandatoryTextField
             fullWidth
-            required
             label="Storage Size"
             value={storageSizeValue}
             onChange={e => handleStorageSizeChange(e.target.value, storageSizeUnit)}
             inputProps={{ min: 1, type: 'number' }}
+            showErrors={showErrors}
             helperText="Size of the storage volume"
-            sx={{
-              '& .MuiOutlinedInput-root': {
-                '& fieldset': {
-                  borderColor: isStorageSizeEmpty ? 'warning.main' : undefined,
-                },
-                '&:hover fieldset': {
-                  borderColor: isStorageSizeEmpty ? 'warning.dark' : undefined,
-                },
-                '&.Mui-focused fieldset': {
-                  borderColor: isStorageSizeEmpty ? 'warning.main' : undefined,
-                },
-              },
-            }}
           />
         </Grid>
 

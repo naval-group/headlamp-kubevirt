@@ -24,6 +24,7 @@ import React, { useState } from 'react';
 import useResourceEditor from '../../hooks/useResourceEditor';
 import { KubeListResponse } from '../../types';
 import FormSection from '../common/FormSection';
+import MandatoryTextField, { mandatoryFieldSx } from '../common/MandatoryTextField';
 import DataSource from './DataSource';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -37,12 +38,14 @@ interface DataSourceFormProps {
   resource: KubeResourceBuilder;
   onChange: (resource: KubeResourceBuilder) => void;
   editMode?: boolean;
+  showErrors?: boolean;
 }
 
 export default function DataSourceForm({
   resource,
   onChange,
   editMode = false,
+  showErrors = false,
 }: DataSourceFormProps) {
   // Parse current values from resource
   const name = resource.metadata?.name || '';
@@ -134,12 +137,12 @@ export default function DataSourceForm({
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
       {/* Name and Namespace */}
       <FormSection icon="mdi:information-outline" title="Basic Information" color="other" noGrid>
-        <TextField
+        <MandatoryTextField
           fullWidth
           label="Name"
-          required
           value={name}
           onChange={e => updateMetadata('name', e.target.value)}
+          showErrors={showErrors}
           helperText={editMode ? 'Name cannot be changed' : 'Unique name for the DataSource'}
           disabled={editMode}
           sx={{ mb: 2 }}
@@ -156,7 +159,14 @@ export default function DataSourceForm({
               {...params}
               label="Namespace"
               required
-              helperText={editMode ? 'Namespace cannot be changed' : 'Namespace for the DataSource'}
+              helperText={
+                showErrors && !namespace
+                  ? 'Namespace is required'
+                  : editMode
+                  ? 'Namespace cannot be changed'
+                  : 'Namespace for the DataSource'
+              }
+              sx={showErrors && !namespace ? mandatoryFieldSx : undefined}
             />
           )}
         />

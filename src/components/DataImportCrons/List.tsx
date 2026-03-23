@@ -226,6 +226,15 @@ export default function DataImportCronList() {
         initialResource={emptyDataImportCron}
         initialTab={createInitialTab}
         formComponent={DataImportCronForm}
+        validate={r =>
+          !!(
+            r?.metadata?.name &&
+            r?.metadata?.namespace &&
+            r?.spec?.managedDataSource &&
+            r?.spec?.schedule &&
+            r?.spec?.template?.spec?.storage?.resources?.requests?.storage
+          )
+        }
       />
     </>
   );

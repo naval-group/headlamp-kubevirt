@@ -116,6 +116,7 @@ export default function InstanceTypeList() {
         initialResource={emptyInstanceType}
         initialTab={createInitialTab}
         formComponent={InstanceTypeForm}
+        validate={r => !!(r?.metadata?.name && r?.spec?.cpu?.guest && r?.spec?.memory?.guest)}
       />
     </>
   );

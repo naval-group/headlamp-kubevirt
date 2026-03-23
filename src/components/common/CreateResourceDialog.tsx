@@ -46,7 +46,10 @@ interface CreateResourceDialogProps {
     resource: KubeResourceBuilder;
     onChange: (resource: KubeResourceBuilder) => void;
     editMode?: boolean;
+    showErrors?: boolean;
   }) => React.ReactElement;
+  /** Returns true if the resource is valid and can be created */
+  validate?: (resource: KubeResourceBuilder) => boolean;
 }
 
 export default function CreateResourceDialog({
@@ -58,6 +61,7 @@ export default function CreateResourceDialog({
   editMode = false,
   initialTab = 0,
   formComponent: FormComponent,
+  validate,
 }: CreateResourceDialogProps) {
   const { enqueueSnackbar } = useSnackbar();
   const theme = useTheme();
@@ -69,6 +73,8 @@ export default function CreateResourceDialog({
   const [uploadMethod, setUploadMethod] = useState(0); // 0 = File, 1 = URL
   const [useMinimalEditor, setUseMinimalEditor] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [showErrors, setShowErrors] = useState(false);
+  const isValid = validate ? validate(resource) : true;
 
   // Sync initialTab when dialog opens
   useEffect(() => {
@@ -152,6 +158,7 @@ export default function CreateResourceDialog({
     setYamlError(null);
     setUploadUrl('');
     setActiveTab(0);
+    setShowErrors(false);
     onClose();
   };
 
@@ -235,7 +242,12 @@ export default function CreateResourceDialog({
         {activeTab === 0 ? (
           // Form Tab
           <Box sx={{ p: 3, flex: 1, overflow: 'auto' }}>
-            <FormComponent resource={resource} onChange={setResource} editMode={editMode} />
+            <FormComponent
+              resource={resource}
+              onChange={setResource}
+              editMode={editMode}
+              showErrors={showErrors}
+            />
           </Box>
         ) : activeTab === 1 ? (
           // Editor Tab
@@ -375,6 +387,15 @@ export default function CreateResourceDialog({
       <DialogActions sx={{ px: 3, py: 2 }}>
         <Button onClick={handleClose}>Cancel</Button>
         <Box sx={{ flex: 1 }} />
+        {showErrors && !isValid && (
+          <Chip
+            icon={<Icon icon="mdi:alert-circle-outline" />}
+            label="Some required fields are missing"
+            color="warning"
+            size="small"
+            variant="outlined"
+          />
+        )}
         <Button
           onClick={() => setReviewOpen(true)}
           startIcon={<Icon icon="mdi:eye-outline" />}
@@ -384,7 +405,20 @@ export default function CreateResourceDialog({
         </Button>
         <Button
           variant="contained"
-          onClick={handleSave}
+          onClick={() => {
+            if (validate && !isValid) {
+              setShowErrors(true);
+              // Scroll to the first missing mandatory field
+              setTimeout(() => {
+                const firstMissing = document.querySelector('[data-mandatory-empty="true"]');
+                if (firstMissing) {
+                  firstMissing.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+              }, 50);
+              return;
+            }
+            handleSave();
+          }}
           startIcon={<Icon icon="mdi:check" />}
           disabled={!!yamlError}
         >

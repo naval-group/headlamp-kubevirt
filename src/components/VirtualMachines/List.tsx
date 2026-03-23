@@ -577,6 +577,7 @@ export default function VirtualMachineList() {
         initialResource={emptyVM}
         initialTab={createInitialTab}
         formComponent={VMFormWrapper}
+        validate={r => !!(r?.metadata?.name && r?.metadata?.namespace)}
       />
     </>
   );

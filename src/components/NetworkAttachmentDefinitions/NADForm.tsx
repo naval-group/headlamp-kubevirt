@@ -17,6 +17,7 @@ import {
 import React, { useMemo } from 'react';
 import useResourceEditor from '../../hooks/useResourceEditor';
 import FormSection from '../common/FormSection';
+import MandatoryTextField from '../common/MandatoryTextField';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /** Permissive record type for building Kubernetes resource objects with deep nesting */
@@ -27,6 +28,7 @@ interface NADFormProps {
   resource: KubeResourceBuilder;
   onChange: (resource: KubeResourceBuilder) => void;
   editMode?: boolean;
+  showErrors?: boolean;
 }
 
 const CNI_TYPES = [
@@ -85,7 +87,12 @@ const IPAM_TYPES = [
 const MACVLAN_MODES = ['bridge', 'private', 'vepa', 'passthru'];
 const IPVLAN_MODES = ['l2', 'l3', 'l3s'];
 
-export default function NADForm({ resource, onChange, editMode = false }: NADFormProps) {
+export default function NADForm({
+  resource,
+  onChange,
+  editMode = false,
+  showErrors = false,
+}: NADFormProps) {
   const { updateMetadata } = useResourceEditor(resource, onChange);
 
   // Parse the config JSON string into a working object
@@ -162,24 +169,24 @@ export default function NADForm({ resource, onChange, editMode = false }: NADFor
       {/* Basic Information */}
       <FormSection icon="mdi:information-outline" title="Basic Information" color="other">
         <Grid item xs={12} md={4}>
-          <TextField
+          <MandatoryTextField
             fullWidth
-            required
             label="Name"
             value={resource.metadata?.name || ''}
             onChange={e => updateMetadata('name', e.target.value)}
+            showErrors={showErrors}
             helperText={editMode ? 'Name cannot be changed' : 'Network attachment definition name'}
             placeholder="my-network"
             disabled={editMode}
           />
         </Grid>
         <Grid item xs={12} md={4}>
-          <TextField
+          <MandatoryTextField
             fullWidth
-            required
             label="Namespace"
             value={resource.metadata?.namespace || 'default'}
             onChange={e => updateMetadata('namespace', e.target.value)}
+            showErrors={showErrors}
             helperText={editMode ? 'Namespace cannot be changed' : 'Kubernetes namespace'}
             disabled={editMode}
           />

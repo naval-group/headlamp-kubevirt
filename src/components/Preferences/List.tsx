@@ -127,6 +127,7 @@ export default function PreferenceList() {
         initialResource={emptyPreference}
         initialTab={createInitialTab}
         formComponent={PreferenceForm}
+        validate={r => !!r?.metadata?.name}
       />
     </>
   );

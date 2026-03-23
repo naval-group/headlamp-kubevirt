@@ -206,6 +206,7 @@ export default function DataSourceList() {
         initialResource={emptyDataSource}
         initialTab={createInitialTab}
         formComponent={DataSourceForm}
+        validate={r => !!(r?.metadata?.name && r?.metadata?.namespace)}
       />
     </>
   );
