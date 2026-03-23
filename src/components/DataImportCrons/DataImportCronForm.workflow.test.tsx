@@ -94,7 +94,9 @@ describe('DataImportCronForm Workflows', () => {
     expect(resource.spec.managedDataSource).toBe('fedora-cloud');
     expect(resource.spec.schedule).toBe('0 0 * * *');
     expect(resource.spec.importsToKeep).toBe(3);
-    expect(resource.spec.template.spec.source.registry.url).toBe('docker://quay.io/containerdisks/fedora:40');
+    expect(resource.spec.template.spec.source.registry.url).toBe(
+      'docker://quay.io/containerdisks/fedora:40'
+    );
     expect(resource.spec.template.spec.storage.resources.requests.storage).toBe('30Gi');
     expect(resource.spec.template.spec.preallocation).toBe(true);
   });

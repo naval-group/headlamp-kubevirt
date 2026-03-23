@@ -155,8 +155,7 @@ export default function DataImportCronForm({
 
   // Validation
   const isImportsToKeepEmpty =
-    (resource.spec?.garbageCollect || 'Outdated') === 'Outdated' &&
-    !resource.spec?.importsToKeep;
+    (resource.spec?.garbageCollect || 'Outdated') === 'Outdated' && !resource.spec?.importsToKeep;
   const isStorageSizeEmpty = !storageSize || storageSizeValue === '';
 
   return (
