@@ -18,11 +18,11 @@ function makeDIC(overrides: any = {}) {
     spec: {
       managedDataSource: 'fedora',
       schedule: '0 0 * * *',
-      garbageCollect: { outdated: 'Outdated' },
-      source: { registry: { url: 'docker://quay.io/containerdisks/fedora:latest' } },
+      garbageCollect: 'Outdated',
       template: {
         spec: {
-          pvc: {
+          source: { registry: { url: 'docker://quay.io/containerdisks/fedora:latest' } },
+          storage: {
             resources: { requests: { storage: '30Gi' } },
             accessModes: ['ReadWriteOnce'],
             volumeMode: 'Filesystem',
@@ -124,7 +124,7 @@ describe('DataImportCronForm', () => {
       const res = makeDIC({
         spec: {
           ...makeDIC().spec,
-          garbageCollect: { outdated: 'Never' },
+          garbageCollect: 'Never',
         },
       });
       render(<DataImportCronForm resource={res} onChange={vi.fn()} />);
@@ -156,7 +156,7 @@ describe('DataImportCronForm', () => {
         target: { value: 'docker://new-registry/image:v1' },
       });
 
-      expect(onChange.mock.calls[0][0].spec.source.registry.url).toBe(
+      expect(onChange.mock.calls[0][0].spec.template.spec.source.registry.url).toBe(
         'docker://new-registry/image:v1'
       );
     });
@@ -168,15 +168,19 @@ describe('DataImportCronForm', () => {
       fireEvent.click(screen.getByLabelText('HTTP'));
 
       const updated = onChange.mock.calls[0][0];
-      expect(updated.spec.source.http).toBeDefined();
-      expect(updated.spec.source.registry).toBeUndefined();
+      expect(updated.spec.template.spec.source.http).toBeDefined();
+      expect(updated.spec.template.spec.source.registry).toBeUndefined();
     });
 
     it('shows HTTP URL field when HTTP selected', () => {
+      const base = makeDIC();
       const res = makeDIC({
         spec: {
-          ...makeDIC().spec,
-          source: { http: { url: '' } },
+          ...base.spec,
+          template: {
+            ...base.spec.template,
+            spec: { ...base.spec.template.spec, source: { http: { url: '' } } },
+          },
         },
       });
       render(<DataImportCronForm resource={res} onChange={vi.fn()} />);
@@ -191,14 +195,18 @@ describe('DataImportCronForm', () => {
       fireEvent.click(screen.getByLabelText('S3'));
 
       const updated = onChange.mock.calls[0][0];
-      expect(updated.spec.source.s3).toBeDefined();
+      expect(updated.spec.template.spec.source.s3).toBeDefined();
     });
 
     it('shows S3 URL field when S3 selected', () => {
+      const base = makeDIC();
       const res = makeDIC({
         spec: {
-          ...makeDIC().spec,
-          source: { s3: { url: '' } },
+          ...base.spec,
+          template: {
+            ...base.spec.template,
+            spec: { ...base.spec.template.spec, source: { s3: { url: '' } } },
+          },
         },
       });
       render(<DataImportCronForm resource={res} onChange={vi.fn()} />);
@@ -213,7 +221,7 @@ describe('DataImportCronForm', () => {
       fireEvent.click(screen.getByLabelText('Blank'));
 
       const updated = onChange.mock.calls[0][0];
-      expect(updated.spec.source.blank).toBeDefined();
+      expect(updated.spec.template.spec.source.blank).toBeDefined();
     });
   });
 
@@ -233,7 +241,7 @@ describe('DataImportCronForm', () => {
       fireEvent.change(screen.getByLabelText('Storage Size *'), { target: { value: '50' } });
 
       const updated = onChange.mock.calls[0][0];
-      expect(updated.spec.template.spec.pvc.resources.requests.storage).toBe('50Gi');
+      expect(updated.spec.template.spec.storage.resources.requests.storage).toBe('50Gi');
     });
 
     it('renders storage class selector', () => {

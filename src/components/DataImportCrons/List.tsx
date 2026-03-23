@@ -22,18 +22,16 @@ export default function DataImportCronList() {
     spec: {
       managedDataSource: '',
       schedule: '0 0 * * *',
-      garbageCollect: {
-        outdated: 'Outdated',
-      },
+      garbageCollect: 'Outdated',
       importsToKeep: 3,
-      source: {
-        registry: {
-          url: '',
-        },
-      },
       template: {
         spec: {
-          pvc: {
+          source: {
+            registry: {
+              url: '',
+            },
+          },
+          storage: {
             accessModes: ['ReadWriteOnce'],
             volumeMode: 'Filesystem',
             resources: {

@@ -73,30 +73,29 @@ export default function DataImportCronForm({
       .catch(err => console.error('Failed to fetch storage classes:', err));
   }, []);
 
-  const updateGarbageCollect = (field: string, value: unknown) => {
+  const updateGarbageCollect = (value: string) => {
     onChange({
       ...resource,
       spec: {
         ...resource.spec,
-        garbageCollect: {
-          ...resource.spec?.garbageCollect,
-          [field]: value,
-        },
+        garbageCollect: value,
       },
     });
   };
 
   const updateSource = (sourceType: string, sourceData: KubeResourceBuilder) => {
-    // Clear previous source types
-    const newSpec = { ...resource.spec };
-    delete newSpec.source;
-
     onChange({
       ...resource,
       spec: {
-        ...newSpec,
-        source: {
-          [sourceType]: sourceData,
+        ...resource.spec,
+        template: {
+          ...resource.spec?.template,
+          spec: {
+            ...resource.spec?.template?.spec,
+            source: {
+              [sourceType]: sourceData,
+            },
+          },
         },
       },
     });
@@ -111,8 +110,8 @@ export default function DataImportCronForm({
           ...resource.spec?.template,
           spec: {
             ...resource.spec?.template?.spec,
-            pvc: {
-              ...resource.spec?.template?.spec?.pvc,
+            storage: {
+              ...resource.spec?.template?.spec?.storage,
               ...updates,
             },
           },
@@ -122,7 +121,7 @@ export default function DataImportCronForm({
   };
 
   // Parse storage size
-  const storageSize = resource.spec?.template?.spec?.pvc?.resources?.requests?.storage;
+  const storageSize = resource.spec?.template?.spec?.storage?.resources?.requests?.storage;
   const storageSizeMatch = storageSize?.match(/^(\d+)(Gi|Mi|Ti)$/);
   const storageSizeValue = storageSizeMatch ? storageSizeMatch[1] : '';
   const storageSizeUnit = storageSizeMatch ? storageSizeMatch[2] : 'Gi';
@@ -150,13 +149,14 @@ export default function DataImportCronForm({
     }
   };
 
-  // Get source type
-  const sourceType = resource.spec?.source ? Object.keys(resource.spec.source)[0] : 'registry';
+  // Get source type from template.spec.source
+  const templateSource = resource.spec?.template?.spec?.source;
+  const sourceType = templateSource ? Object.keys(templateSource)[0] : 'registry';
 
   // Validation
   const isImportsToKeepEmpty =
-    resource.spec?.garbageCollect?.outdated === 'Outdated' &&
-    (!resource.spec?.garbageCollect || !resource.spec?.garbageCollect?.outdated);
+    (resource.spec?.garbageCollect || 'Outdated') === 'Outdated' &&
+    !resource.spec?.importsToKeep;
   const isStorageSizeEmpty = !storageSize || storageSizeValue === '';
 
   return (
@@ -271,8 +271,8 @@ export default function DataImportCronForm({
             fullWidth
             select
             label="Garbage Collect"
-            value={resource.spec?.garbageCollect?.outdated || 'Outdated'}
-            onChange={e => updateGarbageCollect('outdated', e.target.value)}
+            value={resource.spec?.garbageCollect || 'Outdated'}
+            onChange={e => updateGarbageCollect(e.target.value)}
             helperText="When to garbage collect old imports"
           >
             <MenuItem value="Outdated">Outdated</MenuItem>
@@ -280,7 +280,7 @@ export default function DataImportCronForm({
           </TextField>
         </Grid>
 
-        {resource.spec?.garbageCollect?.outdated === 'Outdated' && (
+        {(resource.spec?.garbageCollect || 'Outdated') === 'Outdated' && (
           <Grid item xs={12} md={6}>
             <TextField
               fullWidth
@@ -352,10 +352,10 @@ export default function DataImportCronForm({
               fullWidth
               required
               label="Registry URL"
-              value={resource.spec?.source?.registry?.url || ''}
+              value={resource.spec?.template?.spec?.source?.registry?.url || ''}
               onChange={e =>
                 updateSource('registry', {
-                  ...resource.spec?.source?.registry,
+                  ...resource.spec?.template?.spec?.source?.registry,
                   url: e.target.value,
                 })
               }
@@ -371,10 +371,10 @@ export default function DataImportCronForm({
               fullWidth
               required
               label="HTTP URL"
-              value={resource.spec?.source?.http?.url || ''}
+              value={resource.spec?.template?.spec?.source?.http?.url || ''}
               onChange={e =>
                 updateSource('http', {
-                  ...resource.spec?.source?.http,
+                  ...resource.spec?.template?.spec?.source?.http,
                   url: e.target.value,
                 })
               }
@@ -390,10 +390,10 @@ export default function DataImportCronForm({
               fullWidth
               required
               label="S3 URL"
-              value={resource.spec?.source?.s3?.url || ''}
+              value={resource.spec?.template?.spec?.source?.s3?.url || ''}
               onChange={e =>
                 updateSource('s3', {
-                  ...resource.spec?.source?.s3,
+                  ...resource.spec?.template?.spec?.source?.s3,
                   url: e.target.value,
                 })
               }
@@ -450,7 +450,7 @@ export default function DataImportCronForm({
             fullWidth
             select
             label="Storage Class"
-            value={resource.spec?.template?.spec?.pvc?.storageClassName || ''}
+            value={resource.spec?.template?.spec?.storage?.storageClassName || ''}
             onChange={e => updateStorage({ storageClassName: e.target.value || undefined })}
             helperText="Storage class for the PVC"
           >
@@ -468,7 +468,7 @@ export default function DataImportCronForm({
             fullWidth
             select
             label="Access Mode"
-            value={resource.spec?.template?.spec?.pvc?.accessModes?.[0] || 'ReadWriteOnce'}
+            value={resource.spec?.template?.spec?.storage?.accessModes?.[0] || 'ReadWriteOnce'}
             onChange={e => updateStorage({ accessModes: [e.target.value] })}
             helperText="Volume access mode"
           >
@@ -483,7 +483,7 @@ export default function DataImportCronForm({
             fullWidth
             select
             label="Volume Mode"
-            value={resource.spec?.template?.spec?.pvc?.volumeMode || 'Filesystem'}
+            value={resource.spec?.template?.spec?.storage?.volumeMode || 'Filesystem'}
             onChange={e => updateStorage({ volumeMode: e.target.value })}
             helperText="Volume mode"
           >

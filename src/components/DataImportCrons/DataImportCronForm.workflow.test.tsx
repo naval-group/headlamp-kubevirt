@@ -44,11 +44,11 @@ const INITIAL_DIC = {
   spec: {
     managedDataSource: '',
     schedule: '0 0 * * *',
-    garbageCollect: { outdated: 'Outdated' },
-    source: { registry: { url: '' } },
+    garbageCollect: 'Outdated',
     template: {
       spec: {
-        pvc: {
+        source: { registry: { url: '' } },
+        storage: {
           resources: { requests: { storage: '' } },
           accessModes: ['ReadWriteOnce'],
           volumeMode: 'Filesystem',
@@ -94,8 +94,8 @@ describe('DataImportCronForm Workflows', () => {
     expect(resource.spec.managedDataSource).toBe('fedora-cloud');
     expect(resource.spec.schedule).toBe('0 0 * * *');
     expect(resource.spec.importsToKeep).toBe(3);
-    expect(resource.spec.source.registry.url).toBe('docker://quay.io/containerdisks/fedora:40');
-    expect(resource.spec.template.spec.pvc.resources.requests.storage).toBe('30Gi');
+    expect(resource.spec.template.spec.source.registry.url).toBe('docker://quay.io/containerdisks/fedora:40');
+    expect(resource.spec.template.spec.storage.resources.requests.storage).toBe('30Gi');
     expect(resource.spec.template.spec.preallocation).toBe(true);
   });
 
@@ -126,10 +126,10 @@ describe('DataImportCronForm Workflows', () => {
 
     // ── Verify ──
     const resource = getResource();
-    expect(resource.spec.source.http.url).toBe(
+    expect(resource.spec.template.spec.source.http.url).toBe(
       'https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img'
     );
-    expect(resource.spec.source.registry).toBeUndefined();
+    expect(resource.spec.template.spec.source.registry).toBeUndefined();
   });
 
   it('switches from registry to S3 to blank — source changes cleanly', () => {
@@ -149,15 +149,15 @@ describe('DataImportCronForm Workflows', () => {
     });
 
     let resource = getResource();
-    expect(resource.spec.source.s3.url).toBe('s3://mybucket/images/disk.img');
-    expect(resource.spec.source.registry).toBeUndefined();
+    expect(resource.spec.template.spec.source.s3.url).toBe('s3://mybucket/images/disk.img');
+    expect(resource.spec.template.spec.source.registry).toBeUndefined();
 
     // Switch to Blank
     fireEvent.click(screen.getByLabelText('Blank'));
 
     resource = getResource();
-    expect(resource.spec.source.blank).toEqual({});
-    expect(resource.spec.source.s3).toBeUndefined();
-    expect(resource.spec.source.registry).toBeUndefined();
+    expect(resource.spec.template.spec.source.blank).toEqual({});
+    expect(resource.spec.template.spec.source.s3).toBeUndefined();
+    expect(resource.spec.template.spec.source.registry).toBeUndefined();
   });
 });
