@@ -129,7 +129,9 @@ export default function VMMetrics({ vmName, namespace, vmiData, vmItem }: Metric
               | undefined;
             if (currentCPUTopology) {
               vCpuCount =
-                currentCPUTopology.sockets * currentCPUTopology.cores * currentCPUTopology.threads;
+                (currentCPUTopology.sockets || 1) *
+                (currentCPUTopology.cores || 1) *
+                (currentCPUTopology.threads || 1);
             }
             // Fall back to configured topology (from VM spec)
             else {
@@ -338,6 +340,7 @@ export default function VMMetrics({ vmName, namespace, vmiData, vmItem }: Metric
                   <XAxis dataKey="time" tick={{ fontSize: 12 }} />
                   <YAxis
                     tick={{ fontSize: 12 }}
+                    domain={[0, 100]}
                     label={{ value: '%', angle: -90, position: 'insideLeft' }}
                   />
                   <Tooltip content={<CustomTooltip />} />

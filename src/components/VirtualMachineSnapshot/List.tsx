@@ -13,8 +13,8 @@ import {
   Typography,
 } from '@mui/material';
 import { useSnackbar } from 'notistack';
-import { useState } from 'react';
-import KubeVirt from '../../kubevirt/KubeVirt';
+import { useEffect, useState } from 'react';
+import { isFeatureGateEnabled, subscribeToFeatureGates } from '../../utils/featureGates';
 import VirtualMachineSnapshot from './VirtualMachineSnapshot';
 
 // CreateExportDialog component for creating exports from snapshots
@@ -63,7 +63,7 @@ function CreateExportDialog({
         }
       );
 
-      enqueueSnackbar(`Export ${exportName} created successfully`, { variant: 'success' });
+      enqueueSnackbar(`Export ${exportName} created`, { variant: 'success' });
       onClose();
     } catch (error: unknown) {
       enqueueSnackbar(`Failed to create export: ${(error as Error).message}`, { variant: 'error' });
@@ -138,11 +138,11 @@ export default function VirtualMachineSnapshotList() {
     namespace: string;
   } | null>(null);
 
-  // Fetch KubeVirt to check feature gates
-  const { items: kubeVirtItems } = KubeVirt.useList({ namespace: 'kubevirt' });
-  const kubeVirt = kubeVirtItems?.[0];
-  const featureGates = kubeVirt?.getFeatureGates() || [];
-  const vmExportEnabled = featureGates.includes('VMExport');
+  const [vmExportEnabled, setVmExportEnabled] = useState(isFeatureGateEnabled('VMExport'));
+  useEffect(() => {
+    setVmExportEnabled(isFeatureGateEnabled('VMExport'));
+    return subscribeToFeatureGates(() => setVmExportEnabled(isFeatureGateEnabled('VMExport')));
+  }, []);
 
   const actions = [
     ...(vmExportEnabled
