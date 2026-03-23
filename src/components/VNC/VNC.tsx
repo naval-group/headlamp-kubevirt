@@ -380,24 +380,26 @@ export default function VNC(props: VNCProps) {
       onClose={onClose}
       withFullScreen
       title={
-        <Box display="flex" alignItems="center" gap={1}>
-          <span>VNC: {item.getName()}</span>
-          <Box
-            component="span"
-            sx={{
-              width: 10,
-              height: 10,
-              borderRadius: '50%',
-              backgroundColor:
-                connectionStatus === 'connected'
-                  ? '#4caf50'
-                  : connectionStatus === 'connecting'
-                  ? '#ff9800'
-                  : '#f44336',
-              display: 'inline-block',
-            }}
-          />
-        </Box>
+        (
+          <Box display="flex" alignItems="center" gap={1}>
+            <span>VNC: {item.getName()}</span>
+            <Box
+              component="span"
+              sx={{
+                width: 10,
+                height: 10,
+                borderRadius: '50%',
+                backgroundColor:
+                  connectionStatus === 'connected'
+                    ? '#4caf50'
+                    : connectionStatus === 'connecting'
+                    ? '#ff9800'
+                    : '#f44336',
+                display: 'inline-block',
+              }}
+            />
+          </Box>
+        ) as unknown as string
       }
       {...other}
     >

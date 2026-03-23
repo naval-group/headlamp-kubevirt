@@ -195,19 +195,21 @@ export default function Terminal(props: TerminalProps) {
       }}
       withFullScreen
       title={
-        <Box display="flex" alignItems="center" gap={1}>
-          <span>Terminal: {item.getName()}</span>
-          <Box
-            component="span"
-            sx={{
-              width: 10,
-              height: 10,
-              borderRadius: '50%',
-              backgroundColor: connectionStatus === 'connected' ? '#4caf50' : '#ff9800',
-              display: 'inline-block',
-            }}
-          />
-        </Box>
+        (
+          <Box display="flex" alignItems="center" gap={1}>
+            <span>Terminal: {item.getName()}</span>
+            <Box
+              component="span"
+              sx={{
+                width: 10,
+                height: 10,
+                borderRadius: '50%',
+                backgroundColor: connectionStatus === 'connected' ? '#4caf50' : '#ff9800',
+                display: 'inline-block',
+              }}
+            />
+          </Box>
+        ) as unknown as string
       }
       {...other}
     >

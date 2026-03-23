@@ -82,7 +82,7 @@ describe('DataImportCronForm', () => {
     it('renders schedule selector', () => {
       render(<DataImportCronForm resource={makeDIC()} onChange={vi.fn()} />);
 
-      expect(screen.getByText('Cron schedule for imports')).toBeInTheDocument();
+      expect(screen.getByText('Schedule')).toBeInTheDocument();
     });
   });
 

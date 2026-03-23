@@ -12,12 +12,13 @@ import {
   YAxis,
 } from 'recharts';
 import { ChartTooltipProps } from '../../types';
+import VirtualMachine from './VirtualMachine';
 
 interface MetricsProps {
   vmName: string;
   namespace: string;
-  vmiData?: Record<string, unknown>;
-  vmItem?: Record<string, unknown>;
+  vmiData?: Record<string, any> | null;
+  vmItem?: VirtualMachine | null;
 }
 
 interface TimeSeriesData {

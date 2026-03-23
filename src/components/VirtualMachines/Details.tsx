@@ -686,7 +686,6 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                     },
                   ]
                 : []),
-              '-', // Separator
               {
                 id: 'console',
                 action: (

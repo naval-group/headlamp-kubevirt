@@ -72,7 +72,6 @@ function registerKubeVirtResource(config: ResourceRoute) {
 
   registerRoute({
     path: `/kubevirt/${config.path}`,
-    parent: 'kubevirt',
     sidebar: config.name,
     component: () => <config.ListComponent />,
     exact: true,
@@ -83,16 +82,12 @@ function registerKubeVirtResource(config: ResourceRoute) {
       config.hasNamespace !== false
         ? `/kubevirt/${config.path}/:namespace/:name`
         : `/kubevirt/${config.path}/:name`;
-    const params = config.hasNamespace !== false ? ['namespace', 'name'] : ['name'];
-
     registerRoute({
       path: detailPath,
-      parent: 'kubevirt',
       sidebar: config.name,
       component: () => <config.DetailsComponent />,
       exact: true,
       name: config.detailsRouteName,
-      params,
     });
   }
 }
@@ -247,7 +242,6 @@ registerSidebarEntry({
 
 registerRoute({
   path: '/kubevirt/overview',
-  parent: 'kubevirt',
   sidebar: 'overview',
   component: () => <VirtualizationOverview />,
   exact: true,
@@ -268,7 +262,6 @@ registerKubeVirtResource({
 // VMI route (no sidebar entry - accessed from VM details links)
 registerRoute({
   path: '/kubevirt/virtualmachineinstances',
-  parent: 'kubevirt',
   sidebar: 'virtualmachines',
   component: () => <VMIList />,
   exact: true,
@@ -276,7 +269,6 @@ registerRoute({
 
 registerRoute({
   path: '/kubevirt/virtualmachineinstances/:namespace/:name',
-  parent: 'kubevirt',
   sidebar: 'virtualmachines',
   component: () => <VMIDetails />,
   exact: true,
@@ -390,7 +382,6 @@ registerSidebarEntry({
 
 registerRoute({
   path: '/kubevirt/settings',
-  parent: 'kubevirt',
   sidebar: 'settings',
   component: () => <KubeVirtSettings />,
   exact: true,
