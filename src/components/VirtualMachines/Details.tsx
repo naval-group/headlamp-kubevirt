@@ -53,8 +53,9 @@ interface VMIVolumeStatus {
     accessModes?: string[];
   };
 }
-import KubeVirt from '../../kubevirt/KubeVirt';
+import { isFeatureGateEnabled, subscribeToFeatureGates } from '../../utils/featureGates';
 import CreateResourceDialog from '../common/CreateResourceDialog';
+import VirtualMachineExport from '../VirtualMachineExport/VirtualMachineExport';
 import VirtualMachineSnapshot from '../VirtualMachineSnapshot/VirtualMachineSnapshot';
 import FloatingNav from './FloatingNav';
 import VMMetrics from './Metrics';
@@ -80,13 +81,20 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
   const [podName, setPodName] = useState<string | null>(null);
   const [vmiData, setVmiData] = useState<any>(null);
 
-  // Fetch KubeVirt to check feature gates
-  const { items: kubeVirtItems } = KubeVirt.useList({ namespace: 'kubevirt' });
-  const kubeVirt = kubeVirtItems?.[0];
-  const featureGates = kubeVirt?.getFeatureGates() || [];
-  const snapshotEnabled = featureGates.includes('Snapshot');
-  const vmExportEnabled = featureGates.includes('VMExport');
-  const liveMigrationEnabled = featureGates.includes('LiveMigration');
+  const [snapshotEnabled, setSnapshotEnabled] = useState(isFeatureGateEnabled('Snapshot'));
+  const [vmExportEnabled, setVmExportEnabled] = useState(isFeatureGateEnabled('VMExport'));
+  const [liveMigrationEnabled, setLiveMigrationEnabled] = useState(
+    isFeatureGateEnabled('LiveMigration')
+  );
+  useEffect(() => {
+    const update = () => {
+      setSnapshotEnabled(isFeatureGateEnabled('Snapshot'));
+      setVmExportEnabled(isFeatureGateEnabled('VMExport'));
+      setLiveMigrationEnabled(isFeatureGateEnabled('LiveMigration'));
+    };
+    update();
+    return subscribeToFeatureGates(update);
+  }, []);
 
   useEffect(() => {
     const fetchPodName = async () => {
@@ -127,6 +135,7 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
     { id: 'networks', label: 'Networks', icon: 'mdi:lan' },
     { id: 'disks', label: 'Disks', icon: 'mdi:harddisk' },
     ...(snapshotEnabled ? [{ id: 'snapshots', label: 'Snapshots', icon: 'mdi:camera' }] : []),
+    ...(vmExportEnabled ? [{ id: 'exports', label: 'Exports', icon: 'mdi:export' }] : []),
     { id: 'metrics', label: 'Metrics', icon: 'mdi:chart-line' },
     { id: 'terminal', label: 'Terminal', icon: 'mdi:console' },
     { id: 'vnc', label: 'VNC', icon: 'mdi:monitor' },
@@ -200,7 +209,8 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                     value: vmiData.status?.currentCPUTopology
                       ? (() => {
                           const topo = vmiData.status.currentCPUTopology;
-                          const total = topo.sockets * topo.cores * topo.threads;
+                          const total =
+                            (topo.sockets || 1) * (topo.cores || 1) * (topo.threads || 1);
                           return (
                             <Tooltip
                               title={
@@ -245,11 +255,40 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                   },
                   {
                     name: 'Guest OS',
-                    value: vmiData.status?.guestOSInfo?.prettyName || 'Unknown',
+                    value: vmiData.status?.guestOSInfo?.prettyName || (
+                      <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+                        <Typography variant="body2" color="text.secondary">
+                          Unknown
+                        </Typography>
+                        <Tooltip title="Install QEMU Guest Agent in the VM to report OS info" arrow>
+                          <Icon
+                            icon="mdi:information-outline"
+                            width={16}
+                            style={{ cursor: 'help', opacity: 0.6 }}
+                          />
+                        </Tooltip>
+                      </Box>
+                    ),
                   },
                   {
                     name: 'Kernel',
-                    value: vmiData.status?.guestOSInfo?.kernelRelease || 'Unknown',
+                    value: vmiData.status?.guestOSInfo?.kernelRelease || (
+                      <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+                        <Typography variant="body2" color="text.secondary">
+                          Unknown
+                        </Typography>
+                        <Tooltip
+                          title="Install QEMU Guest Agent in the VM to report kernel info"
+                          arrow
+                        >
+                          <Icon
+                            icon="mdi:information-outline"
+                            width={16}
+                            style={{ cursor: 'help', opacity: 0.6 }}
+                          />
+                        </Tooltip>
+                      </Box>
+                    ),
                   },
                 ]
               : []),
@@ -443,11 +482,21 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                     section: (
                       <Box id="section-snapshots">
                         <SectionBox title="Snapshots">
-                          <SnapshotsList
-                            vmName={name || ''}
-                            namespace={namespace || ''}
-                            vmExportEnabled={vmExportEnabled}
-                          />
+                          <SnapshotsList vmName={name || ''} namespace={namespace || ''} />
+                        </SectionBox>
+                      </Box>
+                    ),
+                  },
+                ]
+              : []),
+            ...(vmExportEnabled
+              ? [
+                  {
+                    id: 'exports',
+                    section: (
+                      <Box id="section-exports">
+                        <SectionBox title="Exports">
+                          <ExportsList vmName={name || ''} namespace={namespace || ''} />
                         </SectionBox>
                       </Box>
                     ),
@@ -761,10 +810,14 @@ async function getPodName(name: string, namespace: string): Promise<string> {
 interface SnapshotsListProps {
   vmName: string;
   namespace: string;
-  vmExportEnabled?: boolean;
 }
 
-function SnapshotsList({ vmName, namespace, vmExportEnabled = false }: SnapshotsListProps) {
+function SnapshotsList({ vmName, namespace }: SnapshotsListProps) {
+  const [vmExportEnabled, setVmExportEnabled] = useState(isFeatureGateEnabled('VMExport'));
+  useEffect(() => {
+    setVmExportEnabled(isFeatureGateEnabled('VMExport'));
+    return subscribeToFeatureGates(() => setVmExportEnabled(isFeatureGateEnabled('VMExport')));
+  }, []);
   const { items: snapshots } = VirtualMachineSnapshot.useList({ namespace });
   const { enqueueSnackbar } = useSnackbar();
   const [currentPage, setCurrentPage] = useState(0);
@@ -1034,7 +1087,7 @@ interface CreateSnapshotDialogProps {
 function CreateSnapshotDialog({ open, onClose, vmName, namespace }: CreateSnapshotDialogProps) {
   const { enqueueSnackbar } = useSnackbar();
   const [snapshotName, setSnapshotName] = useState(`${vmName}-snapshot-${Date.now()}`);
-  const [deletionPolicy, setDeletionPolicy] = useState('');
+  const [deletionPolicy, setDeletionPolicy] = useState('default');
   const [failureDeadline, setFailureDeadline] = useState('');
   const [creating, setCreating] = useState(false);
 
@@ -1042,7 +1095,7 @@ function CreateSnapshotDialog({ open, onClose, vmName, namespace }: CreateSnapsh
   useEffect(() => {
     if (open) {
       setSnapshotName(`${vmName}-snapshot-${Date.now()}`);
-      setDeletionPolicy('');
+      setDeletionPolicy('default');
       setFailureDeadline('');
     }
   }, [open, vmName]);
@@ -1079,7 +1132,7 @@ function CreateSnapshotDialog({ open, onClose, vmName, namespace }: CreateSnapsh
       },
     };
 
-    if (deletionPolicy) {
+    if (deletionPolicy && deletionPolicy !== 'default') {
       snapshot.spec.deletionPolicy = deletionPolicy;
     }
     if (failureDeadline) {
@@ -1125,7 +1178,7 @@ function CreateSnapshotDialog({ open, onClose, vmName, namespace }: CreateSnapsh
               label="Deletion Policy"
               onChange={e => setDeletionPolicy(e.target.value)}
             >
-              <MenuItem value="">Default</MenuItem>
+              <MenuItem value="default">Default</MenuItem>
               <MenuItem value="Delete">
                 Delete - Remove snapshot content when snapshot is deleted
               </MenuItem>
@@ -1158,5 +1211,80 @@ function CreateSnapshotDialog({ open, onClose, vmName, namespace }: CreateSnapsh
         </Button>
       </DialogActions>
     </Dialog>
+  );
+}
+
+// Exports list component for VM Details
+function ExportsList({ vmName, namespace }: { vmName: string; namespace: string }) {
+  const { items: exports } = VirtualMachineExport.useList({ namespace });
+
+  // Filter exports related to this VM (direct VM exports or snapshot exports with virtualMachineName)
+  const vmExports = (
+    exports?.filter(
+      (exp: VirtualMachineExport) =>
+        (exp.getSourceKind() === 'VirtualMachine' && exp.getSourceName() === vmName) ||
+        exp.getVirtualMachineName() === vmName
+    ) || []
+  ).sort((a, b) => {
+    const timeA = new Date(a.metadata?.creationTimestamp || 0).getTime();
+    const timeB = new Date(b.metadata?.creationTimestamp || 0).getTime();
+    return timeB - timeA;
+  });
+
+  if (vmExports.length === 0) {
+    return (
+      <Typography variant="body2" color="text.secondary">
+        No exports for this VM.
+      </Typography>
+    );
+  }
+
+  return (
+    <SimpleTable
+      columns={[
+        {
+          label: 'Name',
+          getter: (exp: VirtualMachineExport) => (
+            <Link
+              routeName="export"
+              params={{ name: exp.getName(), namespace: exp.getNamespace() }}
+            >
+              {exp.getName()}
+            </Link>
+          ),
+        },
+        {
+          label: 'Source',
+          getter: (exp: VirtualMachineExport) => `${exp.getSourceKind()} / ${exp.getSourceName()}`,
+        },
+        {
+          label: 'Status',
+          getter: (exp: VirtualMachineExport) => {
+            const phase = exp.getPhase();
+            const color =
+              phase === 'Ready'
+                ? 'success'
+                : phase === 'Pending'
+                ? 'warning'
+                : phase === 'Terminated'
+                ? 'error'
+                : 'default';
+            return <Chip label={phase} size="small" color={color} />;
+          },
+        },
+        {
+          label: 'TTL',
+          getter: (exp: VirtualMachineExport) => exp.getTTLDuration() || '-',
+        },
+        {
+          label: 'Created',
+          getter: (exp: VirtualMachineExport) =>
+            exp.metadata?.creationTimestamp
+              ? new Date(exp.metadata.creationTimestamp).toLocaleString()
+              : '-',
+        },
+      ]}
+      data={vmExports}
+    />
   );
 }

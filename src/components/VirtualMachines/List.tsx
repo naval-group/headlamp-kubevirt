@@ -4,7 +4,7 @@ import { Box, Chip, ListItemIcon, ListItemText, MenuItem, Tooltip } from '@mui/m
 import { useSnackbar } from 'notistack';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import KubeVirt from '../../kubevirt/KubeVirt';
+import { isFeatureGateEnabled, subscribeToFeatureGates } from '../../utils/featureGates';
 import { getLabelColumns, LabelColumn } from '../../utils/pluginSettings';
 import CreateButtonWithMode from '../common/CreateButtonWithMode';
 import CreateResourceDialog from '../common/CreateResourceDialog';
@@ -36,11 +36,17 @@ export default function VirtualMachineList() {
     return namespace && namespace !== '';
   }, [location.search]);
 
-  // Fetch KubeVirt to check feature gates
-  const { items: kubeVirtItems } = KubeVirt.useList({ namespace: 'kubevirt' });
-  const kubeVirt = kubeVirtItems?.[0];
-  const featureGates = kubeVirt?.getFeatureGates() || [];
-  const liveMigrationEnabled = featureGates.includes('LiveMigration');
+  // Use pre-loaded feature gates (loaded at plugin init, no delay)
+  const [liveMigrationEnabled, setLiveMigrationEnabled] = useState(
+    isFeatureGateEnabled('LiveMigration')
+  );
+  useEffect(() => {
+    // Re-check in case gates loaded between module init and mount
+    setLiveMigrationEnabled(isFeatureGateEnabled('LiveMigration'));
+    return subscribeToFeatureGates(() => {
+      setLiveMigrationEnabled(isFeatureGateEnabled('LiveMigration'));
+    });
+  }, []);
 
   const emptyVM = {
     apiVersion: 'kubevirt.io/v1',
