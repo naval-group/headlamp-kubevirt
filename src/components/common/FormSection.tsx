@@ -1,5 +1,5 @@
 import { Icon } from '@iconify/react';
-import { Box, Grid, Paper, Typography } from '@mui/material';
+import { Accordion, AccordionDetails, AccordionSummary, Grid, Typography } from '@mui/material';
 
 /**
  * Semantic color palette for form sections.
@@ -27,6 +27,8 @@ interface FormSectionProps {
   noGrid?: boolean;
   /** Semantic color name (e.g. 'metadata', 'compute') or raw hex color */
   color?: SectionColor;
+  /** Whether the section starts expanded (default: true) */
+  defaultExpanded?: boolean;
 }
 
 export default function FormSection({
@@ -37,34 +39,46 @@ export default function FormSection({
   spacing = 3,
   noGrid = false,
   color,
+  defaultExpanded = true,
 }: FormSectionProps) {
   const resolvedColor = color
     ? SECTION_COLORS[color as keyof typeof SECTION_COLORS] || color
     : undefined;
 
   return (
-    <Paper
-      variant="outlined"
+    <Accordion
+      defaultExpanded={defaultExpanded}
+      disableGutters
       sx={{
-        p: 3,
+        '&:before': { display: 'none' },
+        border: '1px solid',
+        borderColor: resolvedColor ? `${resolvedColor}33` : 'divider',
+        borderRadius: '4px !important',
         ...(resolvedColor && {
           borderLeft: `3px solid ${resolvedColor}`,
-          backgroundColor: `${resolvedColor}0D`, // ~5% opacity hex suffix
-          borderColor: `${resolvedColor}33`, // ~20% opacity for border
+          backgroundColor: `${resolvedColor}0D`,
         }),
       }}
     >
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
+      <AccordionSummary
+        expandIcon={<Icon icon="mdi:chevron-down" width={24} />}
+        sx={{
+          minHeight: 56,
+          '& .MuiAccordionSummary-content': { alignItems: 'center', gap: 1 },
+        }}
+      >
         <Icon icon={icon} width={24} height={24} color={resolvedColor} />
         <Typography variant="h6">{title}</Typography>
-      </Box>
-      {noGrid ? (
-        children
-      ) : (
-        <Grid container spacing={spacing} columns={columns}>
-          {children}
-        </Grid>
-      )}
-    </Paper>
+      </AccordionSummary>
+      <AccordionDetails sx={{ pt: 1, pb: 2, px: 3 }}>
+        {noGrid ? (
+          children
+        ) : (
+          <Grid container spacing={spacing} columns={columns}>
+            {children}
+          </Grid>
+        )}
+      </AccordionDetails>
+    </Accordion>
   );
 }
