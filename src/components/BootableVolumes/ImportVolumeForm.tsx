@@ -345,8 +345,8 @@ export default function ImportVolumeForm({
               required
               value={registryUrl}
               onChange={e => updateSource('registry', { url: e.target.value })}
-              placeholder="docker.io/kubevirt/fedora-cloud-container-disk-demo:latest"
-              helperText="Container registry URL with image"
+              placeholder="docker://quay.io/kubevirt/fedora-cloud-container-disk-demo:latest"
+              helperText="Container registry URL (docker:// or oci-archive://)"
             />
           </Box>
         )}

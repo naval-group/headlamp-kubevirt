@@ -5,6 +5,7 @@ export default class DataVolume extends KubeObject {
   static apiVersion = 'cdi.kubevirt.io/v1beta1';
   static apiName = 'datavolumes';
   static apiGroup = 'cdi.kubevirt.io';
+  static isNamespaced = true;
 
   static get listRoute() {
     return 'datavolumes';
