@@ -12,7 +12,7 @@ If you discover a security issue, please report it responsibly.
 
 **Do NOT open a public GitHub issue for security vulnerabilities.**
 
-Instead, use [GitHub Security Advisories](https://github.com/mehben/headlamp-kubevirt/security/advisories/new) to report privately.
+Instead, use [GitHub Security Advisories](https://github.com/naval-group/headlamp-kubevirt/security/advisories/new) to report privately.
 
 You should receive a response within 48 hours.
 

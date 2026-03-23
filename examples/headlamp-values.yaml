@@ -1,6 +1,6 @@
 initContainers:
   - name: headlamp-kubevirt
-    image: registry.mehben.fr:5000/headlamp-kubevirt:v2
+    image: registry.naval-group.fr:5000/headlamp-kubevirt:v2
     imagePullPolicy: Always
     command: ["/bin/sh", "-c"]
     args:

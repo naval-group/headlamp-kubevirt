@@ -18,16 +18,19 @@ Based on the excellent work from [buttahtoast](https://github.com/buttahtoast/he
 ## Screenshots
 
 ### Overview Dashboard
+
 Prometheus-powered top consumers for CPU, memory, network, and storage across all VMs.
 
 ![Overview Dashboard](screenshots/overview-dashboard.png)
 
 ### Virtual Machine Management
+
 Full lifecycle management with context menu actions: Start, Stop, Restart, Pause, Migrate, Protect, Edit, and Delete. Live migration notifications appear in the status bar.
 
 ![VM List](screenshots/vm-list-actions.png)
 
 ### VM Details
+
 Detailed view showing status, CPU, memory, node placement, guest OS info, and links to the VMI and virt-launcher pod.
 
 ![VM Details](screenshots/vm-details.png)
@@ -37,48 +40,55 @@ Scroll down for network interfaces, disks & volumes, and live CPU/memory metrics
 ![VM Details - Metrics](screenshots/vm-details-metrics.png)
 
 ### Console Access
+
 Built-in serial console and VNC console for direct VM interaction.
 
-| Serial Console | VNC Console |
-|:-:|:-:|
+|                  Serial Console                   |                 VNC Console                 |
+| :-----------------------------------------------: | :-----------------------------------------: |
 | ![Serial Console](screenshots/serial-console.png) | ![VNC Console](screenshots/vnc-console.png) |
 
 ### Create Virtual Machine
+
 Guided VM creation wizard with Form, Editor, Documentation, and Upload tabs. Configure name, boot source, resources, network interfaces, disks, scheduling, and advanced options.
 
-| Create VM Form | API Documentation |
-|:-:|:-:|
+|             Create VM Form              |                 API Documentation                 |
+| :-------------------------------------: | :-----------------------------------------------: |
 | ![Create VM](screenshots/create-vm.png) | ![Create VM Docs](screenshots/create-vm-docs.png) |
 
 ### Instance Types & Preferences
+
 Browse and manage VirtualMachineClusterInstanceTypes and VirtualMachineClusterPreferences.
 
-| Instance Types | Preferences |
-|:-:|:-:|
+|                  Instance Types                   |                 Preferences                 |
+| :-----------------------------------------------: | :-----------------------------------------: |
 | ![Instance Types](screenshots/instance-types.png) | ![Preferences](screenshots/preferences.png) |
 
 ### Storage
+
 Manage DataSources and DataImportCrons for automated OS image imports.
 
-| DataSources | Create DataImportCron |
-|:-:|:-:|
+|                 DataSources                 |                      Create DataImportCron                      |
+| :-----------------------------------------: | :-------------------------------------------------------------: |
 | ![DataSources](screenshots/datasources.png) | ![Create DataImportCron](screenshots/create-dataimportcron.png) |
 
 ### Networking
+
 Create and manage Network Attachment Definitions with support for Bridge, Macvlan, IPvlan, VLAN, Host Device, SR-IOV, PTP, and TAP types.
 
 ![Create NAD](screenshots/create-nad.png)
 
 ### Live Migration
+
 Monitor VirtualMachineInstanceMigrations with source/target node tracking and status.
 
 ![Migrations](screenshots/migrations.png)
 
 ### Settings & Feature Gates
+
 View KubeVirt and CDI versions, manage feature gates with categorized toggle switches (Storage, Network, Compute, Devices, Security, Migration, Display).
 
-| Settings | Feature Gates |
-|:-:|:-:|
+|               Settings                |                  Feature Gates                  |
+| :-----------------------------------: | :---------------------------------------------: |
 | ![Settings](screenshots/settings.png) | ![Feature Gates](screenshots/feature-gates.png) |
 
 ## Prerequisites
@@ -95,29 +105,33 @@ For users running the Headlamp desktop application (Linux, macOS, Windows).
 
 #### From Release Artifact
 
-1. Download the latest `headlamp-kubevirt.tar.gz` from the [Releases](https://github.com/mehben/headlamp-kubevirt/releases) page
+1. Download the latest `headlamp-kubevirt.tar.gz` from the [Releases](https://github.com/naval-group/headlamp-kubevirt/releases) page
 
 2. Extract to your Headlamp plugins directory:
 
    **Linux (native)**
+
    ```bash
    mkdir -p ~/.config/Headlamp/plugins/headlamp-kubevirt
    tar -xzf headlamp-kubevirt.tar.gz -C ~/.config/Headlamp/plugins/headlamp-kubevirt
    ```
 
    **Linux (Flatpak)**
+
    ```bash
    mkdir -p ~/.var/app/io.kinvolk.Headlamp/config/Headlamp/plugins/headlamp-kubevirt
    tar -xzf headlamp-kubevirt.tar.gz -C ~/.var/app/io.kinvolk.Headlamp/config/Headlamp/plugins/headlamp-kubevirt
    ```
 
    **macOS**
+
    ```bash
    mkdir -p ~/Library/Application\ Support/Headlamp/plugins/headlamp-kubevirt
    tar -xzf headlamp-kubevirt.tar.gz -C ~/Library/Application\ Support/Headlamp/plugins/headlamp-kubevirt
    ```
 
    **Windows (PowerShell)**
+
    ```powershell
    mkdir -Force "$env:APPDATA\Headlamp\Config\plugins\headlamp-kubevirt"
    tar -xzf headlamp-kubevirt.tar.gz -C "$env:APPDATA\Headlamp\Config\plugins\headlamp-kubevirt"
@@ -128,7 +142,7 @@ For users running the Headlamp desktop application (Linux, macOS, Windows).
 #### From Source
 
 ```bash
-git clone https://github.com/mehben/headlamp-kubevirt.git
+git clone https://github.com/naval-group/headlamp-kubevirt.git
 cd headlamp-kubevirt
 npm install
 npm run build
@@ -153,10 +167,10 @@ If you deploy Headlamp with the [official Helm chart](https://headlamp.dev/docs/
 # values.yaml
 initContainers:
   - name: headlamp-kubevirt
-    image: ghcr.io/mehben/headlamp-kubevirt:latest
-    command: ["/bin/sh", "-c"]
+    image: ghcr.io/naval-group/headlamp-kubevirt:latest
+    command: ['/bin/sh', '-c']
     args:
-      - "cp -r /plugins/headlamp-kubevirt /headlamp-plugins/"
+      - 'cp -r /plugins/headlamp-kubevirt /headlamp-plugins/'
     volumeMounts:
       - name: headlamp-plugins
         mountPath: /headlamp-plugins
@@ -189,10 +203,10 @@ spec:
     spec:
       initContainers:
         - name: headlamp-kubevirt
-          image: ghcr.io/mehben/headlamp-kubevirt:latest
-          command: ["/bin/sh", "-c"]
+          image: ghcr.io/naval-group/headlamp-kubevirt:latest
+          command: ['/bin/sh', '-c']
           args:
-            - "cp -r /plugins/headlamp-kubevirt /headlamp-plugins/"
+            - 'cp -r /plugins/headlamp-kubevirt /headlamp-plugins/'
           volumeMounts:
             - name: headlamp-plugins
               mountPath: /headlamp-plugins
@@ -200,7 +214,7 @@ spec:
         - name: headlamp
           image: ghcr.io/headlamp-k8s/headlamp:latest
           args:
-            - "-plugins-dir=/headlamp/plugins"
+            - '-plugins-dir=/headlamp/plugins'
           volumeMounts:
             - name: headlamp-plugins
               mountPath: /headlamp/plugins
