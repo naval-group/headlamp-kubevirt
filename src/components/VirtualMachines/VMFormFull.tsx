@@ -510,7 +510,7 @@ export default function VMFormFull({ resource, onChange, editMode = false }: VMF
     : parseInt(customCpu || '1');
 
   // Get selected boot source
-  const selectedBootSource = dataSources?.find(ds => ds.metadata.uid === bootSourceId);
+  const selectedBootSource = dataSources?.find(ds => ds.getName() === bootSourceId);
 
   // Check if pod networking exists
   const hasPodNetworking = currentNetworkInterfaces.some(iface => iface.type === 'pod');
@@ -799,8 +799,8 @@ export default function VMFormFull({ resource, onChange, editMode = false }: VMF
   };
 
   // Boot Source handlers
-  const handleBootSourceChange = (sourceUid: string) => {
-    const source = dataSources?.find(ds => ds.metadata.uid === sourceUid);
+  const handleBootSourceChange = (sourceName: string) => {
+    const source = dataSources?.find(ds => ds.getName() === sourceName);
     if (!source) return;
 
     // Update dataVolumeTemplates with the selected boot source
@@ -2057,7 +2057,7 @@ export default function VMFormFull({ resource, onChange, editMode = false }: VMF
                   Select a boot source
                 </MenuItem>
                 {dataSources?.map(ds => (
-                  <MenuItem key={ds.metadata.uid} value={ds.metadata.uid}>
+                  <MenuItem key={ds.metadata.uid} value={ds.getName()}>
                     {ds.getName()} - {ds.getOperatingSystem()} ({ds.getSize()})
                   </MenuItem>
                 ))}

@@ -38,7 +38,21 @@ export default function DataImportCronForm({
 }: DataImportCronFormProps) {
   const [namespaces, setNamespaces] = useState<string[]>([]);
   const [storageClasses, setStorageClasses] = useState<string[]>([]);
+  const [preferences, setPreferences] = useState<string[]>([]);
   const { updateMetadata, updateSpec } = useResourceEditor(resource, onChange);
+
+  const updateLabel = (key: string, value: string) => {
+    const labels = { ...resource.metadata?.labels };
+    if (value) {
+      labels[key] = value;
+    } else {
+      delete labels[key];
+    }
+    onChange({
+      ...resource,
+      metadata: { ...resource.metadata, labels },
+    });
+  };
 
   // Schedule mode: preset or custom
   const presetValues = CRON_PRESETS.map(p => p.value);
@@ -71,6 +85,13 @@ export default function DataImportCronForm({
         setStorageClasses(scList);
       })
       .catch(err => console.error('Failed to fetch storage classes:', err));
+
+    ApiProxy.request('/apis/instancetype.kubevirt.io/v1beta1/virtualmachineclusterpreferences')
+      .then((response: KubeListResponse<KubeNamedItem>) => {
+        const prefList = response?.items?.map(p => p.metadata.name) || [];
+        setPreferences(prefList);
+      })
+      .catch(err => console.error('Failed to fetch preferences:', err));
   }, []);
 
   const updateGarbageCollect = (value: string) => {
@@ -204,6 +225,37 @@ export default function DataImportCronForm({
             onChange={e => updateSpec({ managedDataSource: e.target.value })}
             helperText="Name of the DataSource to manage"
           />
+        </Grid>
+
+        <Grid item xs={12} md={6}>
+          <TextField
+            fullWidth
+            label="Operating System"
+            value={resource.metadata?.labels?.['os.template.kubevirt.io/name'] || ''}
+            onChange={e => updateLabel('os.template.kubevirt.io/name', e.target.value)}
+            helperText="OS name (propagated to managed DataSource)"
+            placeholder="e.g. fedora, ubuntu, windows"
+          />
+        </Grid>
+
+        <Grid item xs={12} md={6}>
+          <TextField
+            fullWidth
+            select
+            label="Default Preference"
+            value={resource.metadata?.labels?.['instancetype.kubevirt.io/default-preference'] || ''}
+            onChange={e =>
+              updateLabel('instancetype.kubevirt.io/default-preference', e.target.value)
+            }
+            helperText="Default VirtualMachineClusterPreference for VMs using this source"
+          >
+            <MenuItem value="">None</MenuItem>
+            {preferences.map(p => (
+              <MenuItem key={p} value={p}>
+                {p}
+              </MenuItem>
+            ))}
+          </TextField>
         </Grid>
 
         <Grid item xs={12} md={6}>
