@@ -2,7 +2,7 @@
 
 A comprehensive [Headlamp](https://headlamp.dev) plugin for managing [KubeVirt](https://kubevirt.io) virtual machines in Kubernetes.
 
-Based on the excellent work from [buttahtoast](https://github.com/buttahtoast/headlamp-kubevirt).
+Based on the excellent work from [buttahtoast](https://github.com/buttahtoast/headlamp-plugins/tree/main/kubevirt).
 
 ## Features
 
