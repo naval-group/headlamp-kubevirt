@@ -14,6 +14,7 @@ import {
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { KubeCondition } from '../../types';
+import CopyCodeBlock from '../common/CopyCodeBlock';
 import CreateResourceDialog from '../common/CreateResourceDialog';
 import DataVolume from './DataVolume';
 import ImportVolumeForm from './ImportVolumeForm';
@@ -151,35 +152,44 @@ export default function DataVolumeDetails() {
       />
 
       <Grid container spacing={3} sx={{ mt: 2, px: 2 }}>
-        {/* Upload Instructions (if applicable) */}
-        {dv.spec?.source?.upload && (
+        {/* Upload Instructions — shown while waiting for upload */}
+        {dv.spec?.source?.upload &&
+          (dv.status?.phase === 'UploadReady' || dv.status?.phase === 'UploadScheduled') && (
+            <Grid item xs={12}>
+              <Alert severity="info" icon={<Icon icon="mdi:upload" />}>
+                <Typography variant="body2" sx={{ mb: 1 }}>
+                  <strong>Ready for Upload:</strong> This DataVolume is waiting for a file upload.
+                </Typography>
+                <CopyCodeBlock
+                  title="Step 1 — Port-forward the CDI upload proxy"
+                  code={`kubectl port-forward -n cdi svc/cdi-uploadproxy 3443:443 &\nPF_PID=$!`}
+                />
+                <CopyCodeBlock
+                  title="Step 2 — Upload a local disk image"
+                  code={`virtctl image-upload dv ${name} \\\n  --namespace ${namespace} \\\n  --no-create \\\n  --uploadproxy-url=https://localhost:3443 \\\n  --insecure \\\n  --image-path=/path/to/disk.qcow2`}
+                />
+                <CopyCodeBlock title="Step 3 — Stop the port-forward" code={`kill $PF_PID`} />
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ mt: 1, display: 'block' }}
+                >
+                  Supported formats: qcow2, raw, ISO, vmdk (auto-detected). The{' '}
+                  <code>--insecure</code> flag is needed because the port-forward uses a self-signed
+                  certificate.
+                </Typography>
+              </Alert>
+            </Grid>
+          )}
+        {/* Upload Success — shown after upload completes */}
+        {dv.spec?.source?.upload && dv.status?.phase === 'Succeeded' && (
           <Grid item xs={12}>
-            <Alert severity="info" icon={<Icon icon="mdi:upload" />}>
+            <Alert severity="success" icon={<Icon icon="mdi:check-circle" />}>
               <Typography variant="body2" sx={{ mb: 1 }}>
-                <strong>Ready for Upload:</strong> This DataVolume is waiting for a file upload.
+                <strong>Upload complete!</strong> The disk image has been successfully uploaded to
+                this DataVolume.
               </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                Use the following command to upload your disk image:
-              </Typography>
-              <Box
-                sx={{
-                  mt: 1,
-                  p: 1.5,
-                  bgcolor: 'background.paper',
-                  borderRadius: 1,
-                  fontFamily: 'monospace',
-                  fontSize: '0.75rem',
-                  whiteSpace: 'pre-wrap',
-                  border: 1,
-                  borderColor: 'divider',
-                }}
-              >
-                {`virtctl image-upload dv ${name} \\\n  --namespace ${namespace} \\\n  --no-create \\\n  --image-path=/path/to/disk.img \\\n  --insecure`}
-              </Box>
-              <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                Replace <code>/path/to/disk.img</code> with the path to your local disk image (ISO,
-                qcow2, raw, etc.).
-              </Typography>
+              <CopyCodeBlock title="Don't forget to stop the port-forward" code={`kill $PF_PID`} />
             </Alert>
           </Grid>
         )}

@@ -37,6 +37,7 @@ import {
 import { useSnackbar } from 'notistack';
 import React, { useState } from 'react';
 import DataSource from '../BootableVolumes/DataSource';
+import CopyCodeBlock from '../common/CopyCodeBlock';
 import MandatoryTextField, { mandatoryFieldSx } from '../common/MandatoryTextField';
 import VirtualMachineClusterInstanceType from '../InstanceTypes/VirtualMachineClusterInstanceType';
 import NetworkAttachmentDefinition from '../NetworkAttachmentDefinitions/NetworkAttachmentDefinition';
@@ -2483,37 +2484,24 @@ export default function VMFormFull({
                   <Typography variant="body2" gutterBottom>
                     <strong>After creating the VM, upload a disk image:</strong>
                   </Typography>
-                  <Box
-                    component="pre"
-                    sx={{
-                      bgcolor: 'action.hover',
-                      p: 1.5,
-                      borderRadius: 1,
-                      fontSize: '0.8rem',
-                      overflow: 'auto',
-                      whiteSpace: 'pre-wrap',
-                    }}
-                  >
-                    {`# 1. Port-forward the CDI upload proxy (runs in background):
-kubectl port-forward -n cdi svc/cdi-uploadproxy 3443:443 &
-PF_PID=$!
-
-# 2. Upload a local qcow2/raw/ISO image:
-virtctl image-upload dv ${name || '<vm-name>'}-boot-volume \\
-  --namespace ${namespace} \\
-  --size=${
-    resource.spec?.dataVolumeTemplates?.find((d: KubeResourceBuilder) =>
-      d.metadata?.name?.endsWith('-boot-volume')
-    )?.spec?.storage?.resources?.requests?.storage || '30Gi'
-  } \\
-  --uploadproxy-url=https://localhost:3443 \\
-  --insecure \\
-  --image-path=/path/to/disk.qcow2
-
-# 3. Start the VM and stop the port-forward:
-virtctl start ${name || '<vm-name>'} -n ${namespace}
-kill $PF_PID`}
-                  </Box>
+                  <CopyCodeBlock
+                    title="Step 1 — Port-forward the CDI upload proxy"
+                    code={`kubectl port-forward -n cdi svc/cdi-uploadproxy 3443:443 &\nPF_PID=$!`}
+                  />
+                  <CopyCodeBlock
+                    title="Step 2 — Upload a local disk image"
+                    code={`virtctl image-upload dv ${
+                      name || '<vm-name>'
+                    }-boot-volume \\\n  --namespace ${namespace} \\\n  --size=${
+                      resource.spec?.dataVolumeTemplates?.find((d: KubeResourceBuilder) =>
+                        d.metadata?.name?.endsWith('-boot-volume')
+                      )?.spec?.storage?.resources?.requests?.storage || '30Gi'
+                    } \\\n  --uploadproxy-url=https://localhost:3443 \\\n  --insecure \\\n  --image-path=/path/to/disk.qcow2`}
+                  />
+                  <CopyCodeBlock
+                    title="Step 3 — Start the VM and stop the port-forward"
+                    code={`virtctl start ${name || '<vm-name>'} -n ${namespace}\nkill $PF_PID`}
+                  />
                   <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
                     Supported formats: qcow2, raw, ISO, vmdk (auto-detected). The{' '}
                     <code>--insecure</code> flag is needed because the port-forward uses a
