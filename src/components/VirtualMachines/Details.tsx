@@ -8,6 +8,7 @@ import {
 } from '@kinvolk/headlamp-plugin/lib/components/common';
 import { ActionButton } from '@kinvolk/headlamp-plugin/lib/components/common';
 import {
+  Alert,
   Box,
   Button,
   Chip,
@@ -28,6 +29,7 @@ import { useSnackbar } from 'notistack';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
+import CopyCodeBlock from '../common/CopyCodeBlock';
 import VMConsole from '../VMConsole/VMConsole';
 import VirtualMachine from './VirtualMachine';
 
@@ -556,6 +558,68 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                               />
                             </Box>
                           )}
+                          {vmDataVolumes.some(
+                            dv =>
+                              dv.spec?.source?.upload &&
+                              (dv.status?.phase === 'UploadReady' ||
+                                dv.status?.phase === 'UploadScheduled')
+                          ) && (
+                            <Alert severity="info" icon={<Icon icon="mdi:upload" />} sx={{ mt: 2 }}>
+                              <Typography variant="body2" sx={{ mb: 1 }}>
+                                <strong>Ready for Upload:</strong> A DataVolume is waiting for a
+                                disk image upload.
+                              </Typography>
+                              <CopyCodeBlock
+                                title="Step 1 — Port-forward the CDI upload proxy"
+                                code={`kubectl port-forward -n cdi svc/cdi-uploadproxy 3443:443 &\nPF_PID=$!`}
+                              />
+                              <CopyCodeBlock
+                                title="Step 2 — Upload a local disk image"
+                                code={`virtctl image-upload dv ${
+                                  vmDataVolumes
+                                    .find(
+                                      dv =>
+                                        dv.spec?.source?.upload &&
+                                        (dv.status?.phase === 'UploadReady' ||
+                                          dv.status?.phase === 'UploadScheduled')
+                                    )
+                                    ?.getName() || `${name}-boot-volume`
+                                } \\\n  --namespace ${namespace} \\\n  --no-create \\\n  --uploadproxy-url=https://localhost:3443 \\\n  --insecure \\\n  --image-path=/path/to/disk.qcow2`}
+                              />
+                              <CopyCodeBlock
+                                title="Step 3 — Start the VM and stop the port-forward"
+                                code={`virtctl start ${name} -n ${namespace}\nkill $PF_PID`}
+                              />
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                                sx={{ mt: 1, display: 'block' }}
+                              >
+                                Supported formats: qcow2, raw, ISO, vmdk (auto-detected). The{' '}
+                                <code>--insecure</code> flag is needed because the port-forward uses
+                                a self-signed certificate.
+                              </Typography>
+                            </Alert>
+                          )}
+                          {vmDataVolumes.some(
+                            dv => dv.spec?.source?.upload && dv.status?.phase === 'Succeeded'
+                          ) &&
+                            item?.status?.printableStatus === 'Stopped' && (
+                              <Alert
+                                severity="success"
+                                icon={<Icon icon="mdi:check-circle" />}
+                                sx={{ mt: 2 }}
+                              >
+                                <Typography variant="body2" sx={{ mb: 1 }}>
+                                  <strong>Upload complete!</strong> The disk image has been
+                                  successfully uploaded. You can now start the VM.
+                                </Typography>
+                                <CopyCodeBlock
+                                  title="Start the VM and stop the port-forward"
+                                  code={`virtctl start ${name} -n ${namespace}\nkill $PF_PID`}
+                                />
+                              </Alert>
+                            )}
                         </SectionBox>
                       </Box>
                     ),
