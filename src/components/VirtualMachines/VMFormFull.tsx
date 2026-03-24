@@ -163,6 +163,77 @@ export default function VMFormFull({
     setAnnotations(annotationEntries.length > 0 ? annotationEntries : []);
   }, [resource.metadata?.annotations]);
 
+  // Keep boot volume entries in sync with dataVolumeTemplates and VM name.
+  // This useEffect ensures that whenever a boot source is selected or the VM
+  // name changes, the matching volume and disk entries are always present and
+  // correctly named — regardless of the order the user fills in the form.
+  React.useEffect(() => {
+    const dvts = resource.spec?.dataVolumeTemplates;
+    if (!dvts?.length) return;
+
+    // Only act on the boot source DVT (identified by sourceRef).
+    // User-added DataVolume disks use `source` and should not be touched.
+    const bootDvtIndex = dvts.findIndex((d: KubeResourceBuilder) => d.spec?.sourceRef);
+    if (bootDvtIndex === -1) return;
+
+    const vmName = resource.metadata?.name || '';
+    const expectedBootName = `${vmName}-boot-volume`;
+    const currentDvtName = dvts[bootDvtIndex].metadata?.name;
+    const volumes = resource.spec?.template?.spec?.volumes || [];
+    const disks = resource.spec?.template?.spec?.domain?.devices?.disks || [];
+
+    const dvtNeedsRename = currentDvtName !== expectedBootName;
+    const hasCorrectVolume = volumes.some(
+      (v: KubeResourceBuilder) => v.dataVolume?.name === expectedBootName
+    );
+    const hasCorrectDisk = disks.some((d: KubeResourceBuilder) => d.name === expectedBootName);
+
+    if (!dvtNeedsRename && hasCorrectVolume && hasCorrectDisk) return;
+
+    // Remove any stale boot-volume entries
+    const filteredVolumes = volumes.filter(
+      (v: KubeResourceBuilder) => !v.dataVolume || !v.dataVolume.name?.endsWith('-boot-volume')
+    );
+    const filteredDisks = disks.filter(
+      (d: KubeResourceBuilder) => !d.name?.endsWith('-boot-volume')
+    );
+
+    // Update only the boot DVT in the array, preserving other DVTs
+    const newDvts = [...dvts];
+    if (dvtNeedsRename) {
+      newDvts[bootDvtIndex] = {
+        ...dvts[bootDvtIndex],
+        metadata: { ...dvts[bootDvtIndex].metadata, name: expectedBootName },
+      };
+    }
+
+    onChange({
+      ...resource,
+      spec: {
+        ...resource.spec,
+        dataVolumeTemplates: newDvts,
+        template: {
+          ...resource.spec?.template,
+          spec: {
+            ...resource.spec?.template?.spec,
+            domain: {
+              ...resource.spec?.template?.spec?.domain,
+              devices: {
+                ...resource.spec?.template?.spec?.domain?.devices,
+                disks: [{ name: expectedBootName, disk: { bus: 'virtio' } }, ...filteredDisks],
+              },
+            },
+            volumes: [
+              { name: expectedBootName, dataVolume: { name: expectedBootName } },
+              ...filteredVolumes,
+            ],
+          },
+        },
+      },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resource.metadata?.name, resource.spec?.dataVolumeTemplates]);
+
   // Parse more state from resource
   const bootSourceId = resource.spec?.dataVolumeTemplates?.[0]?.spec?.sourceRef?.name || '';
   const resourceMode = resource.spec?.instancetype ? 'instanceType' : 'custom';
@@ -238,6 +309,11 @@ export default function VMFormFull({
       let sourceType: AdditionalDisk['sourceType'] = 'empty';
       let sourceDetail: string | undefined;
       let sourceNamespace: string | undefined;
+      let dataVolumeSourceType: AdditionalDisk['dataVolumeSourceType'];
+      let dataVolumeUrl: string | undefined;
+      let dvtSize: string | undefined;
+      let dvtStorageClass: string | undefined;
+      let dvtAccessMode: AdditionalDisk['accessMode'];
 
       if (vol.configMap) {
         sourceType = 'configMap';
@@ -257,6 +333,26 @@ export default function VMFormFull({
       } else if (vol.dataVolume) {
         sourceType = 'dataVolume';
         sourceDetail = vol.dataVolume.name;
+        // Look up DVT to get import details for rehydration
+        const dvt = (resource.spec?.dataVolumeTemplates || []).find(
+          (d: KubeResourceBuilder) => d.metadata?.name === vol.dataVolume.name
+        );
+        if (dvt?.spec?.source) {
+          // This is an imported DataVolume, not a boot source (which uses sourceRef)
+          if (dvt.spec.source.http) {
+            dataVolumeSourceType = 'http';
+            dataVolumeUrl = dvt.spec.source.http.url;
+          } else if (dvt.spec.source.registry) {
+            dataVolumeSourceType = 'registry';
+            dataVolumeUrl = dvt.spec.source.registry.url;
+          } else if (dvt.spec.source.blank) {
+            dataVolumeSourceType = 'blank';
+          }
+          // Get storage details from DVT
+          dvtSize = dvt.spec.storage?.resources?.requests?.storage;
+          dvtStorageClass = dvt.spec.storage?.storageClassName;
+          dvtAccessMode = dvt.spec.storage?.accessModes?.[0];
+        }
       } else if (vol.ephemeral) {
         sourceType = 'ephemeral';
         sourceDetail = vol.ephemeral.persistentVolumeClaim?.claimName;
@@ -279,8 +375,11 @@ export default function VMFormFull({
         bus,
         volumeMode,
         serial,
-        accessMode: 'ReadWriteOnce' as const,
-        size: vol.emptyDisk?.capacity || '10Gi',
+        accessMode: dvtAccessMode || ('ReadWriteOnce' as const),
+        size: dvtSize || vol.emptyDisk?.capacity || '10Gi',
+        storageClass: dvtStorageClass,
+        dataVolumeSourceType,
+        dataVolumeUrl,
       };
     });
   }, [resource.spec?.template?.spec]);
@@ -772,6 +871,8 @@ export default function VMFormFull({
 
   // Handler functions
   const handleNameChange = (value: string) => {
+    // Just update the name; the boot volume useEffect below keeps
+    // dataVolumeTemplates, volumes, and disks in sync automatically.
     updateMetadata({ name: value });
   };
 
@@ -810,7 +911,20 @@ export default function VMFormFull({
     const source = dataSources?.find(ds => ds.getName() === sourceName);
     if (!source) return;
 
-    // Update dataVolumeTemplates with the selected boot source
+    const storageClass = source.getStorageClass();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const storage: Record<string, any> = {
+      resources: {
+        requests: {
+          storage: source.getSize(),
+        },
+      },
+    };
+    // Only set storageClassName when it's a real value (not the '-' fallback)
+    if (storageClass && storageClass !== '-') {
+      storage.storageClassName = storageClass;
+    }
+
     const dataVolumeTemplate = {
       metadata: {
         name: `${name}-boot-volume`,
@@ -821,17 +935,12 @@ export default function VMFormFull({
           name: source.getName(),
           namespace: source.getNamespace(),
         },
-        storage: {
-          resources: {
-            requests: {
-              storage: source.getSize(),
-            },
-          },
-          storageClassName: source.getStorageClass(),
-        },
+        storage,
       },
     };
 
+    // Only set dataVolumeTemplates here; the useEffect below ensures
+    // matching volume/disk entries stay in sync automatically.
     updateSpec({ dataVolumeTemplates: [dataVolumeTemplate] });
   };
 
@@ -1280,7 +1389,8 @@ export default function VMFormFull({
               storage: disk.size || '10Gi',
             },
           },
-          ...(disk.storageClass && { storageClassName: disk.storageClass }),
+          ...(disk.storageClass &&
+            disk.storageClass !== '-' && { storageClassName: disk.storageClass }),
           accessModes: [disk.accessMode || 'ReadWriteOnce'],
         },
       },
@@ -2086,10 +2196,73 @@ export default function VMFormFull({
                 <Typography variant="body2">
                   <strong>Size:</strong> {selectedBootSource.getSize()}
                 </Typography>
-                <Typography variant="body2">
-                  <strong>Storage Class:</strong> {selectedBootSource.getStorageClass()}
-                </Typography>
               </Box>
+            )}
+
+            {bootSourceId && (
+              <Autocomplete
+                fullWidth
+                sx={{ mt: 2 }}
+                options={storageClasses}
+                value={
+                  resource.spec?.dataVolumeTemplates?.[0]?.spec?.storage?.storageClassName || null
+                }
+                onChange={(_, newValue) => {
+                  const dvts = resource.spec?.dataVolumeTemplates;
+                  if (!dvts?.length) return;
+                  const dvt = { ...dvts[0] };
+                  const storage = { ...dvt.spec?.storage };
+                  if (newValue) {
+                    storage.storageClassName = newValue;
+                  } else {
+                    delete storage.storageClassName;
+                  }
+                  dvt.spec = { ...dvt.spec, storage };
+                  updateSpec({ dataVolumeTemplates: [dvt] });
+                }}
+                renderInput={params => (
+                  <TextField
+                    {...params}
+                    label="Target Storage Class (optional)"
+                    helperText="Storage class for the cloned boot disk. Leave empty to use the cluster default."
+                  />
+                )}
+              />
+            )}
+            {bootSourceId && (
+              <TextField
+                fullWidth
+                sx={{ mt: 2 }}
+                label="Boot Disk Size"
+                value={
+                  resource.spec?.dataVolumeTemplates?.find(
+                    (d: KubeResourceBuilder) => d.spec?.sourceRef
+                  )?.spec?.storage?.resources?.requests?.storage || ''
+                }
+                onChange={e => {
+                  const dvts = resource.spec?.dataVolumeTemplates || [];
+                  const idx = dvts.findIndex((d: KubeResourceBuilder) => d.spec?.sourceRef);
+                  if (idx === -1) return;
+                  const dvt = { ...dvts[idx] };
+                  dvt.spec = {
+                    ...dvt.spec,
+                    storage: {
+                      ...dvt.spec?.storage,
+                      resources: {
+                        ...dvt.spec?.storage?.resources,
+                        requests: {
+                          ...dvt.spec?.storage?.resources?.requests,
+                          storage: e.target.value,
+                        },
+                      },
+                    },
+                  };
+                  const newDvts = [...dvts];
+                  newDvts[idx] = dvt;
+                  updateSpec({ dataVolumeTemplates: newDvts });
+                }}
+                helperText="Size of the cloned boot disk (e.g. 30Gi, 50Gi)"
+              />
             )}
           </AccordionDetails>
         </Accordion>
@@ -2435,7 +2608,13 @@ export default function VMFormFull({
                   <Typography variant="body2">PVC (DataSource)</Typography>
                 </TableCell>
                 <TableCell>
-                  <Typography variant="body2">{selectedBootSource?.getSize() || '30Gi'}</Typography>
+                  <Typography variant="body2">
+                    {resource.spec?.dataVolumeTemplates?.find(
+                      (d: KubeResourceBuilder) => d.spec?.sourceRef
+                    )?.spec?.storage?.resources?.requests?.storage ||
+                      selectedBootSource?.getSize() ||
+                      '30Gi'}
+                  </Typography>
                 </TableCell>
                 <TableCell>
                   <Typography variant="body2">Disk</Typography>
@@ -2445,7 +2624,9 @@ export default function VMFormFull({
                 </TableCell>
                 <TableCell>
                   <Typography variant="body2">
-                    {selectedBootSource?.getStorageClass() || '-'}
+                    {resource.spec?.dataVolumeTemplates?.find(
+                      (d: KubeResourceBuilder) => d.spec?.sourceRef
+                    )?.spec?.storage?.storageClassName || '-'}
                   </Typography>
                 </TableCell>
                 <TableCell align="right">
@@ -2885,8 +3066,8 @@ export default function VMFormFull({
                           onChange={e =>
                             setDiskFormData({ ...diskFormData, dataVolumeUrl: e.target.value })
                           }
-                          placeholder="docker.io/user/image:tag"
-                          helperText="Container image with disk"
+                          placeholder="docker://docker.io/user/image:tag"
+                          helperText="Container registry URL (must start with docker:// or oci-archive://)"
                         />
                       </Grid>
                     )}
@@ -2898,6 +3079,48 @@ export default function VMFormFull({
                         </Alert>
                       </Grid>
                     )}
+
+                    <Grid item xs={4}>
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{ mb: 0.5, display: 'block' }}
+                      >
+                        Size
+                      </Typography>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        value={diskFormData.size?.replace(/[^0-9]/g, '') || '10'}
+                        onChange={e => {
+                          const unit = diskFormData.size?.match(/[A-Za-z]+$/)?.[0] || 'Gi';
+                          setDiskFormData({ ...diskFormData, size: `${e.target.value}${unit}` });
+                        }}
+                        type="number"
+                      />
+                    </Grid>
+                    <Grid item xs={2}>
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{ mb: 0.5, display: 'block' }}
+                      >
+                        Unit
+                      </Typography>
+                      <FormControl fullWidth size="small">
+                        <Select
+                          value={diskFormData.size?.match(/[A-Za-z]+$/)?.[0] || 'Gi'}
+                          onChange={e => {
+                            const num = diskFormData.size?.replace(/[^0-9]/g, '') || '10';
+                            setDiskFormData({ ...diskFormData, size: `${num}${e.target.value}` });
+                          }}
+                        >
+                          <MenuItem value="Mi">MiB</MenuItem>
+                          <MenuItem value="Gi">GiB</MenuItem>
+                          <MenuItem value="Ti">TiB</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Grid>
                   </>
                 )}
 
@@ -3027,7 +3250,7 @@ export default function VMFormFull({
                         color="text.secondary"
                         sx={{ mb: 0.5, display: 'block' }}
                       >
-                        Storage Class *
+                        Storage Class (optional)
                       </Typography>
                       <Autocomplete
                         fullWidth
@@ -3038,7 +3261,11 @@ export default function VMFormFull({
                           setDiskFormData({ ...diskFormData, storageClass: newValue || undefined })
                         }
                         renderInput={params => (
-                          <TextField {...params} placeholder="Select storage class..." required />
+                          <TextField
+                            {...params}
+                            placeholder="Cluster default"
+                            helperText="Leave empty to use the cluster default"
+                          />
                         )}
                       />
                     </Grid>

@@ -1,5 +1,15 @@
 import { ApiProxy } from '@kinvolk/headlamp-plugin/lib';
-import { Box, Card, CardContent, FormControl, MenuItem, Select, Typography } from '@mui/material';
+import { Icon } from '@iconify/react';
+import {
+  Alert,
+  Box,
+  Card,
+  CardContent,
+  FormControl,
+  MenuItem,
+  Select,
+  Typography,
+} from '@mui/material';
 import React, { useEffect, useState } from 'react';
 import {
   CartesianGrid,
@@ -29,6 +39,8 @@ interface TimeSeriesData {
 export default function VMMetrics({ vmName, namespace, vmiData, vmItem }: MetricsProps) {
   const [timeRange, setTimeRange] = useState<string>('30m');
   const [prometheusAvailable, setPrometheusAvailable] = useState(false);
+  const [prometheusInstalled, setPrometheusInstalled] = useState(false);
+  const [serviceMonitorConfigured, setServiceMonitorConfigured] = useState(false);
 
   // Time series data for graphs
   const [cpuTimeSeries, setCpuTimeSeries] = useState<TimeSeriesData[]>([]);
@@ -58,6 +70,20 @@ export default function VMMetrics({ vmName, namespace, vmiData, vmItem }: Metric
     return value * (multipliers[unit] || 60);
   };
 
+  // Check if KubeVirt ServiceMonitor is configured
+  useEffect(() => {
+    ApiProxy.request('/apis/kubevirt.io/v1/namespaces/kubevirt/kubevirts')
+      .then(
+        (resp: {
+          items?: Array<{ spec?: { monitorNamespace?: string; monitorAccount?: string } }>;
+        }) => {
+          const kv = resp?.items?.[0];
+          setServiceMonitorConfigured(!!kv?.spec?.monitorNamespace && !!kv?.spec?.monitorAccount);
+        }
+      )
+      .catch(() => setServiceMonitorConfigured(false));
+  }, []);
+
   useEffect(() => {
     const fetchMetrics = async () => {
       try {
@@ -76,9 +102,12 @@ export default function VMMetrics({ vmName, namespace, vmiData, vmItem }: Metric
         });
 
         if (!promSvc) {
+          setPrometheusInstalled(false);
           setPrometheusAvailable(false);
           return;
         }
+
+        setPrometheusInstalled(true);
 
         const promMeta = promSvc.metadata as Record<string, unknown>;
         const promBaseUrl = `/api/v1/namespaces/${promMeta.namespace}/services/${promMeta.name}:9090/proxy`;
@@ -99,8 +128,34 @@ export default function VMMetrics({ vmName, namespace, vmiData, vmItem }: Metric
         const start = now - rangeSeconds;
         const step = Math.max(Math.floor(rangeSeconds / 60), 15); // Max 60 data points, min 15s step
 
-        // Fetch CPU time series and current value
-        const cpuQuery = `rate(kubevirt_vmi_cpu_usage_seconds_total{name="${vmName}",namespace="${namespace}"}[5m]) * 100`;
+        // Calculate total vCPUs from topology
+        let vCpuCount = 1;
+        const vmiStatus = vmiData?.status as Record<string, unknown> | undefined;
+        const currentCPUTopology = vmiStatus?.currentCPUTopology as
+          | { sockets: number; cores: number; threads: number }
+          | undefined;
+        if (currentCPUTopology) {
+          vCpuCount =
+            (currentCPUTopology.sockets || 1) *
+            (currentCPUTopology.cores || 1) *
+            (currentCPUTopology.threads || 1);
+        } else {
+          const vmSpec = vmItem?.spec as Record<string, unknown> | undefined;
+          const vmTemplate = vmSpec?.template as Record<string, unknown> | undefined;
+          const vmTemplateSpec = vmTemplate?.spec as Record<string, unknown> | undefined;
+          const vmDomain = vmTemplateSpec?.domain as Record<string, unknown> | undefined;
+          const cpu = vmDomain?.cpu as
+            | { sockets?: number; cores?: number; threads?: number }
+            | undefined;
+          if (cpu) {
+            vCpuCount = (cpu.sockets || 1) * (cpu.cores || 1) * (cpu.threads || 1);
+          }
+        }
+
+        // Fetch CPU time series — sum per-vCPU running time, normalize to total %
+        // vcpu_seconds_total is closer to guest-visible CPU than cpu_usage_seconds_total
+        // (which includes QEMU emulation overhead)
+        const cpuQuery = `sum(rate(kubevirt_vmi_vcpu_seconds_total{name="${vmName}",namespace="${namespace}",state="running"}[5m])) / ${vCpuCount} * 100`;
         const cpuRangeResp = await ApiProxy.request(
           `${promBaseUrl}/api/v1/query_range?query=${encodeURIComponent(
             cpuQuery
@@ -115,71 +170,50 @@ export default function VMMetrics({ vmName, namespace, vmiData, vmItem }: Metric
           }));
           setCpuTimeSeries(formatted);
 
-          // Set current value from last point
           if (formatted.length > 0) {
             const lastValue = formatted[formatted.length - 1].value;
-
-            // Calculate total vCPUs from topology (same logic as top section)
-            let vCpuCount = 1; // Default to 1 vCPU
-
-            // Try runtime topology first (from VMI)
-            const vmiStatus = vmiData?.status as Record<string, unknown> | undefined;
-            const currentCPUTopology = vmiStatus?.currentCPUTopology as
-              | { sockets: number; cores: number; threads: number }
-              | undefined;
-            if (currentCPUTopology) {
-              vCpuCount =
-                (currentCPUTopology.sockets || 1) *
-                (currentCPUTopology.cores || 1) *
-                (currentCPUTopology.threads || 1);
-            }
-            // Fall back to configured topology (from VM spec)
-            else {
-              const vmSpec = vmItem?.spec as Record<string, unknown> | undefined;
-              const vmTemplate = vmSpec?.template as Record<string, unknown> | undefined;
-              const vmTemplateSpec = vmTemplate?.spec as Record<string, unknown> | undefined;
-              const vmDomain = vmTemplateSpec?.domain as Record<string, unknown> | undefined;
-              const cpu = vmDomain?.cpu as
-                | { sockets?: number; cores?: number; threads?: number }
-                | undefined;
-              if (cpu) {
-                vCpuCount = (cpu.sockets || 1) * (cpu.cores || 1) * (cpu.threads || 1);
-              }
-              // else: No CPU topology found, using default
-            }
-
             setCpuCurrent({ usage: lastValue, total: vCpuCount });
           }
         }
 
-        // Fetch Memory time series
-        const memUsedQuery = `(kubevirt_vmi_memory_domain_bytes{name="${vmName}",namespace="${namespace}"} - on(name, exported_namespace) kubevirt_vmi_memory_available_bytes{name="${vmName}",namespace="${namespace}"}) / (1024^3)`;
-        const memTotalQuery = `kubevirt_vmi_memory_domain_bytes{name="${vmName}",namespace="${namespace}"} / (1024^3)`;
+        // Fetch Memory time series — available_bytes is total guest-visible RAM,
+        // usable_bytes is guest "available" (free + reclaimable cache).
+        // used = available_bytes - usable_bytes matches `free -h` output.
+        const memDomainQuery = `kubevirt_vmi_memory_available_bytes{name="${vmName}",namespace="${namespace}"} / (1024^3)`;
+        const memAvailQuery = `kubevirt_vmi_memory_usable_bytes{name="${vmName}",namespace="${namespace}"} / (1024^3)`;
 
-        const [memUsedResp, memTotalResp] = await Promise.all([
+        const [memDomainResp, memAvailResp] = await Promise.all([
           ApiProxy.request(
             `${promBaseUrl}/api/v1/query_range?query=${encodeURIComponent(
-              memUsedQuery
+              memDomainQuery
             )}&start=${start}&end=${now}&step=${step}`
           ).catch(() => null),
           ApiProxy.request(
             `${promBaseUrl}/api/v1/query_range?query=${encodeURIComponent(
-              memTotalQuery
+              memAvailQuery
             )}&start=${start}&end=${now}&step=${step}`
           ).catch(() => null),
         ]);
 
-        if (memUsedResp?.data?.result?.[0] && memTotalResp?.data?.result?.[0]) {
-          const usedValues = memUsedResp.data.result[0].values || [];
-          const totalValues = memTotalResp.data.result[0].values || [];
+        if (memDomainResp?.data?.result?.[0] && memAvailResp?.data?.result?.[0]) {
+          const domainValues = memDomainResp.data.result[0].values || [];
+          const availValues = memAvailResp.data.result[0].values || [];
 
-          const formatted = usedValues.map(
-            ([timestamp, usedValue]: [number, string], idx: number) => ({
+          // Build a map of timestamp -> available for quick lookup
+          const availMap = new Map<number, number>();
+          availValues.forEach(([ts, val]: [number, string]) => {
+            availMap.set(ts, parseFloat(val));
+          });
+
+          const formatted = domainValues.map(([timestamp, domainValue]: [number, string]) => {
+            const domain = parseFloat(domainValue);
+            const avail = availMap.get(timestamp) ?? 0;
+            return {
               time: new Date(timestamp * 1000).toLocaleTimeString(),
-              used: parseFloat(usedValue),
-              total: totalValues[idx] ? parseFloat(totalValues[idx][1]) : 0,
-            })
-          );
+              used: Math.max(0, domain - avail),
+              total: domain,
+            };
+          });
           setMemoryTimeSeries(formatted);
 
           if (formatted.length > 0) {
@@ -270,9 +304,26 @@ export default function VMMetrics({ vmName, namespace, vmiData, vmItem }: Metric
   if (!prometheusAvailable) {
     return (
       <Box p={3}>
-        <Typography variant="body1" color="text.secondary">
-          Prometheus is not available. Install Prometheus to view VM metrics.
-        </Typography>
+        {prometheusInstalled && !serviceMonitorConfigured ? (
+          <Alert
+            severity="warning"
+            sx={{ '& .MuiAlert-message': { color: '#ffb74d' } }}
+            icon={<Icon icon="mdi:monitor-eye" />}
+          >
+            <Typography variant="body2">
+              <strong>Prometheus detected</strong> but KubeVirt metrics are not enabled. Go to{' '}
+              <strong>Settings → General Configuration → Prometheus Monitoring</strong> to configure
+              the ServiceMonitor and start collecting VM metrics.
+            </Typography>
+          </Alert>
+        ) : (
+          <Alert severity="info" icon={<Icon icon="mdi:chart-line" />}>
+            <Typography variant="body2">
+              <strong>Enable metrics:</strong> Install Prometheus to view VM metrics (CPU, Memory,
+              Network, Storage).
+            </Typography>
+          </Alert>
+        )}
       </Box>
     );
   }

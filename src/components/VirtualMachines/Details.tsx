@@ -54,6 +54,7 @@ interface VMIVolumeStatus {
   };
 }
 import { isFeatureGateEnabled, subscribeToFeatureGates } from '../../utils/featureGates';
+import DataVolume from '../BootableVolumes/DataVolume';
 import CreateResourceDialog from '../common/CreateResourceDialog';
 import VirtualMachineExport from '../VirtualMachineExport/VirtualMachineExport';
 import VirtualMachineSnapshot from '../VirtualMachineSnapshot/VirtualMachineSnapshot';
@@ -129,8 +130,57 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
     return () => clearInterval(interval);
   }, [name, namespace]);
 
+  // Fetch DataVolumes owned by this VM for provisioning status
+  const [dvItems] = DataVolume.useList({ namespace });
+  const vmDvtNames = (vmItem?.jsonData?.spec?.dataVolumeTemplates || []).map(
+    (dvt: { metadata?: { name?: string } }) => dvt.metadata?.name
+  );
+  const vmDataVolumes = dvItems?.filter(dv => vmDvtNames.includes(dv.getName())) || [];
+  const hasProvisioningDvs = vmDataVolumes.some(
+    dv => dv.status?.phase && dv.status.phase !== 'Succeeded'
+  );
+
+  // Fetch CDI importer/cloner pods related to this VM's DataVolumes
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [cdiPods, setCdiPods] = useState<any[]>([]);
+  useEffect(() => {
+    if (!vmDvtNames.length || !namespace) return;
+    const fetchCdiPods = async () => {
+      try {
+        const response = await ApiProxy.request(
+          `/api/v1/namespaces/${namespace}/pods?labelSelector=app=containerized-data-importer`
+        );
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const allPods = (response as any)?.items || [];
+        // Filter pods whose owner or name matches our DV names
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const relatedPods = allPods.filter((pod: any) => {
+          const podName = pod.metadata?.name || '';
+          return vmDvtNames.some(
+            (dvName: string) =>
+              podName.includes(dvName) ||
+              // CDI pods are named like "importer-<dv-name>-<hash>"
+              podName.startsWith(`importer-${dvName}`) ||
+              podName.startsWith(`cdi-upload-${dvName}`) ||
+              podName.startsWith(`cdi-clone-${dvName}`)
+          );
+        });
+        setCdiPods(relatedPods);
+      } catch {
+        setCdiPods([]);
+      }
+    };
+    fetchCdiPods();
+    const interval = setInterval(fetchCdiPods, 5000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [namespace, vmDvtNames.join(',')]);
+
   const navSections = [
     { id: 'info', label: 'Info', icon: 'mdi:information' },
+    ...(vmDataVolumes.length > 0
+      ? [{ id: 'provisioning', label: 'Provisioning', icon: 'mdi:progress-download' }]
+      : []),
     { id: 'conditions', label: 'Conditions', icon: 'mdi:alert-circle-outline' },
     { id: 'networks', label: 'Networks', icon: 'mdi:lan' },
     { id: 'disks', label: 'Disks', icon: 'mdi:harddisk' },
@@ -326,6 +376,192 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
         }
         extraSections={item =>
           item && [
+            ...(vmDataVolumes.length > 0
+              ? [
+                  {
+                    id: 'provisioning',
+                    section: (
+                      <Box id="section-provisioning">
+                        <SectionBox
+                          title="Provisioning Status"
+                          headerProps={{
+                            actions: hasProvisioningDvs
+                              ? [
+                                  <Chip
+                                    key="status"
+                                    label="In Progress"
+                                    color="info"
+                                    size="small"
+                                    icon={<Icon icon="mdi:progress-clock" />}
+                                  />,
+                                ]
+                              : [],
+                          }}
+                        >
+                          <SimpleTable
+                            data={vmDataVolumes}
+                            columns={[
+                              {
+                                label: 'DataVolume',
+                                getter: (dv: InstanceType<typeof DataVolume>) => (
+                                  <Link
+                                    routeName="/kubevirt/datavolumes/:namespace/:name"
+                                    params={{
+                                      name: dv.getName(),
+                                      namespace: dv.getNamespace(),
+                                    }}
+                                  >
+                                    {dv.getName()}
+                                  </Link>
+                                ),
+                              },
+                              {
+                                label: 'Source',
+                                getter: (dv: InstanceType<typeof DataVolume>) => dv.getSourceType(),
+                              },
+                              {
+                                label: 'Size',
+                                getter: (dv: InstanceType<typeof DataVolume>) => dv.getSize(),
+                              },
+                              {
+                                label: 'Phase',
+                                getter: (dv: InstanceType<typeof DataVolume>) => {
+                                  const phase = dv.status?.phase || 'Pending';
+                                  const color =
+                                    phase === 'Succeeded'
+                                      ? 'success'
+                                      : phase === 'Failed'
+                                      ? 'error'
+                                      : phase === 'Paused'
+                                      ? 'warning'
+                                      : 'info';
+                                  return (
+                                    <Chip
+                                      label={phase}
+                                      color={color as 'success' | 'error' | 'warning' | 'info'}
+                                      size="small"
+                                    />
+                                  );
+                                },
+                              },
+                              {
+                                label: 'Progress',
+                                getter: (dv: InstanceType<typeof DataVolume>) => {
+                                  const progress = dv.status?.progress;
+                                  const phase = dv.status?.phase || '';
+                                  if (phase === 'Succeeded') return '100%';
+                                  if (!progress) return '-';
+                                  return (
+                                    <Box display="flex" alignItems="center" gap={1} minWidth={120}>
+                                      <Box
+                                        sx={{
+                                          flex: 1,
+                                          height: 8,
+                                          bgcolor: 'action.hover',
+                                          borderRadius: 4,
+                                          overflow: 'hidden',
+                                        }}
+                                      >
+                                        <Box
+                                          sx={{
+                                            width: progress,
+                                            height: '100%',
+                                            bgcolor: 'primary.main',
+                                            borderRadius: 4,
+                                            transition: 'width 0.5s ease',
+                                          }}
+                                        />
+                                      </Box>
+                                      <Typography variant="caption">{progress}</Typography>
+                                    </Box>
+                                  );
+                                },
+                              },
+                              {
+                                label: 'Storage Class',
+                                getter: (dv: InstanceType<typeof DataVolume>) =>
+                                  dv.getStorageClass(),
+                              },
+                            ]}
+                          />
+                          {cdiPods.length > 0 && (
+                            <Box sx={{ mt: 2 }}>
+                              <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                                CDI Worker Pods
+                              </Typography>
+                              <SimpleTable
+                                data={cdiPods}
+                                columns={[
+                                  {
+                                    label: 'Pod',
+                                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                    getter: (pod: any) => (
+                                      <Link
+                                        routeName="pod"
+                                        params={{
+                                          name: pod.metadata?.name,
+                                          namespace: pod.metadata?.namespace,
+                                        }}
+                                      >
+                                        {pod.metadata?.name}
+                                      </Link>
+                                    ),
+                                  },
+                                  {
+                                    label: 'Phase',
+                                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                    getter: (pod: any) => {
+                                      const phase = pod.status?.phase || 'Unknown';
+                                      const color =
+                                        phase === 'Running'
+                                          ? 'primary'
+                                          : phase === 'Succeeded'
+                                          ? 'success'
+                                          : phase === 'Failed'
+                                          ? 'error'
+                                          : 'default';
+                                      return (
+                                        <Chip
+                                          label={phase}
+                                          color={
+                                            color as 'primary' | 'success' | 'error' | 'default'
+                                          }
+                                          size="small"
+                                          variant="outlined"
+                                        />
+                                      );
+                                    },
+                                  },
+                                  {
+                                    label: 'Node',
+                                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                    getter: (pod: any) => pod.spec?.nodeName || 'Pending',
+                                  },
+                                  {
+                                    label: 'Age',
+                                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                    getter: (pod: any) => {
+                                      const created = pod.metadata?.creationTimestamp;
+                                      if (!created) return '-';
+                                      const diff = Date.now() - new Date(created).getTime();
+                                      const mins = Math.floor(diff / 60000);
+                                      if (mins < 1) return '<1m';
+                                      if (mins < 60) return `${mins}m`;
+                                      const hours = Math.floor(mins / 60);
+                                      if (hours < 24) return `${hours}h${mins % 60}m`;
+                                      return `${Math.floor(hours / 24)}d${hours % 24}h`;
+                                    },
+                                  },
+                                ]}
+                              />
+                            </Box>
+                          )}
+                        </SectionBox>
+                      </Box>
+                    ),
+                  },
+                ]
+              : []),
             {
               id: 'conditions',
               section: (

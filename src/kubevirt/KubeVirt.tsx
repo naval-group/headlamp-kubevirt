@@ -149,6 +149,30 @@ class KubeVirt extends KubeObject {
     return this.update(updated);
   }
 
+  getMonitorNamespace(): string {
+    return this.jsonData?.spec?.monitorNamespace || '';
+  }
+
+  getMonitorAccount(): string {
+    return this.jsonData?.spec?.monitorAccount || '';
+  }
+
+  async updateMonitoringConfig(monitorNamespace: string, monitorAccount: string) {
+    const updated = { ...this.jsonData };
+    if (!updated.spec) updated.spec = {};
+    if (monitorNamespace) {
+      updated.spec.monitorNamespace = monitorNamespace;
+    } else {
+      delete updated.spec.monitorNamespace;
+    }
+    if (monitorAccount) {
+      updated.spec.monitorAccount = monitorAccount;
+    } else {
+      delete updated.spec.monitorAccount;
+    }
+    return this.update(updated);
+  }
+
   async updateEvictionStrategy(strategy: string) {
     const updated = { ...this.jsonData };
     if (!updated.spec) updated.spec = {};

@@ -36,6 +36,8 @@ export default function VirtualizationOverview() {
   const [selectedNamespace, setSelectedNamespace] = useState<string>('all');
   const [timeRange, setTimeRange] = useState<string>('30m');
   const [prometheusAvailable, setPrometheusAvailable] = useState(false);
+  const [prometheusInstalled, setPrometheusInstalled] = useState(false);
+  const [serviceMonitorConfigured, setServiceMonitorConfigured] = useState(false);
   const [topCpuConsumers, setTopCpuConsumers] = useState<
     Array<{ name: string; value: number; vcpus?: number }>
   >([]);
@@ -72,6 +74,20 @@ export default function VirtualizationOverview() {
       .catch(() => {});
   }, []);
 
+  // Check if KubeVirt ServiceMonitor is configured
+  React.useEffect(() => {
+    ApiProxy.request('/apis/kubevirt.io/v1/namespaces/kubevirt/kubevirts')
+      .then(
+        (resp: {
+          items?: Array<{ spec?: { monitorNamespace?: string; monitorAccount?: string } }>;
+        }) => {
+          const kv = resp?.items?.[0];
+          setServiceMonitorConfigured(!!kv?.spec?.monitorNamespace && !!kv?.spec?.monitorAccount);
+        }
+      )
+      .catch(() => setServiceMonitorConfigured(false));
+  }, []);
+
   // Check if Prometheus is available and fetch metrics
   React.useEffect(() => {
     const fetchPrometheusMetrics = async () => {
@@ -98,10 +114,12 @@ export default function VirtualizationOverview() {
         );
 
         if (!promSvc) {
+          setPrometheusInstalled(false);
           setPrometheusAvailable(false);
           return;
         }
 
+        setPrometheusInstalled(true);
         const promNamespace = promSvc.metadata.namespace;
         const promName = promSvc.metadata.name;
         const promBaseUrl = `/api/v1/namespaces/${promNamespace}/services/${promName}:9090/proxy`;
@@ -149,21 +167,20 @@ export default function VirtualizationOverview() {
           setTopCpuConsumers(cpuData);
         }
 
-        // Query top Memory consumers - show actual used memory from guest perspective
-        // Calculate: domain_bytes - available_bytes = used memory in guest
-        const memQuery = `topk(5, kubevirt_vmi_memory_domain_bytes{${nsFilter}} - on(name, namespace) kubevirt_vmi_memory_available_bytes{${nsFilter}})`;
+        // Query top Memory consumers — available_bytes (guest total RAM) minus usable_bytes
+        // (free + reclaimable) = actual used memory, matching `free -h` output
+        const memQuery = `topk(5, kubevirt_vmi_memory_available_bytes{${nsFilter}} - on(name, namespace) kubevirt_vmi_memory_usable_bytes{${nsFilter}})`;
         const memResp = await ApiProxy.request(
           `${promBaseUrl}/api/v1/query?query=${encodeURIComponent(memQuery)}`
         ).catch(() => null);
 
         if (memResp?.data?.result) {
-          // Also get total allocated memory for each VM
+          // Also get total guest-visible memory for each VM
           const memDataPromises = memResp.data.result.map(async (r: PromResult) => {
             const vmName = r.metric.name || r.metric.vmi || 'Unknown';
             const usedMemory = parseFloat(r.value[1]) || 0;
 
-            // Get total allocated memory (domain_bytes)
-            const totalQuery = `kubevirt_vmi_memory_domain_bytes{name="${vmName}"}`;
+            const totalQuery = `kubevirt_vmi_memory_available_bytes{name="${vmName}"}`;
             const totalResp = await ApiProxy.request(
               `${promBaseUrl}/api/v1/query?query=${encodeURIComponent(totalQuery)}`
             ).catch(() => null);
@@ -510,6 +527,29 @@ export default function VirtualizationOverview() {
           </FormControl>
         </Box>
       </Box>
+
+      {/* Alert for Prometheus - tiered messages based on state */}
+      {stats.total > 0 && !prometheusAvailable && !prometheusInstalled && (
+        <Alert severity="info" sx={{ mb: 3 }} icon={<Icon icon="mdi:chart-line" />}>
+          <Typography variant="body2">
+            <strong>Enable metrics:</strong> Install Prometheus to view CPU, Memory, and Storage
+            usage charts for your VirtualMachines.
+          </Typography>
+        </Alert>
+      )}
+      {stats.total > 0 && prometheusInstalled && !serviceMonitorConfigured && (
+        <Alert
+          severity="warning"
+          sx={{ mb: 3, '& .MuiAlert-message': { color: '#ffb74d' } }}
+          icon={<Icon icon="mdi:monitor-eye" />}
+        >
+          <Typography variant="body2">
+            <strong>Prometheus detected</strong> but KubeVirt metrics are not enabled. Go to{' '}
+            <strong>Settings → General Configuration → Prometheus Monitoring</strong> to configure
+            the ServiceMonitor and start collecting VM metrics.
+          </Typography>
+        </Alert>
+      )}
 
       <Grid container spacing={3}>
         {/* Top Consumers - Full Width */}
@@ -1434,16 +1474,6 @@ export default function VirtualizationOverview() {
           </Paper>
         </Grid>
       </Grid>
-
-      {/* Alert for Prometheus - only show when Prometheus is not available */}
-      {stats.total > 0 && !prometheusAvailable && (
-        <Alert severity="info" sx={{ mt: 3 }} icon={<Icon icon="mdi:chart-line" />}>
-          <Typography variant="body2">
-            <strong>Enable metrics:</strong> Install Prometheus to view CPU, Memory, and Storage
-            usage charts for your VirtualMachines.
-          </Typography>
-        </Alert>
-      )}
     </Box>
   );
 }
