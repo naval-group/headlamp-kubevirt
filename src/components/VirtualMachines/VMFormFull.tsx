@@ -2565,7 +2565,7 @@ export default function VMFormFull({
                     <>
                       <TextField
                         fullWidth
-                        sx={[{ mt: 2 }, ...(isBelowMin ? [mandatoryFieldSx] : [])]}
+                        sx={{ mt: 2, ...(isBelowMin ? mandatoryFieldSx : {}) }}
                         label="Boot Disk Size"
                         value={currentSize}
                         onChange={e => {
