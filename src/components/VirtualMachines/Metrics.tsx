@@ -1,5 +1,5 @@
-import { ApiProxy } from '@kinvolk/headlamp-plugin/lib';
 import { Icon } from '@iconify/react';
+import { ApiProxy } from '@kinvolk/headlamp-plugin/lib';
 import {
   Alert,
   Box,
