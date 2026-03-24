@@ -644,6 +644,7 @@ export default function KubeVirtSettings() {
   const [localMonitorAccount, setLocalMonitorAccount] = useState(
     kubeVirt?.getMonitorAccount() || ''
   );
+  const [localHelmRelease, setLocalHelmRelease] = useState('');
   const [monitoringNamespaces, setMonitoringNamespaces] = useState<string[]>([]);
   const [monitoringServiceAccounts, setMonitoringServiceAccounts] = useState<string[]>([]);
 
@@ -714,6 +715,24 @@ export default function KubeVirtSettings() {
 
       setLocalMonitorNamespace(kubeVirt.getMonitorNamespace());
       setLocalMonitorAccount(kubeVirt.getMonitorAccount());
+
+      // Try to read the existing release label from the auto-created ServiceMonitor
+      if (kubeVirt.getMonitorNamespace()) {
+        ApiProxy.request(
+          `/apis/monitoring.coreos.com/v1/namespaces/${kubeVirt.getMonitorNamespace()}/servicemonitors`
+        )
+          .then(
+            (resp: {
+              items?: Array<{ metadata: { name: string; labels?: Record<string, string> } }>;
+            }) => {
+              const sm = resp?.items?.find(s => s.metadata.name.includes('kubevirt'));
+              if (sm?.metadata?.labels?.release) {
+                setLocalHelmRelease(sm.metadata.labels.release);
+              }
+            }
+          )
+          .catch(() => {});
+      }
     }
   }, [kubeVirt]);
 
@@ -885,6 +904,42 @@ export default function KubeVirtSettings() {
     setUpdating(true);
     try {
       await kubeVirt.updateMonitoringConfig(localMonitorNamespace, localMonitorAccount);
+
+      // If a Helm release name is provided, patch the ServiceMonitor with the release label
+      // after a short delay to let the KubeVirt operator create it
+      if (localHelmRelease && localMonitorNamespace) {
+        setTimeout(async () => {
+          try {
+            const smResp = (await ApiProxy.request(
+              `/apis/monitoring.coreos.com/v1/namespaces/${localMonitorNamespace}/servicemonitors`
+            )) as { items?: Array<{ metadata: { name: string; namespace: string } }> };
+            const sm = smResp?.items?.find(s => s.metadata.name.includes('kubevirt'));
+            if (sm) {
+              await ApiProxy.request(
+                `/apis/monitoring.coreos.com/v1/namespaces/${sm.metadata.namespace}/servicemonitors/${sm.metadata.name}`,
+                {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/merge-patch+json' },
+                  body: JSON.stringify({
+                    metadata: { labels: { release: localHelmRelease } },
+                  }),
+                }
+              );
+              enqueueSnackbar(
+                `ServiceMonitor labeled with release="${localHelmRelease}" for Prometheus discovery.`,
+                { variant: 'info' }
+              );
+            }
+          } catch (labelError) {
+            console.warn('Could not label ServiceMonitor:', labelError);
+            enqueueSnackbar(
+              'Monitoring configured, but could not label the ServiceMonitor. You may need to add the release label manually.',
+              { variant: 'warning' }
+            );
+          }
+        }, 3000);
+      }
+
       enqueueSnackbar(
         'Prometheus monitoring configuration updated. KubeVirt will create the ServiceMonitor automatically.',
         {
@@ -1446,6 +1501,16 @@ export default function KubeVirtSettings() {
                           helperText="Prometheus service account name"
                         />
                       )}
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Prometheus Helm Release Name (optional)"
+                      value={localHelmRelease}
+                      onChange={e => setLocalHelmRelease(e.target.value)}
+                      helperText="If using kube-prometheus-stack via Helm, the ServiceMonitor needs a 'release' label matching your Helm release name for Prometheus to discover it."
                     />
                   </Grid>
                 </Grid>
