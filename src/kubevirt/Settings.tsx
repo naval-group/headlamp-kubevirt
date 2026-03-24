@@ -933,7 +933,7 @@ export default function KubeVirtSettings() {
         ]);
 
         // Parse REST errors (multi-series by container/component)
-        const restErrors: Array<Record<string, string | number>> = [];
+        const restErrors: Array<{ time: string; [key: string]: string | number }> = [];
         const restTimestamps = new Set<number>();
         restErrorsData.forEach(series => {
           series.values.forEach(([ts]) => restTimestamps.add(ts));
@@ -941,7 +941,7 @@ export default function KubeVirtSettings() {
         Array.from(restTimestamps)
           .sort()
           .forEach(ts => {
-            const point: Record<string, string | number> = {
+            const point: { time: string; [key: string]: string | number } = {
               time: new Date(ts * 1000).toLocaleTimeString(),
             };
             restErrorsData.forEach(series => {
@@ -956,7 +956,7 @@ export default function KubeVirtSettings() {
         const filteredLatencyData = apiLatencyData.filter(
           series => series.metric.verb && series.metric.verb !== 'none'
         );
-        const apiLatency: Array<Record<string, string | number>> = [];
+        const apiLatency: Array<{ time: string; [key: string]: string | number }> = [];
         const latencyTimestamps = new Set<number>();
         filteredLatencyData.forEach(series => {
           series.values.forEach(([ts]) => latencyTimestamps.add(ts));
@@ -964,7 +964,7 @@ export default function KubeVirtSettings() {
         Array.from(latencyTimestamps)
           .sort()
           .forEach(ts => {
-            const point: Record<string, string | number> = {
+            const point: { time: string; [key: string]: string | number } = {
               time: new Date(ts * 1000).toLocaleTimeString(),
             };
             filteredLatencyData.forEach(series => {
@@ -977,7 +977,7 @@ export default function KubeVirtSettings() {
           });
 
         // Parse VMI phase transitions (multi-series by phase)
-        const vmiPhaseTransitions: Array<Record<string, string | number>> = [];
+        const vmiPhaseTransitions: Array<{ time: string; [key: string]: string | number }> = [];
         const phaseTimestamps = new Set<number>();
         vmiTransitionsData.forEach(series => {
           series.values.forEach(([ts]) => phaseTimestamps.add(ts));
@@ -985,7 +985,7 @@ export default function KubeVirtSettings() {
         Array.from(phaseTimestamps)
           .sort()
           .forEach(ts => {
-            const point: Record<string, string | number> = {
+            const point: { time: string; [key: string]: string | number } = {
               time: new Date(ts * 1000).toLocaleTimeString(),
             };
             vmiTransitionsData.forEach(series => {
