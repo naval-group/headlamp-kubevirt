@@ -41,6 +41,30 @@ import MandatoryTextField, { mandatoryFieldSx } from '../common/MandatoryTextFie
 import VirtualMachineClusterInstanceType from '../InstanceTypes/VirtualMachineClusterInstanceType';
 import NetworkAttachmentDefinition from '../NetworkAttachmentDefinitions/NetworkAttachmentDefinition';
 
+/** Parse a Kubernetes size string (e.g. "30Gi", "500Mi") to bytes for comparison */
+function parseSizeToBytes(size: string): number {
+  const match = size?.match(/^(\d+(?:\.\d+)?)\s*(Ki|Mi|Gi|Ti|Pi|Ei|k|M|G|T|P|E)?$/i);
+  if (!match) return 0;
+  const value = parseFloat(match[1]);
+  const unit = match[2] || '';
+  const multipliers: Record<string, number> = {
+    '': 1,
+    Ki: 1024,
+    Mi: 1024 ** 2,
+    Gi: 1024 ** 3,
+    Ti: 1024 ** 4,
+    Pi: 1024 ** 5,
+    Ei: 1024 ** 6,
+    k: 1000,
+    M: 1000 ** 2,
+    G: 1000 ** 3,
+    T: 1000 ** 4,
+    P: 1000 ** 5,
+    E: 1000 ** 6,
+  };
+  return value * (multipliers[unit] || 1);
+}
+
 interface MetadataEntry {
   key: string;
   value: string;
@@ -171,9 +195,11 @@ export default function VMFormFull({
     const dvts = resource.spec?.dataVolumeTemplates;
     if (!dvts?.length) return;
 
-    // Only act on the boot source DVT (identified by sourceRef).
+    // Only act on the boot source DVT (identified by sourceRef or name ending in -boot-volume).
     // User-added DataVolume disks use `source` and should not be touched.
-    const bootDvtIndex = dvts.findIndex((d: KubeResourceBuilder) => d.spec?.sourceRef);
+    const bootDvtIndex = dvts.findIndex(
+      (d: KubeResourceBuilder) => d.spec?.sourceRef || d.metadata?.name?.endsWith('-boot-volume')
+    );
     if (bootDvtIndex === -1) return;
 
     const vmName = resource.metadata?.name || '';
@@ -236,6 +262,31 @@ export default function VMFormFull({
 
   // Parse more state from resource
   const bootSourceId = resource.spec?.dataVolumeTemplates?.[0]?.spec?.sourceRef?.name || '';
+
+  // Detect boot source type from existing DVT
+  const bootDvt = resource.spec?.dataVolumeTemplates?.find(
+    (d: KubeResourceBuilder) => d.spec?.sourceRef || d.metadata?.name?.endsWith('-boot-volume')
+  );
+  const derivedBootSourceType: string = bootDvt
+    ? bootDvt.spec?.sourceRef
+      ? 'dataSource'
+      : bootDvt.spec?.source?.registry
+      ? 'registry'
+      : bootDvt.spec?.source?.http
+      ? 'http'
+      : bootDvt.spec?.source?.pvc
+      ? 'pvc'
+      : bootDvt.spec?.source?.upload
+      ? 'upload'
+      : bootDvt.spec?.source?.blank
+      ? 'blank'
+      : ''
+    : '';
+  // Local state to track boot source type selection (needed for dataSource
+  // where the DVT doesn't exist until a DataSource is actually picked)
+  const [bootSourceTypeOverride, setBootSourceTypeOverride] = React.useState('');
+  const bootSourceType = bootSourceTypeOverride || derivedBootSourceType;
+
   const resourceMode = resource.spec?.instancetype ? 'instanceType' : 'custom';
   const selectedInstanceTypeName = resource.spec?.instancetype?.name || '';
   const selectedInstanceType =
@@ -603,7 +654,6 @@ export default function VMFormFull({
   const [volumeSnapshots, setVolumeSnapshots] = useState<string[]>([]);
   const [dataVolumes, setDataVolumes] = useState<string[]>([]);
   const [nodeLabels, setNodeLabels] = useState<string[]>([]); // Available node label keys
-
   // Local state for complex UI interactions
   const [useAdvancedTopologyState, setUseAdvancedTopologyState] = useState(useAdvancedTopology);
 
@@ -942,6 +992,65 @@ export default function VMFormFull({
     // Only set dataVolumeTemplates here; the useEffect below ensures
     // matching volume/disk entries stay in sync automatically.
     updateSpec({ dataVolumeTemplates: [dataVolumeTemplate] });
+  };
+
+  const handleBootDvtUpdate = (sourceSpec: KubeResourceBuilder, size?: string) => {
+    const dvts = resource.spec?.dataVolumeTemplates || [];
+    // Find existing boot DVT or create new
+    const bootIdx = dvts.findIndex(
+      (d: KubeResourceBuilder) => d.spec?.sourceRef || d.metadata?.name?.endsWith('-boot-volume')
+    );
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const storage: Record<string, any> = {
+      resources: {
+        requests: {
+          storage: size || '30Gi',
+        },
+      },
+    };
+
+    // Preserve existing storage settings when just changing the source
+    if (bootIdx >= 0) {
+      const existing = dvts[bootIdx];
+      if (existing.spec?.storage?.storageClassName) {
+        storage.storageClassName = existing.spec.storage.storageClassName;
+      }
+      if (existing.spec?.storage?.resources?.requests?.storage) {
+        storage.resources.requests.storage = existing.spec.storage.resources.requests.storage;
+      }
+    }
+
+    const newBootDvt = {
+      metadata: {
+        name: `${name}-boot-volume`,
+      },
+      spec: {
+        ...sourceSpec,
+        storage,
+      },
+    };
+
+    if (bootIdx >= 0) {
+      const newDvts = [...dvts];
+      newDvts[bootIdx] = newBootDvt;
+      updateSpec({ dataVolumeTemplates: newDvts });
+    } else {
+      updateSpec({ dataVolumeTemplates: [...dvts, newBootDvt] });
+    }
+  };
+
+  const clearBootSource = () => {
+    const dvts = (resource.spec?.dataVolumeTemplates || []).filter(
+      (d: KubeResourceBuilder) => !d.metadata?.name?.endsWith('-boot-volume')
+    );
+    onChange({
+      ...resource,
+      spec: {
+        ...resource.spec,
+        dataVolumeTemplates: dvts.length > 0 ? dvts : undefined,
+      },
+    });
   };
 
   // Resource Mode handlers
@@ -1518,14 +1627,22 @@ export default function VMFormFull({
     const diskToRemove = currentAdditionalDisks[index];
     const volumes = resource.spec?.template?.spec?.volumes || [];
     const disks = resource.spec?.template?.spec?.domain?.devices?.disks || [];
+    const dataVolumeTemplates = resource.spec?.dataVolumeTemplates || [];
 
     const newVolumes = volumes.filter((v: KubeResourceBuilder) => v.name !== diskToRemove.name);
     const newDisks = disks.filter((d: KubeResourceBuilder) => d.name !== diskToRemove.name);
+    // Also remove matching dataVolumeTemplate (for clone/snapshot/dataVolume disks)
+    const newDvts = dataVolumeTemplates.filter(
+      (d: KubeResourceBuilder) => d.metadata?.name !== diskToRemove.name
+    );
 
     onChange({
       ...resource,
       spec: {
         ...resource.spec,
+        ...(newDvts.length > 0
+          ? { dataVolumeTemplates: newDvts }
+          : { dataVolumeTemplates: undefined }),
         template: {
           ...resource.spec?.template,
           spec: {
@@ -2171,98 +2288,339 @@ export default function VMFormFull({
             </Box>
           </AccordionSummary>
           <AccordionDetails>
-            <FormControl fullWidth>
+            {/* Boot Source Type selector */}
+            <FormControl fullWidth sx={{ mb: 2 }}>
               <Select
-                value={bootSourceId}
-                onChange={e => handleBootSourceChange(e.target.value)}
+                value={bootSourceType}
+                onChange={e => {
+                  const newType = e.target.value as string;
+                  setBootSourceTypeOverride(newType);
+                  if (!newType) {
+                    clearBootSource();
+                    return;
+                  }
+                  // Create initial DVT based on type
+                  switch (newType) {
+                    case 'dataSource':
+                      // Don't create DVT yet, wait for DataSource selection
+                      clearBootSource();
+                      break;
+                    case 'registry':
+                      handleBootDvtUpdate({ source: { registry: { url: '' } } });
+                      break;
+                    case 'http':
+                      handleBootDvtUpdate({ source: { http: { url: '' } } });
+                      break;
+                    case 'pvc':
+                      handleBootDvtUpdate({
+                        source: { pvc: { name: '', namespace: namespace } },
+                      });
+                      break;
+                    case 'upload': {
+                      // Must set both DVT and runStrategy in one onChange call,
+                      // otherwise the second updateSpec overwrites the first.
+                      const dvts = resource.spec?.dataVolumeTemplates || [];
+                      const bootIdx = dvts.findIndex(
+                        (d: KubeResourceBuilder) =>
+                          d.spec?.sourceRef || d.metadata?.name?.endsWith('-boot-volume')
+                      );
+                      const uploadDvt = {
+                        metadata: { name: `${name}-boot-volume` },
+                        spec: {
+                          source: { upload: {} },
+                          storage: {
+                            ...(bootIdx >= 0 ? dvts[bootIdx].spec?.storage : {}),
+                            resources: {
+                              requests: {
+                                storage:
+                                  (bootIdx >= 0 &&
+                                    dvts[bootIdx].spec?.storage?.resources?.requests?.storage) ||
+                                  '30Gi',
+                              },
+                            },
+                          },
+                        },
+                      };
+                      const newDvts =
+                        bootIdx >= 0
+                          ? dvts.map((d: KubeResourceBuilder, i: number) =>
+                              i === bootIdx ? uploadDvt : d
+                            )
+                          : [...dvts, uploadDvt];
+                      updateSpec({
+                        dataVolumeTemplates: newDvts,
+                        runStrategy: 'Halted',
+                      });
+                      break;
+                    }
+                    case 'blank':
+                      handleBootDvtUpdate({ source: { blank: {} } });
+                      break;
+                  }
+                }}
                 displayEmpty
               >
-                <MenuItem value="" disabled>
-                  Select a boot source
+                <MenuItem value="">
+                  <em>No boot source</em>
                 </MenuItem>
-                {dataSources?.map(ds => (
-                  <MenuItem key={ds.metadata.uid} value={ds.getName()}>
-                    {ds.getName()} - {ds.getOperatingSystem()} ({ds.getSize()})
-                  </MenuItem>
-                ))}
+                <MenuItem value="dataSource">DataSource (Bootable Volume)</MenuItem>
+                <MenuItem value="registry">Container Registry</MenuItem>
+                <MenuItem value="http">HTTP/HTTPS URL</MenuItem>
+                <MenuItem value="pvc">PVC Clone</MenuItem>
+                <MenuItem value="upload">Upload (virtctl)</MenuItem>
+                <MenuItem value="blank">Blank Disk</MenuItem>
               </Select>
             </FormControl>
 
-            {selectedBootSource && (
-              <Box sx={{ mt: 2, p: 2, bgcolor: 'action.hover', borderRadius: 1 }}>
-                <Typography variant="body2">
-                  <strong>OS:</strong> {selectedBootSource.getOperatingSystem()}
-                </Typography>
-                <Typography variant="body2">
-                  <strong>Size:</strong> {selectedBootSource.getSize()}
-                </Typography>
+            {/* DataSource specific fields */}
+            {bootSourceType === 'dataSource' && (
+              <>
+                <FormControl fullWidth>
+                  <Select
+                    value={bootSourceId}
+                    onChange={e => handleBootSourceChange(e.target.value)}
+                    displayEmpty
+                  >
+                    <MenuItem value="" disabled>
+                      Select a data source
+                    </MenuItem>
+                    {dataSources?.map(ds => (
+                      <MenuItem key={ds.metadata.uid} value={ds.getName()}>
+                        {ds.getName()} - {ds.getOperatingSystem()} ({ds.getSize()})
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                {selectedBootSource && (
+                  <Box sx={{ mt: 2, p: 2, bgcolor: 'action.hover', borderRadius: 1 }}>
+                    <Typography variant="body2">
+                      <strong>OS:</strong> {selectedBootSource.getOperatingSystem()}
+                    </Typography>
+                    <Typography variant="body2">
+                      <strong>Size:</strong> {selectedBootSource.getSize()}
+                    </Typography>
+                  </Box>
+                )}
+              </>
+            )}
+
+            {/* Registry specific fields */}
+            {bootSourceType === 'registry' && (
+              <TextField
+                fullWidth
+                label="Registry URL"
+                value={bootDvt?.spec?.source?.registry?.url || ''}
+                onChange={e =>
+                  handleBootDvtUpdate({ source: { registry: { url: e.target.value } } })
+                }
+                placeholder="docker://quay.io/fedora/fedora-coreos-kubevirt:stable"
+                helperText="Container registry URL (must start with docker:// or oci-archive://)"
+              />
+            )}
+
+            {/* HTTP specific fields */}
+            {bootSourceType === 'http' && (
+              <TextField
+                fullWidth
+                label="Image URL"
+                value={bootDvt?.spec?.source?.http?.url || ''}
+                onChange={e => handleBootDvtUpdate({ source: { http: { url: e.target.value } } })}
+                placeholder="https://example.com/disk-image.qcow2"
+                helperText="URL to ISO, qcow2, or raw disk image"
+              />
+            )}
+
+            {/* PVC Clone specific fields */}
+            {bootSourceType === 'pvc' && (
+              <Grid container spacing={2}>
+                <Grid item xs={6}>
+                  <Autocomplete
+                    fullWidth
+                    options={namespaces}
+                    value={bootDvt?.spec?.source?.pvc?.namespace || namespace}
+                    onChange={(_, newValue) => {
+                      handleBootDvtUpdate({
+                        source: {
+                          pvc: {
+                            name: bootDvt?.spec?.source?.pvc?.name || '',
+                            namespace: newValue || namespace,
+                          },
+                        },
+                      });
+                    }}
+                    renderInput={params => <TextField {...params} label="Source Namespace" />}
+                  />
+                </Grid>
+                <Grid item xs={6}>
+                  <Autocomplete
+                    fullWidth
+                    options={pvcs}
+                    value={bootDvt?.spec?.source?.pvc?.name || ''}
+                    onChange={(_, newValue) => {
+                      handleBootDvtUpdate({
+                        source: {
+                          pvc: {
+                            name: newValue || '',
+                            namespace: bootDvt?.spec?.source?.pvc?.namespace || namespace,
+                          },
+                        },
+                      });
+                    }}
+                    renderInput={params => <TextField {...params} label="Source PVC" />}
+                  />
+                </Grid>
+              </Grid>
+            )}
+
+            {/* Upload info */}
+            {bootSourceType === 'upload' && (
+              <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                <Alert severity="warning" sx={{ '& .MuiAlert-message': { color: '#ffb74d' } }}>
+                  The VM will be created with <strong>runStrategy: Halted</strong> so the upload can
+                  complete before the VM starts.
+                </Alert>
+                <Alert severity="info">
+                  <Typography variant="body2" gutterBottom>
+                    <strong>After creating the VM, upload a disk image:</strong>
+                  </Typography>
+                  <Box
+                    component="pre"
+                    sx={{
+                      bgcolor: 'action.hover',
+                      p: 1.5,
+                      borderRadius: 1,
+                      fontSize: '0.8rem',
+                      overflow: 'auto',
+                      whiteSpace: 'pre-wrap',
+                    }}
+                  >
+                    {`# 1. Port-forward the CDI upload proxy (runs in background):
+kubectl port-forward -n cdi svc/cdi-uploadproxy 3443:443 &
+PF_PID=$!
+
+# 2. Upload a local qcow2/raw/ISO image:
+virtctl image-upload dv ${name || '<vm-name>'}-boot-volume \\
+  --namespace ${namespace} \\
+  --size=${
+    resource.spec?.dataVolumeTemplates?.find((d: KubeResourceBuilder) =>
+      d.metadata?.name?.endsWith('-boot-volume')
+    )?.spec?.storage?.resources?.requests?.storage || '30Gi'
+  } \\
+  --uploadproxy-url=https://localhost:3443 \\
+  --insecure \\
+  --image-path=/path/to/disk.qcow2
+
+# 3. Start the VM and stop the port-forward:
+virtctl start ${name || '<vm-name>'} -n ${namespace}
+kill $PF_PID`}
+                  </Box>
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
+                    Supported formats: qcow2, raw, ISO, vmdk (auto-detected). The{' '}
+                    <code>--insecure</code> flag is needed because the port-forward uses a
+                    self-signed certificate.
+                  </Typography>
+                </Alert>
               </Box>
             )}
 
-            {bootSourceId && (
-              <Autocomplete
-                fullWidth
-                sx={{ mt: 2 }}
-                options={storageClasses}
-                value={
-                  resource.spec?.dataVolumeTemplates?.[0]?.spec?.storage?.storageClassName || null
-                }
-                onChange={(_, newValue) => {
-                  const dvts = resource.spec?.dataVolumeTemplates;
-                  if (!dvts?.length) return;
-                  const dvt = { ...dvts[0] };
-                  const storage = { ...dvt.spec?.storage };
-                  if (newValue) {
-                    storage.storageClassName = newValue;
-                  } else {
-                    delete storage.storageClassName;
-                  }
-                  dvt.spec = { ...dvt.spec, storage };
-                  updateSpec({ dataVolumeTemplates: [dvt] });
-                }}
-                renderInput={params => (
-                  <TextField
-                    {...params}
-                    label="Target Storage Class (optional)"
-                    helperText="Storage class for the cloned boot disk. Leave empty to use the cluster default."
-                  />
-                )}
-              />
+            {/* Blank info */}
+            {bootSourceType === 'blank' && (
+              <Alert severity="info" sx={{ mt: 1 }}>
+                A blank disk will be created. You can install an OS via PXE boot or attach an ISO.
+              </Alert>
             )}
-            {bootSourceId && (
-              <TextField
-                fullWidth
-                sx={{ mt: 2 }}
-                label="Boot Disk Size"
-                value={
-                  resource.spec?.dataVolumeTemplates?.find(
-                    (d: KubeResourceBuilder) => d.spec?.sourceRef
-                  )?.spec?.storage?.resources?.requests?.storage || ''
-                }
-                onChange={e => {
-                  const dvts = resource.spec?.dataVolumeTemplates || [];
-                  const idx = dvts.findIndex((d: KubeResourceBuilder) => d.spec?.sourceRef);
-                  if (idx === -1) return;
-                  const dvt = { ...dvts[idx] };
-                  dvt.spec = {
-                    ...dvt.spec,
-                    storage: {
-                      ...dvt.spec?.storage,
-                      resources: {
-                        ...dvt.spec?.storage?.resources,
-                        requests: {
-                          ...dvt.spec?.storage?.resources?.requests,
-                          storage: e.target.value,
-                        },
-                      },
-                    },
-                  };
-                  const newDvts = [...dvts];
-                  newDvts[idx] = dvt;
-                  updateSpec({ dataVolumeTemplates: newDvts });
-                }}
-                helperText="Size of the cloned boot disk (e.g. 30Gi, 50Gi)"
-              />
+
+            {/* Common fields: Size + Storage Class — shown for all boot source types */}
+            {bootSourceType && (
+              <>
+                <Autocomplete
+                  fullWidth
+                  sx={{ mt: 2 }}
+                  options={storageClasses}
+                  value={bootDvt?.spec?.storage?.storageClassName || null}
+                  onChange={(_, newValue) => {
+                    const dvts = resource.spec?.dataVolumeTemplates || [];
+                    const idx = dvts.findIndex(
+                      (d: KubeResourceBuilder) =>
+                        d.spec?.sourceRef || d.metadata?.name?.endsWith('-boot-volume')
+                    );
+                    if (idx === -1) return;
+                    const dvt = { ...dvts[idx] };
+                    const storage = { ...dvt.spec?.storage };
+                    if (newValue) {
+                      storage.storageClassName = newValue;
+                    } else {
+                      delete storage.storageClassName;
+                    }
+                    dvt.spec = { ...dvt.spec, storage };
+                    const newDvts = [...dvts];
+                    newDvts[idx] = dvt;
+                    updateSpec({ dataVolumeTemplates: newDvts });
+                  }}
+                  renderInput={params => (
+                    <TextField
+                      {...params}
+                      label="Target Storage Class (optional)"
+                      helperText="Storage class for the boot disk. Leave empty to use the cluster default."
+                    />
+                  )}
+                />
+                {(() => {
+                  const currentSize = bootDvt?.spec?.storage?.resources?.requests?.storage || '';
+                  const minSize =
+                    bootSourceType === 'dataSource' ? selectedBootSource?.getSize() : '';
+                  const isBelowMin =
+                    !!minSize &&
+                    !!currentSize &&
+                    parseSizeToBytes(currentSize) < parseSizeToBytes(minSize);
+                  return (
+                    <>
+                      <TextField
+                        fullWidth
+                        sx={[{ mt: 2 }, ...(isBelowMin ? [mandatoryFieldSx] : [])]}
+                        label="Boot Disk Size"
+                        value={currentSize}
+                        onChange={e => {
+                          const dvts = resource.spec?.dataVolumeTemplates || [];
+                          const idx = dvts.findIndex(
+                            (d: KubeResourceBuilder) =>
+                              d.spec?.sourceRef || d.metadata?.name?.endsWith('-boot-volume')
+                          );
+                          if (idx === -1) return;
+                          const dvt = { ...dvts[idx] };
+                          dvt.spec = {
+                            ...dvt.spec,
+                            storage: {
+                              ...dvt.spec?.storage,
+                              resources: {
+                                ...dvt.spec?.storage?.resources,
+                                requests: {
+                                  ...dvt.spec?.storage?.resources?.requests,
+                                  storage: e.target.value,
+                                },
+                              },
+                            },
+                          };
+                          const newDvts = [...dvts];
+                          newDvts[idx] = dvt;
+                          updateSpec({ dataVolumeTemplates: newDvts });
+                        }}
+                        helperText="Size of the boot disk (e.g. 30Gi, 50Gi)"
+                      />
+                      {isBelowMin && (
+                        <Alert
+                          severity="warning"
+                          sx={{ mt: 1, '& .MuiAlert-message': { color: '#ffb74d' } }}
+                        >
+                          Disk size <strong>{currentSize}</strong> is below the DataSource minimum
+                          of <strong>{minSize}</strong>. CDI will fail to provision with a smaller
+                          disk.
+                        </Alert>
+                      )}
+                    </>
+                  );
+                })()}
+              </>
             )}
           </AccordionDetails>
         </Accordion>
@@ -2599,42 +2957,54 @@ export default function VMFormFull({
                 </TableCell>
               </TableRow>
 
-              {/* Root Disk (bootable) */}
-              <TableRow>
-                <TableCell>
-                  <Typography variant="body2">rootdisk (bootable)</Typography>
-                </TableCell>
-                <TableCell>
-                  <Typography variant="body2">PVC (DataSource)</Typography>
-                </TableCell>
-                <TableCell>
-                  <Typography variant="body2">
-                    {resource.spec?.dataVolumeTemplates?.find(
-                      (d: KubeResourceBuilder) => d.spec?.sourceRef
-                    )?.spec?.storage?.resources?.requests?.storage ||
-                      selectedBootSource?.getSize() ||
-                      '30Gi'}
-                  </Typography>
-                </TableCell>
-                <TableCell>
-                  <Typography variant="body2">Disk</Typography>
-                </TableCell>
-                <TableCell>
-                  <Typography variant="body2">virtio</Typography>
-                </TableCell>
-                <TableCell>
-                  <Typography variant="body2">
-                    {resource.spec?.dataVolumeTemplates?.find(
-                      (d: KubeResourceBuilder) => d.spec?.sourceRef
-                    )?.spec?.storage?.storageClassName || '-'}
-                  </Typography>
-                </TableCell>
-                <TableCell align="right">
-                  <IconButton size="small" disabled>
-                    <Icon icon="mdi:dots-vertical" />
-                  </IconButton>
-                </TableCell>
-              </TableRow>
+              {/* Root Disk (bootable) — shown when any boot DVT exists */}
+              {bootDvt && (
+                <TableRow>
+                  <TableCell>
+                    <Typography variant="body2">rootdisk (bootable)</Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2">
+                      {bootSourceType === 'dataSource'
+                        ? 'PVC (DataSource)'
+                        : bootSourceType === 'registry'
+                        ? 'Container Registry'
+                        : bootSourceType === 'http'
+                        ? 'HTTP/HTTPS URL'
+                        : bootSourceType === 'pvc'
+                        ? 'PVC Clone'
+                        : bootSourceType === 'upload'
+                        ? 'Upload (virtctl)'
+                        : bootSourceType === 'blank'
+                        ? 'Blank Disk'
+                        : '-'}
+                    </Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2">
+                      {bootDvt?.spec?.storage?.resources?.requests?.storage ||
+                        selectedBootSource?.getSize() ||
+                        '30Gi'}
+                    </Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2">Disk</Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2">virtio</Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2">
+                      {bootDvt?.spec?.storage?.storageClassName || '-'}
+                    </Typography>
+                  </TableCell>
+                  <TableCell align="right">
+                    <IconButton size="small" disabled>
+                      <Icon icon="mdi:dots-vertical" />
+                    </IconButton>
+                  </TableCell>
+                </TableRow>
+              )}
 
               {/* Additional Disks (exclude special volumes) */}
               {currentAdditionalDisks
