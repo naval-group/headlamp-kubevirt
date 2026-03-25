@@ -1,4 +1,10 @@
-import { Link, Resource } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
+import {
+  DateLabel,
+  Link,
+  SectionBox,
+  SectionFilterHeader,
+  Table,
+} from '@kinvolk/headlamp-plugin/lib/CommonComponents';
 import { Box, Chip, Typography } from '@mui/material';
 import { useState } from 'react';
 import { KubeCondition } from '../../types';
@@ -75,128 +81,154 @@ export default function DataSourceList() {
 
   return (
     <>
-      <Resource.ResourceListView
-        title="DataSources"
-        data={items}
-        headerProps={{
-          titleSideActions: [
-            <CreateButtonWithMode
-              key="create"
-              label="Create DataSource"
-              onCreateForm={() => {
-                setCreateInitialTab(0);
-                setCreateDialogOpen(true);
-              }}
-              onCreateYAML={() => {
-                setCreateInitialTab(1);
-                setCreateDialogOpen(true);
-              }}
-            />,
-          ],
-        }}
-        columns={[
-          {
-            id: 'name',
-            label: 'Name',
-            getValue: ds => ds.getName(),
-            render: ds => (
-              <Link
-                routeName="datasource"
-                params={{ name: ds.getName(), namespace: ds.getNamespace() }}
-              >
-                {ds.getName()}
-              </Link>
-            ),
-          },
-          'namespace',
-          {
-            id: 'os',
-            label: 'Operating System',
-            getValue: ds => ds.getOperatingSystem(),
-          },
-          {
-            id: 'instancetype',
-            label: 'Instance Type',
-            getValue: ds => ds.getInstanceType(),
-            render: ds =>
-              ds.getInstanceType() !== '-' ? (
-                <Link routeName="instancetype" params={{ name: ds.getInstanceType() }}>
-                  {ds.getInstanceType()}
-                </Link>
-              ) : (
-                '-'
-              ),
-          },
-          {
-            id: 'preference',
-            label: 'Preference',
-            getValue: ds => ds.getPreference(),
-            render: ds =>
-              ds.getPreference() !== '-' ? (
-                <Link routeName="preference" params={{ name: ds.getPreference() }}>
-                  {ds.getPreference()}
-                </Link>
-              ) : (
-                '-'
-              ),
-          },
-          {
-            id: 'source-pvc',
-            label: 'Source PVC',
-            getValue: ds => ds.getSourcePVCName(),
-          },
-          {
-            id: 'dataimportcron',
-            label: 'DataImportCron',
-            getValue: ds => ds.getDataImportCron(),
-            render: ds =>
-              ds.getDataImportCron() !== '-' ? (
+      <SectionBox
+        title={
+          <SectionFilterHeader
+            title="DataSources"
+            titleSideActions={[
+              <CreateButtonWithMode
+                key="create"
+                label="Create DataSource"
+                onCreateForm={() => {
+                  setCreateInitialTab(0);
+                  setCreateDialogOpen(true);
+                }}
+                onCreateYAML={() => {
+                  setCreateInitialTab(1);
+                  setCreateDialogOpen(true);
+                }}
+              />,
+            ]}
+          />
+        }
+      >
+        <Table
+          data={items ?? []}
+          loading={items === null}
+          columns={[
+            {
+              id: 'name',
+              header: 'Name',
+              accessorFn: (ds: InstanceType<typeof DataSource>) => ds.getName(),
+              Cell: ({ row }: { row: { original: InstanceType<typeof DataSource> } }) => (
                 <Link
-                  routeName="dataimportcron"
-                  params={{ name: ds.getDataImportCron(), namespace: ds.getNamespace() }}
+                  routeName="datasource"
+                  params={{ name: row.original.getName(), namespace: row.original.getNamespace() }}
                 >
-                  {ds.getDataImportCron()}
+                  {row.original.getName()}
                 </Link>
-              ) : (
-                '-'
               ),
-          },
-          {
-            id: 'status',
-            label: 'Status',
-            getValue: ds => {
-              const conditions = ds.status?.conditions || [];
-              const readyCondition = conditions.find((c: KubeCondition) => c.type === 'Ready');
-              const runningCondition = conditions.find((c: KubeCondition) => c.type === 'Running');
-
-              if (readyCondition?.status === 'True') return 'Ready';
-              if (runningCondition?.status === 'True') return 'Running';
-              if (readyCondition?.reason) return readyCondition.reason;
-              return 'Unknown';
             },
-            render: ds => {
-              const conditions = ds.status?.conditions || [];
-              const readyCondition = conditions.find((c: KubeCondition) => c.type === 'Ready');
-              const runningCondition = conditions.find((c: KubeCondition) => c.type === 'Running');
-
-              if (readyCondition?.status === 'True') {
-                return <Chip label="Ready" size="small" color="success" />;
-              } else if (runningCondition?.status === 'True') {
-                return <Chip label="Running" size="small" color="info" />;
-              } else if (
-                readyCondition?.reason === 'Pending' ||
-                readyCondition?.reason === 'Progressing'
-              ) {
-                return <Chip label={readyCondition.reason} size="small" color="warning" />;
-              } else if (readyCondition?.status === 'False') {
-                return <Chip label="Error" size="small" color="error" />;
-              }
-              return <Chip label="Unknown" size="small" color="default" />;
+            {
+              id: 'namespace',
+              header: 'Namespace',
+              accessorFn: (ds: InstanceType<typeof DataSource>) => ds.getNamespace(),
             },
-          },
-          'age',
-        ]}
-      />
+            {
+              id: 'os',
+              header: 'Operating System',
+              accessorFn: (ds: InstanceType<typeof DataSource>) => ds.getOperatingSystem(),
+            },
+            {
+              id: 'instancetype',
+              header: 'Instance Type',
+              accessorFn: (ds: InstanceType<typeof DataSource>) => ds.getInstanceType(),
+              Cell: ({ row }: { row: { original: InstanceType<typeof DataSource> } }) =>
+                row.original.getInstanceType() !== '-' ? (
+                  <Link routeName="instancetype" params={{ name: row.original.getInstanceType() }}>
+                    {row.original.getInstanceType()}
+                  </Link>
+                ) : (
+                  '-'
+                ),
+            },
+            {
+              id: 'preference',
+              header: 'Preference',
+              accessorFn: (ds: InstanceType<typeof DataSource>) => ds.getPreference(),
+              Cell: ({ row }: { row: { original: InstanceType<typeof DataSource> } }) =>
+                row.original.getPreference() !== '-' ? (
+                  <Link routeName="preference" params={{ name: row.original.getPreference() }}>
+                    {row.original.getPreference()}
+                  </Link>
+                ) : (
+                  '-'
+                ),
+            },
+            {
+              id: 'source-pvc',
+              header: 'Source PVC',
+              accessorFn: (ds: InstanceType<typeof DataSource>) => ds.getSourcePVCName(),
+            },
+            {
+              id: 'dataimportcron',
+              header: 'DataImportCron',
+              accessorFn: (ds: InstanceType<typeof DataSource>) => ds.getDataImportCron(),
+              Cell: ({ row }: { row: { original: InstanceType<typeof DataSource> } }) =>
+                row.original.getDataImportCron() !== '-' ? (
+                  <Link
+                    routeName="dataimportcron"
+                    params={{
+                      name: row.original.getDataImportCron(),
+                      namespace: row.original.getNamespace(),
+                    }}
+                  >
+                    {row.original.getDataImportCron()}
+                  </Link>
+                ) : (
+                  '-'
+                ),
+            },
+            {
+              id: 'status',
+              header: 'Status',
+              accessorFn: (ds: InstanceType<typeof DataSource>) => {
+                const conditions = ds.status?.conditions || [];
+                const readyCondition = conditions.find((c: KubeCondition) => c.type === 'Ready');
+                const runningCondition = conditions.find(
+                  (c: KubeCondition) => c.type === 'Running'
+                );
+
+                if (readyCondition?.status === 'True') return 'Ready';
+                if (runningCondition?.status === 'True') return 'Running';
+                if (readyCondition?.reason) return readyCondition.reason;
+                return 'Unknown';
+              },
+              Cell: ({ row }: { row: { original: InstanceType<typeof DataSource> } }) => {
+                const conditions = row.original.status?.conditions || [];
+                const readyCondition = conditions.find((c: KubeCondition) => c.type === 'Ready');
+                const runningCondition = conditions.find(
+                  (c: KubeCondition) => c.type === 'Running'
+                );
+
+                if (readyCondition?.status === 'True') {
+                  return <Chip label="Ready" size="small" color="success" />;
+                } else if (runningCondition?.status === 'True') {
+                  return <Chip label="Running" size="small" color="info" />;
+                } else if (
+                  readyCondition?.reason === 'Pending' ||
+                  readyCondition?.reason === 'Progressing'
+                ) {
+                  return <Chip label={readyCondition.reason} size="small" color="warning" />;
+                } else if (readyCondition?.status === 'False') {
+                  return <Chip label="Error" size="small" color="error" />;
+                }
+                return <Chip label="Unknown" size="small" color="default" />;
+              },
+            },
+            {
+              id: 'age',
+              header: 'Age',
+              accessorFn: (ds: InstanceType<typeof DataSource>) =>
+                ds.metadata?.creationTimestamp || '',
+              Cell: ({ row }: { row: { original: InstanceType<typeof DataSource> } }) => {
+                const ts = row.original.metadata?.creationTimestamp;
+                return ts ? <DateLabel date={ts} /> : '-';
+              },
+            },
+          ]}
+        />
+      </SectionBox>
 
       <CreateResourceDialog
         open={createDialogOpen}

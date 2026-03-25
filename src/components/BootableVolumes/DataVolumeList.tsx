@@ -1,5 +1,11 @@
 import { Icon } from '@iconify/react';
-import { Link, Resource } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
+import {
+  DateLabel,
+  Link,
+  SectionBox,
+  SectionFilterHeader,
+  Table,
+} from '@kinvolk/headlamp-plugin/lib/CommonComponents';
 import { Button, Chip } from '@mui/material';
 import { useState } from 'react';
 import CreateResourceDialog from '../common/CreateResourceDialog';
@@ -7,6 +13,7 @@ import DataVolume from './DataVolume';
 import ImportVolumeForm from './ImportVolumeForm';
 
 export default function DataVolumeList() {
+  const { items } = DataVolume.useList();
   const [importDialogOpen, setImportDialogOpen] = useState(false);
 
   // Empty DataVolume for import
@@ -38,101 +45,119 @@ export default function DataVolumeList() {
 
   return (
     <>
-      <Resource.ResourceListView
-        title="DataVolumes"
-        resourceClass={DataVolume}
-        headerProps={{
-          titleSideActions: [
-            <Button
-              key="import"
-              variant="contained"
-              startIcon={<Icon icon="mdi:upload" />}
-              onClick={() => setImportDialogOpen(true)}
-            >
-              Import Volume
-            </Button>,
-          ],
-          noNamespaceFilter: false,
-        }}
-        columns={[
-          {
-            id: 'name',
-            label: 'Name',
-            getValue: dv => dv.getName(),
-            render: dv => (
-              <Link
-                routeName="datavolume"
-                params={{ name: dv.getName(), namespace: dv.getNamespace() }}
+      <SectionBox
+        title={
+          <SectionFilterHeader
+            title="DataVolumes"
+            titleSideActions={[
+              <Button
+                key="import"
+                variant="contained"
+                startIcon={<Icon icon="mdi:upload" />}
+                onClick={() => setImportDialogOpen(true)}
               >
-                {dv.getName()}
-              </Link>
-            ),
-          },
-          'namespace',
-          {
-            id: 'source',
-            label: 'Source Type',
-            getValue: dv => dv.getSourceType(),
-          },
-          {
-            id: 'size',
-            label: 'Size',
-            getValue: dv => dv.getSize(),
-          },
-          {
-            id: 'storage-class',
-            label: 'Storage Class',
-            getValue: dv => dv.getStorageClass(),
-          },
-          {
-            id: 'content-type',
-            label: 'Content Type',
-            getValue: dv => dv.getContentType(),
-          },
-          {
-            id: 'status',
-            label: 'Status',
-            getValue: dv => {
-              const phase = dv.status?.phase || 'Unknown';
-              return phase;
+                Import Volume
+              </Button>,
+            ]}
+          />
+        }
+      >
+        <Table
+          data={items ?? []}
+          loading={items === null}
+          columns={[
+            {
+              id: 'name',
+              header: 'Name',
+              accessorFn: (dv: InstanceType<typeof DataVolume>) => dv.getName(),
+              Cell: ({ row }: { row: { original: InstanceType<typeof DataVolume> } }) => (
+                <Link
+                  routeName="datavolume"
+                  params={{
+                    name: row.original.getName(),
+                    namespace: row.original.getNamespace(),
+                  }}
+                >
+                  {row.original.getName()}
+                </Link>
+              ),
             },
-            render: dv => {
-              const phase = dv.status?.phase || 'Unknown';
-              let color: 'success' | 'error' | 'warning' | 'info' | 'default' = 'default';
-
-              switch (phase) {
-                case 'Succeeded':
-                  color = 'success';
-                  break;
-                case 'Failed':
-                  color = 'error';
-                  break;
-                case 'Paused':
-                  color = 'warning';
-                  break;
-                case 'Pending':
-                case 'ImportScheduled':
-                case 'ImportInProgress':
-                case 'CloneScheduled':
-                case 'CloneInProgress':
-                case 'SnapshotForSmartCloneInProgress':
-                case 'SmartClonePVCInProgress':
-                case 'CSICloneInProgress':
-                case 'CloneFromSnapshotSourceInProgress':
-                case 'Provisioning':
-                case 'WaitForFirstConsumer':
-                  color = 'info';
-                  break;
-                default:
-                  color = 'default';
-              }
-
-              return <Chip label={phase} size="small" color={color} />;
+            {
+              id: 'namespace',
+              header: 'Namespace',
+              accessorFn: (dv: InstanceType<typeof DataVolume>) => dv.getNamespace(),
             },
-          },
-          'age',
-        ]}
-      />
+            {
+              id: 'source',
+              header: 'Source Type',
+              accessorFn: (dv: InstanceType<typeof DataVolume>) => dv.getSourceType(),
+            },
+            {
+              id: 'size',
+              header: 'Size',
+              accessorFn: (dv: InstanceType<typeof DataVolume>) => dv.getSize(),
+            },
+            {
+              id: 'storage-class',
+              header: 'Storage Class',
+              accessorFn: (dv: InstanceType<typeof DataVolume>) => dv.getStorageClass(),
+            },
+            {
+              id: 'content-type',
+              header: 'Content Type',
+              accessorFn: (dv: InstanceType<typeof DataVolume>) => dv.getContentType(),
+            },
+            {
+              id: 'status',
+              header: 'Status',
+              accessorFn: (dv: InstanceType<typeof DataVolume>) => dv.status?.phase || 'Unknown',
+              Cell: ({ row }: { row: { original: InstanceType<typeof DataVolume> } }) => {
+                const phase = row.original.status?.phase || 'Unknown';
+                let color: 'success' | 'error' | 'warning' | 'info' | 'default' = 'default';
+
+                switch (phase) {
+                  case 'Succeeded':
+                    color = 'success';
+                    break;
+                  case 'Failed':
+                    color = 'error';
+                    break;
+                  case 'Paused':
+                    color = 'warning';
+                    break;
+                  case 'Pending':
+                  case 'ImportScheduled':
+                  case 'ImportInProgress':
+                  case 'CloneScheduled':
+                  case 'CloneInProgress':
+                  case 'SnapshotForSmartCloneInProgress':
+                  case 'SmartClonePVCInProgress':
+                  case 'CSICloneInProgress':
+                  case 'CloneFromSnapshotSourceInProgress':
+                  case 'Provisioning':
+                  case 'WaitForFirstConsumer':
+                    color = 'info';
+                    break;
+                  default:
+                    color = 'default';
+                }
+
+                return <Chip label={phase} size="small" color={color} />;
+              },
+            },
+            {
+              id: 'age',
+              header: 'Age',
+              accessorFn: (dv: InstanceType<typeof DataVolume>) =>
+                dv.metadata?.creationTimestamp || '',
+              Cell: ({ row }: { row: { original: InstanceType<typeof DataVolume> } }) => {
+                const ts = row.original.metadata?.creationTimestamp;
+                return ts ? <DateLabel date={ts} /> : '-';
+              },
+            },
+          ]}
+        />
+      </SectionBox>
 
       <CreateResourceDialog
         open={importDialogOpen}
