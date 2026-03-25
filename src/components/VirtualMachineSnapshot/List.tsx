@@ -132,7 +132,6 @@ function CreateExportDialog({
 }
 
 export default function VirtualMachineSnapshotList() {
-  const { enqueueSnackbar } = useSnackbar();
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [selectedSnapshot, setSelectedSnapshot] = useState<{
     name: string;

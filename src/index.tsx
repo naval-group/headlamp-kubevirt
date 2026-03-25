@@ -24,11 +24,11 @@ import {
 import { ApiProxy } from '@kinvolk/headlamp-plugin/lib';
 import { Alert, Box, Button, IconButton, Snackbar } from '@mui/material';
 import React, { useEffect, useRef, useState } from 'react';
-import ErrorBoundary from './components/common/ErrorBoundary';
 import DataVolumeDetails from './components/BootableVolumes/DataVolumeDetails';
 import DataVolumeList from './components/BootableVolumes/DataVolumeList';
 import DataSourceDetails from './components/BootableVolumes/Details';
 import DataSourceList from './components/BootableVolumes/List';
+import ErrorBoundary from './components/common/ErrorBoundary';
 import DataImportCronDetails from './components/DataImportCrons/Details';
 import DataImportCronList from './components/DataImportCrons/List';
 import InstanceTypeDetails from './components/InstanceTypes/Details';
