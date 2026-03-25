@@ -969,7 +969,7 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                               });
                             } catch (e) {
                               console.error('migration failed', e);
-                              enqueueSnackbar(`Failed to migrate Virtual Machine: ${e}`, {
+                              enqueueSnackbar('Failed to migrate Virtual Machine.', {
                                 variant: 'error',
                               });
                             }
@@ -1338,7 +1338,7 @@ function CreateExportDialog({ open, onClose, snapshotName, namespace }: CreateEx
       onClose();
     } catch (e) {
       console.error('export failed', e);
-      enqueueSnackbar(`Failed to create export: ${e}`, { variant: 'error' });
+      enqueueSnackbar('Failed to create export.', { variant: 'error' });
     } finally {
       setCreating(false);
     }
@@ -1463,7 +1463,7 @@ function CreateSnapshotDialog({ open, onClose, vmName, namespace }: CreateSnapsh
       onClose();
     } catch (e) {
       console.error('snapshot failed', e);
-      enqueueSnackbar(`Failed to create snapshot: ${e}`, { variant: 'error' });
+      enqueueSnackbar('Failed to create snapshot.', { variant: 'error' });
     } finally {
       setCreating(false);
     }

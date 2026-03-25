@@ -66,7 +66,8 @@ function CreateExportDialog({
       enqueueSnackbar(`Export ${exportName} created`, { variant: 'success' });
       onClose();
     } catch (error: unknown) {
-      enqueueSnackbar(`Failed to create export: ${(error as Error).message}`, { variant: 'error' });
+      console.error('Failed to create export:', error);
+      enqueueSnackbar('Failed to create export.', { variant: 'error' });
     } finally {
       setCreating(false);
     }

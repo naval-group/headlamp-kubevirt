@@ -116,6 +116,7 @@ export default function CreateResourceDialog({
         try {
           resourceToSave = yaml.load(yamlContent, { schema: yaml.JSON_SCHEMA });
         } catch (error: unknown) {
+          console.error('Invalid YAML:', error);
           enqueueSnackbar(`Invalid YAML: ${(error as Error).message}`, { variant: 'error' });
           return;
         }
@@ -145,8 +146,9 @@ export default function CreateResourceDialog({
       setActiveTab(0);
       onClose();
     } catch (error: unknown) {
+      console.error(`Failed to ${editMode ? 'update' : 'create'} resource:`, error);
       enqueueSnackbar(
-        `Failed to ${editMode ? 'update' : 'create'} resource: ${(error as Error).message}`,
+        `Failed to ${editMode ? 'update' : 'create'} resource.`,
         { variant: 'error' }
       );
     }
@@ -177,6 +179,7 @@ export default function CreateResourceDialog({
         setActiveTab(1);
         enqueueSnackbar(`File "${file.name}" loaded successfully`, { variant: 'success' });
       } catch (error: unknown) {
+        console.error('Failed to parse file:', error);
         enqueueSnackbar(`Failed to parse file: ${(error as Error).message}`, { variant: 'error' });
       }
     };
@@ -209,6 +212,7 @@ export default function CreateResourceDialog({
       setActiveTab(1);
       enqueueSnackbar('Resource loaded from URL successfully', { variant: 'success' });
     } catch (error: unknown) {
+      console.error('Failed to load from URL:', error);
       enqueueSnackbar(`Failed to load from URL: ${(error as Error).message}`, { variant: 'error' });
     } finally {
       clearTimeout(timeoutId);

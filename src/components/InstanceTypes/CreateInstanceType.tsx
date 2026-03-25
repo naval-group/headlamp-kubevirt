@@ -140,7 +140,8 @@ export default function CreateInstanceType({ open, onClose }: CreateInstanceType
       });
       onClose();
     } catch (error: unknown) {
-      enqueueSnackbar(`Failed to create Instance Type: ${(error as Error).message}`, {
+      console.error('Failed to create Instance Type:', error);
+      enqueueSnackbar('Failed to create Instance Type.', {
         variant: 'error',
       });
     }

@@ -84,7 +84,8 @@ export default function ResourceEditorDialog({
       enqueueSnackbar(`${title} updated successfully`, { variant: 'success' });
       onClose();
     } catch (error: unknown) {
-      enqueueSnackbar(`Failed to save: ${(error as Error).message}`, { variant: 'error' });
+      console.error('Failed to save:', error);
+      enqueueSnackbar('Failed to save.', { variant: 'error' });
     } finally {
       setSaving(false);
     }

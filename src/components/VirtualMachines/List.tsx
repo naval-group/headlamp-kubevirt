@@ -355,7 +355,8 @@ export default function VirtualMachineList() {
               await item.start();
               enqueueSnackbar(`Starting VM ${item.getName()}`, { variant: 'success' });
             } catch (e) {
-              enqueueSnackbar(`Failed to start VM ${item.getName()}: ${e}`, { variant: 'error' });
+              console.error('Failed to start VM:', e);
+              enqueueSnackbar(`Failed to start VM ${item.getName()}.`, { variant: 'error' });
             }
           }}
           disabled={status !== 'Stopped'}
@@ -374,7 +375,8 @@ export default function VirtualMachineList() {
               await item.stop();
               enqueueSnackbar(`Stopping VM ${item.getName()}`, { variant: 'success' });
             } catch (e) {
-              enqueueSnackbar(`Failed to stop VM ${item.getName()}: ${e}`, { variant: 'error' });
+              console.error('Failed to stop VM:', e);
+              enqueueSnackbar(`Failed to stop VM ${item.getName()}.`, { variant: 'error' });
             }
           }}
           disabled={status === 'Stopped' || status === 'Stopping'}
@@ -393,7 +395,8 @@ export default function VirtualMachineList() {
               await item.forceStop();
               enqueueSnackbar(`Force stopping VM ${item.getName()}`, { variant: 'success' });
             } catch (e) {
-              enqueueSnackbar(`Failed to force stop VM ${item.getName()}: ${e}`, {
+              console.error('Failed to force stop VM:', e);
+              enqueueSnackbar(`Failed to force stop VM ${item.getName()}.`, {
                 variant: 'error',
               });
             }
@@ -414,7 +417,8 @@ export default function VirtualMachineList() {
               await item.restart();
               enqueueSnackbar(`Restarting VM ${item.getName()}`, { variant: 'success' });
             } catch (e) {
-              enqueueSnackbar(`Failed to restart VM ${item.getName()}: ${e}`, {
+              console.error('Failed to restart VM:', e);
+              enqueueSnackbar(`Failed to restart VM ${item.getName()}.`, {
                 variant: 'error',
               });
             }
@@ -440,8 +444,9 @@ export default function VirtualMachineList() {
                 enqueueSnackbar(`Pausing VM ${item.getName()}`, { variant: 'success' });
               }
             } catch (e) {
+              console.error(`Failed to ${isPaused ? 'unpause' : 'pause'} VM:`, e);
               enqueueSnackbar(
-                `Failed to ${isPaused ? 'unpause' : 'pause'} VM ${item.getName()}: ${e}`,
+                `Failed to ${isPaused ? 'unpause' : 'pause'} VM ${item.getName()}.`,
                 { variant: 'error' }
               );
             }
@@ -465,7 +470,8 @@ export default function VirtualMachineList() {
                 await item.migrate();
                 enqueueSnackbar(`Migrating VM ${item.getName()}`, { variant: 'success' });
               } catch (e) {
-                enqueueSnackbar(`Failed to migrate VM ${item.getName()}: ${e}`, {
+                console.error('Failed to migrate VM:', e);
+                enqueueSnackbar(`Failed to migrate VM ${item.getName()}.`, {
                   variant: 'error',
                 });
               }
