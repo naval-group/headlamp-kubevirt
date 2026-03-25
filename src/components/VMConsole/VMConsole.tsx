@@ -401,7 +401,7 @@ function VNCPanel({
     'connecting'
   );
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const vncRef = useRef<any>(null);
+  const vncRef = useRef<{ cancel: () => void; getSocket: () => WebSocket } | null>(null);
 
   useEffect(() => {
     if (canvasRef.current && framebufferSize) {
