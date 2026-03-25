@@ -174,32 +174,6 @@ export default function VirtualMachineSnapshotList() {
           },
         ]
       : []),
-    {
-      id: 'delete',
-      action: ({ item, closeMenu }: { item: VirtualMachineSnapshot; closeMenu: () => void }) => {
-        return (
-          <MenuItem
-            onClick={async () => {
-              closeMenu();
-              if (!confirm(`Are you sure you want to delete snapshot "${item.getName()}"?`)) {
-                return;
-              }
-              try {
-                await item.delete();
-                enqueueSnackbar(`Snapshot ${item.getName()} deleted`, { variant: 'success' });
-              } catch (e) {
-                enqueueSnackbar(`Failed to delete snapshot: ${e}`, { variant: 'error' });
-              }
-            }}
-          >
-            <ListItemIcon>
-              <Icon icon="mdi:delete" />
-            </ListItemIcon>
-            <ListItemText>Delete</ListItemText>
-          </MenuItem>
-        );
-      },
-    },
   ];
 
   return (
@@ -276,6 +250,7 @@ export default function VirtualMachineSnapshotList() {
           snapshotNamespace={selectedSnapshot.namespace}
         />
       )}
+
     </>
   );
 }
