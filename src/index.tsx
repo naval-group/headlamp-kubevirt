@@ -24,6 +24,7 @@ import {
 import { ApiProxy } from '@kinvolk/headlamp-plugin/lib';
 import { Alert, Box, Button, IconButton, Snackbar } from '@mui/material';
 import React, { useEffect, useRef, useState } from 'react';
+import ErrorBoundary from './components/common/ErrorBoundary';
 import DataVolumeDetails from './components/BootableVolumes/DataVolumeDetails';
 import DataVolumeList from './components/BootableVolumes/DataVolumeList';
 import DataSourceDetails from './components/BootableVolumes/Details';
@@ -73,7 +74,7 @@ function registerKubeVirtResource(config: ResourceRoute) {
   registerRoute({
     path: `/kubevirt/${config.path}`,
     sidebar: config.name,
-    component: () => <config.ListComponent />,
+    component: () => <ErrorBoundary><config.ListComponent /></ErrorBoundary>,
     exact: true,
   });
 
@@ -85,7 +86,7 @@ function registerKubeVirtResource(config: ResourceRoute) {
     registerRoute({
       path: detailPath,
       sidebar: config.name,
-      component: () => <config.DetailsComponent />,
+      component: () => <ErrorBoundary><config.DetailsComponent /></ErrorBoundary>,
       exact: true,
       name: config.detailsRouteName,
     });
@@ -243,7 +244,7 @@ registerSidebarEntry({
 registerRoute({
   path: '/kubevirt/overview',
   sidebar: 'kubevirt-overview',
-  component: () => <VirtualizationOverview />,
+  component: () => <ErrorBoundary><VirtualizationOverview /></ErrorBoundary>,
   exact: true,
 });
 
@@ -263,14 +264,14 @@ registerKubeVirtResource({
 registerRoute({
   path: '/kubevirt/virtualmachineinstances',
   sidebar: 'virtualmachines',
-  component: () => <VMIList />,
+  component: () => <ErrorBoundary><VMIList /></ErrorBoundary>,
   exact: true,
 });
 
 registerRoute({
   path: '/kubevirt/virtualmachineinstances/:namespace/:name',
   sidebar: 'virtualmachines',
-  component: () => <VMIDetails />,
+  component: () => <ErrorBoundary><VMIDetails /></ErrorBoundary>,
   exact: true,
   name: 'virtualmachineinstance',
 });
@@ -383,6 +384,6 @@ registerSidebarEntry({
 registerRoute({
   path: '/kubevirt/settings',
   sidebar: 'kubevirt-settings',
-  component: () => <KubeVirtSettings />,
+  component: () => <ErrorBoundary><KubeVirtSettings /></ErrorBoundary>,
   exact: true,
 });
