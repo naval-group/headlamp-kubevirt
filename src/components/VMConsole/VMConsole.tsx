@@ -479,16 +479,35 @@ function VNCPanel({
                 const numTypes = buffer[0];
                 const msg = consumeBuffer(1 + numTypes);
                 if (!msg) break;
-                if (numTypes > 0) {
-                  const types = Array.from(msg.slice(1));
+                if (numTypes === 0) {
+                  console.error('VNC server offered zero security types (connection refused).');
+                  setLocalStatus('disconnected');
+                  onStatusChange('disconnected');
+                  setErrorMessage('VNC connection refused by server.');
+                  break;
+                }
+                const types = Array.from(msg.slice(1));
+                  // RFB security type 1 = None (no authentication).
+                  // KubeVirt's VNC proxy handles auth via Kubernetes RBAC — the user must have
+                  // permission to access the VMI subresource. Once past RBAC, the VNC connection
+                  // itself uses type 1 (None) since authentication is already established.
                   if (types.includes(1)) {
                     const socket = vncRef.current?.getSocket();
                     if (socket && socket.readyState === 1) {
                       socket.send(new Uint8Array([1]));
                       rfbState = 'SecurityResult';
                     }
+                  } else {
+                    console.error(
+                      'VNC server does not offer security type None (1). Available types:',
+                      types
+                    );
+                    setLocalStatus('disconnected');
+                    onStatusChange('disconnected');
+                    setErrorMessage(
+                      'VNC connection failed: server requires unsupported authentication.'
+                    );
                   }
-                }
               } else if (rfbState === 'SecurityResult') {
                 const msg = consumeBuffer(4);
                 if (!msg) break;
