@@ -39,6 +39,8 @@ import React, { useState } from 'react';
 import DataSource from '../BootableVolumes/DataSource';
 import CopyCodeBlock from '../common/CopyCodeBlock';
 import MandatoryTextField, { mandatoryFieldSx } from '../common/MandatoryTextField';
+import CatalogButton from '../DataImportCrons/CatalogButton';
+import ImageCatalogPicker, { CatalogSelection } from '../DataImportCrons/ImageCatalogPicker';
 import VirtualMachineClusterInstanceType from '../InstanceTypes/VirtualMachineClusterInstanceType';
 import NetworkAttachmentDefinition from '../NetworkAttachmentDefinitions/NetworkAttachmentDefinition';
 
@@ -287,6 +289,15 @@ export default function VMFormFull({
   // where the DVT doesn't exist until a DataSource is actually picked)
   const [bootSourceTypeOverride, setBootSourceTypeOverride] = React.useState('');
   const bootSourceType = bootSourceTypeOverride || derivedBootSourceType;
+  const [bootCatalogOpen, setBootCatalogOpen] = useState(false);
+
+  const handleBootCatalogSelect = (selection: CatalogSelection) => {
+    setBootSourceTypeOverride('registry');
+    handleBootDvtUpdate(
+      { source: { registry: { url: selection.registryUrl } } },
+      selection.storageSize
+    );
+  };
 
   const resourceMode = resource.spec?.instancetype ? 'instanceType' : 'custom';
   const selectedInstanceTypeName = resource.spec?.instancetype?.name || '';
@@ -2289,6 +2300,10 @@ export default function VMFormFull({
             </Box>
           </AccordionSummary>
           <AccordionDetails>
+            <Box sx={{ mb: 2 }}>
+              <CatalogButton onClick={() => setBootCatalogOpen(true)} />
+            </Box>
+
             {/* Boot Source Type selector */}
             <FormControl fullWidth sx={{ mb: 2 }}>
               <Select
@@ -4710,6 +4725,12 @@ export default function VMFormFull({
           )}
         </AccordionDetails>
       </Accordion>
+
+      <ImageCatalogPicker
+        open={bootCatalogOpen}
+        onClose={() => setBootCatalogOpen(false)}
+        onSelect={handleBootCatalogSelect}
+      />
     </Box>
   );
 }

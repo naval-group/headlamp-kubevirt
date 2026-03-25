@@ -22,7 +22,9 @@ import {
 import { useSnackbar } from 'notistack';
 import React, { useState } from 'react';
 import { KubeListResponse } from '../../types';
+import CatalogButton from './CatalogButton';
 import { CRON_PRESETS, parseCronExpression } from './cronUtils';
+import ImageCatalogPicker, { CatalogSelection } from './ImageCatalogPicker';
 
 interface KubeNamedItem {
   metadata: { name: string };
@@ -78,6 +80,23 @@ export default function CreateDataImportCron({ onClose }: CreateDataImportCronPr
   // Additional options
   const [preallocation, setPreallocation] = useState(false);
   const [priorityClassName, setPriorityClassName] = useState('');
+
+  // Image catalog
+  const [catalogOpen, setCatalogOpen] = useState(false);
+
+  const handleCatalogSelect = (selection: CatalogSelection) => {
+    setSourceType('registry');
+    setRegistryUrl(selection.registryUrl);
+    if (!managedDataSource) {
+      setManagedDataSource(selection.managedDataSourceSuggestion);
+    }
+    // Parse storage size
+    const sizeMatch = selection.storageSize.match(/^(\d+)(Gi|Mi|Ti)$/);
+    if (sizeMatch) {
+      setStorageSize(sizeMatch[1]);
+      setStorageSizeUnit(sizeMatch[2] as 'Gi' | 'Mi' | 'Ti');
+    }
+  };
 
   // Fetch available namespaces
   const [namespaces, setNamespaces] = useState<string[]>([]);
@@ -406,6 +425,10 @@ export default function CreateDataImportCron({ onClose }: CreateDataImportCronPr
               </AccordionSummary>
               <AccordionDetails>
                 <Grid container spacing={2}>
+                  <Grid item xs={12}>
+                    <CatalogButton onClick={() => setCatalogOpen(true)} />
+                  </Grid>
+
                   <Grid item xs={12}>
                     <FormControl fullWidth>
                       <Typography
@@ -910,6 +933,12 @@ export default function CreateDataImportCron({ onClose }: CreateDataImportCronPr
           </Grid>
         </Grid>
       </DialogContent>
+
+      <ImageCatalogPicker
+        open={catalogOpen}
+        onClose={() => setCatalogOpen(false)}
+        onSelect={handleCatalogSelect}
+      />
     </>
   );
 }
