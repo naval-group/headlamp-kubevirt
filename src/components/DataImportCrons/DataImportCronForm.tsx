@@ -125,26 +125,31 @@ export default function DataImportCronForm({
 
   // Fetch namespaces and storage classes
   useEffect(() => {
+    let cancelled = false;
     ApiProxy.request('/api/v1/namespaces')
       .then((response: KubeListResponse<KubeNamedItem>) => {
+        if (cancelled) return;
         const nsList = response?.items?.map(ns => ns.metadata.name) || [];
         setNamespaces(nsList);
       })
-      .catch(err => console.error('Failed to fetch namespaces:', err));
+      .catch(err => { if (!cancelled) console.error('Failed to fetch namespaces:', err); });
 
     ApiProxy.request('/apis/storage.k8s.io/v1/storageclasses')
       .then((response: KubeListResponse<KubeNamedItem>) => {
+        if (cancelled) return;
         const scList = response?.items?.map(sc => sc.metadata.name) || [];
         setStorageClasses(scList);
       })
-      .catch(err => console.error('Failed to fetch storage classes:', err));
+      .catch(err => { if (!cancelled) console.error('Failed to fetch storage classes:', err); });
 
     ApiProxy.request('/apis/instancetype.kubevirt.io/v1beta1/virtualmachineclusterpreferences')
       .then((response: KubeListResponse<KubeNamedItem>) => {
+        if (cancelled) return;
         const prefList = response?.items?.map(p => p.metadata.name) || [];
         setPreferences(prefList);
       })
-      .catch(err => console.error('Failed to fetch preferences:', err));
+      .catch(err => { if (!cancelled) console.error('Failed to fetch preferences:', err); });
+    return () => { cancelled = true; };
   }, []);
 
   const updateGarbageCollect = (value: string) => {
