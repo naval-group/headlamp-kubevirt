@@ -453,10 +453,13 @@ function VNCPanel({
       return consumed;
     }
 
+    let isCancelled = false;
+
     (async function () {
       try {
-        vncRef.current = await item.vnc(
+        const connection = await item.vnc(
           (data: ArrayBuffer) => {
+            if (isCancelled) return;
             const bytes = new Uint8Array(data);
             appendBuffer(bytes);
 
@@ -558,6 +561,7 @@ function VNCPanel({
                   socket.send(updateMsg);
                 }
               } else if (rfbState === 'Normal') {
+                if (!pixelFormat) break;
                 if (buffer.length < 4) break;
                 if (buffer[0] === 0) {
                   const view = new DataView(buffer.buffer, buffer.byteOffset);
@@ -572,7 +576,7 @@ function VNCPanel({
                     const encoding = view.getInt32(offset + 8);
                     requiredSize = offset + 12;
                     if (encoding === 0) {
-                      const bytesPerPixel = pixelFormat!.bitsPerPixel / 8;
+                      const bytesPerPixel = pixelFormat.bitsPerPixel / 8;
                       requiredSize += w * h * bytesPerPixel;
                     }
                     offset = requiredSize;
@@ -595,7 +599,7 @@ function VNCPanel({
                     offset += 12;
 
                     if (encoding === 0 && canvasRef.current) {
-                      const bytesPerPixel = pixelFormat!.bitsPerPixel / 8;
+                      const bytesPerPixel = pixelFormat.bitsPerPixel / 8;
                       const ctx = canvasRef.current.getContext('2d');
                       if (ctx) {
                         const imageData = ctx.createImageData(w, h);
@@ -644,20 +648,30 @@ function VNCPanel({
             reconnectOnFailure: false,
             connectCb: () => {},
             failCb: () => {
+              if (isCancelled) return;
               setLocalStatus('disconnected');
               onStatusChange('disconnected');
               setErrorMessage('VNC connection failed.');
             },
           }
         );
+
+        if (isCancelled) {
+          connection.cancel();
+          return;
+        }
+        vncRef.current = connection;
       } catch (error) {
+        if (isCancelled) return;
+        console.error('VNC connection error:', error);
         setLocalStatus('disconnected');
         onStatusChange('disconnected');
-        setErrorMessage(`Failed to create VNC connection: ${error}`);
+        setErrorMessage('Failed to create VNC connection.');
       }
     })();
 
     return () => {
+      isCancelled = true;
       if (vncRef.current) {
         vncRef.current.cancel();
         vncRef.current = null;
