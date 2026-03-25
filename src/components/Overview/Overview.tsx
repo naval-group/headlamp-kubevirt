@@ -135,237 +135,114 @@ export default function VirtualizationOverview() {
 
         setPrometheusAvailable(true);
 
-        // Build namespace filter for queries
-        const nsFilter = selectedNamespace === 'all' ? '' : `namespace="${selectedNamespace}"`;
+        // Build namespace filter — sanitize to prevent PromQL injection
+        const sanitizedNs = selectedNamespace.replace(/[\\}"]/g, '');
+        const nsFilter = selectedNamespace === 'all' ? '' : `namespace="${sanitizedNs}"`;
 
-        // Query top CPU consumers (rate over 5m)
-        const cpuQuery = `topk(5, rate(kubevirt_vmi_cpu_usage_seconds_total{${nsFilter}}[5m]))`;
-        const cpuResp = await ApiProxy.request(
-          `${promBaseUrl}/api/v1/query?query=${encodeURIComponent(cpuQuery)}`
-        ).catch(() => null);
+        const promQuery = (query: string) =>
+          ApiProxy.request(
+            `${promBaseUrl}/api/v1/query?query=${encodeURIComponent(query)}`
+          ).catch(() => null);
 
-        if (cpuResp?.data?.result) {
-          // Also get vCPU info for each VM
-          const cpuDataPromises = cpuResp.data.result.map(async (r: PromResult) => {
-            const vmName = r.metric.name || r.metric.vmi || 'Unknown';
-            const cpuUsage = parseFloat(r.value[1]) || 0;
+        // Phase 1: Fire all top-level queries in parallel
+        const [
+          cpuResp,
+          memResp,
+          swapInResp,
+          swapOutResp,
+          networkRxResp,
+          networkTxResp,
+          packetsRxResp,
+          packetsTxResp,
+          networkErrorsResp,
+          networkDropsResp,
+          throughputReadResp,
+          throughputWriteResp,
+          iopsReadResp,
+          iopsWriteResp,
+        ] = await Promise.all([
+          promQuery(`topk(5, rate(kubevirt_vmi_cpu_usage_seconds_total{${nsFilter}}[5m]))`),
+          promQuery(`topk(5, kubevirt_vmi_memory_available_bytes{${nsFilter}} - on(name, namespace) kubevirt_vmi_memory_usable_bytes{${nsFilter}})`),
+          promQuery(`topk(5, rate(kubevirt_vmi_memory_swap_in_traffic_bytes{${nsFilter}}[5m]))`),
+          promQuery(`topk(5, rate(kubevirt_vmi_memory_swap_out_traffic_bytes{${nsFilter}}[5m]))`),
+          promQuery(`topk(5, sum by (name, namespace) (rate(kubevirt_vmi_network_receive_bytes_total{${nsFilter}}[5m])))`),
+          promQuery(`topk(5, sum by (name, namespace) (rate(kubevirt_vmi_network_transmit_bytes_total{${nsFilter}}[5m])))`),
+          promQuery(`topk(5, sum by (name, namespace) (rate(kubevirt_vmi_network_receive_packets_total{${nsFilter}}[5m])))`),
+          promQuery(`topk(5, sum by (name, namespace) (rate(kubevirt_vmi_network_transmit_packets_total{${nsFilter}}[5m])))`),
+          promQuery(`topk(5, sum by (name, namespace) (rate(kubevirt_vmi_network_receive_errors_total{${nsFilter}}[5m]) + rate(kubevirt_vmi_network_transmit_errors_total{${nsFilter}}[5m])))`),
+          promQuery(`topk(5, sum by (name, namespace) (rate(kubevirt_vmi_network_receive_packets_dropped_total{${nsFilter}}[5m]) + rate(kubevirt_vmi_network_transmit_packets_dropped_total{${nsFilter}}[5m])))`),
+          promQuery(`topk(5, sum by (name, namespace) (rate(kubevirt_vmi_storage_read_traffic_bytes_total{${nsFilter}}[5m])))`),
+          promQuery(`topk(5, sum by (name, namespace) (rate(kubevirt_vmi_storage_write_traffic_bytes_total{${nsFilter}}[5m])))`),
+          promQuery(`topk(5, sum by (name, namespace) (rate(kubevirt_vmi_storage_iops_read_total{${nsFilter}}[5m])))`),
+          promQuery(`topk(5, sum by (name, namespace) (rate(kubevirt_vmi_storage_iops_write_total{${nsFilter}}[5m])))`),
+        ]);
 
-            // Try to get vCPU count from vm_resource_requests
-            const vcpuQuery = `kubevirt_vm_resource_requests{name="${vmName}",resource="cpu"}`;
-            const vcpuResp = await ApiProxy.request(
-              `${promBaseUrl}/api/v1/query?query=${encodeURIComponent(vcpuQuery)}`
-            ).catch(() => null);
+        // Phase 2: Secondary per-VM queries (vCPU counts, total memory) — also in parallel
+        const cpuDataPromise = cpuResp?.data?.result
+          ? Promise.all(
+              cpuResp.data.result.map(async (r: PromResult) => {
+                const vmName = r.metric.name || r.metric.vmi || 'Unknown';
+                const cpuUsage = parseFloat(r.value[1]) || 0;
+                const vcpuResp = await promQuery(
+                  `kubevirt_vm_resource_requests{name="${vmName.replace(/[\\}"]/g, '')}",resource="cpu"}`
+                );
+                const vcpus = vcpuResp?.data?.result?.[0]?.value?.[1]
+                  ? parseFloat(vcpuResp.data.result[0].value[1])
+                  : undefined;
+                return { name: vmName, value: cpuUsage, vcpus };
+              })
+            )
+          : Promise.resolve([]);
 
-            const vcpus = vcpuResp?.data?.result?.[0]?.value?.[1]
-              ? parseFloat(vcpuResp.data.result[0].value[1])
-              : undefined;
+        const memDataPromise = memResp?.data?.result
+          ? Promise.all(
+              memResp.data.result.map(async (r: PromResult) => {
+                const vmName = r.metric.name || r.metric.vmi || 'Unknown';
+                const usedMemory = parseFloat(r.value[1]) || 0;
+                const totalResp = await promQuery(
+                  `kubevirt_vmi_memory_available_bytes{name="${vmName.replace(/[\\}"]/g, '')}"}`
+                );
+                const total = totalResp?.data?.result?.[0]?.value?.[1]
+                  ? parseFloat(totalResp.data.result[0].value[1])
+                  : undefined;
+                return { name: vmName, value: usedMemory, total };
+              })
+            )
+          : Promise.resolve([]);
 
-            return { name: vmName, value: cpuUsage, vcpus };
+        const [cpuData, memData] = await Promise.all([cpuDataPromise, memDataPromise]);
+
+        // Phase 3: Process all results and merge paired data
+        const mergePair = <T extends Record<string, number>>(
+          respA: any,
+          respB: any,
+          keyA: string,
+          keyB: string
+        ) => {
+          const map = new Map<string, T>();
+          respA?.data?.result?.forEach((r: PromResult) => {
+            const name = r.metric.name || r.metric.vmi || 'Unknown';
+            map.set(name, { [keyA]: parseFloat(r.value[1]) || 0, [keyB]: 0 } as T);
           });
-
-          const cpuData = await Promise.all(cpuDataPromises);
-          setTopCpuConsumers(cpuData);
-        }
-
-        // Query top Memory consumers — available_bytes (guest total RAM) minus usable_bytes
-        // (free + reclaimable) = actual used memory, matching `free -h` output
-        const memQuery = `topk(5, kubevirt_vmi_memory_available_bytes{${nsFilter}} - on(name, namespace) kubevirt_vmi_memory_usable_bytes{${nsFilter}})`;
-        const memResp = await ApiProxy.request(
-          `${promBaseUrl}/api/v1/query?query=${encodeURIComponent(memQuery)}`
-        ).catch(() => null);
-
-        if (memResp?.data?.result) {
-          // Also get total guest-visible memory for each VM
-          const memDataPromises = memResp.data.result.map(async (r: PromResult) => {
-            const vmName = r.metric.name || r.metric.vmi || 'Unknown';
-            const usedMemory = parseFloat(r.value[1]) || 0;
-
-            const totalQuery = `kubevirt_vmi_memory_available_bytes{name="${vmName}"}`;
-            const totalResp = await ApiProxy.request(
-              `${promBaseUrl}/api/v1/query?query=${encodeURIComponent(totalQuery)}`
-            ).catch(() => null);
-
-            const total = totalResp?.data?.result?.[0]?.value?.[1]
-              ? parseFloat(totalResp.data.result[0].value[1])
-              : undefined;
-
-            return { name: vmName, value: usedMemory, total };
+          respB?.data?.result?.forEach((r: PromResult) => {
+            const name = r.metric.name || r.metric.vmi || 'Unknown';
+            const existing = map.get(name) || ({ [keyA]: 0, [keyB]: 0 } as T);
+            map.set(name, { ...existing, [keyB]: parseFloat(r.value[1]) || 0 });
           });
-
-          const memData = await Promise.all(memDataPromises);
-          setTopMemoryConsumers(memData);
-        }
-
-        // Query Memory swap traffic (in and out)
-        const swapInQuery = `topk(5, rate(kubevirt_vmi_memory_swap_in_traffic_bytes{${nsFilter}}[5m]))`;
-        const swapInResp = await ApiProxy.request(
-          `${promBaseUrl}/api/v1/query?query=${encodeURIComponent(swapInQuery)}`
-        ).catch(() => null);
-
-        const swapOutQuery = `topk(5, rate(kubevirt_vmi_memory_swap_out_traffic_bytes{${nsFilter}}[5m]))`;
-        const swapOutResp = await ApiProxy.request(
-          `${promBaseUrl}/api/v1/query?query=${encodeURIComponent(swapOutQuery)}`
-        ).catch(() => null);
-
-        // Merge swap in/out data
-        const swapMap = new Map<string, { inValue: number; outValue: number }>();
-        swapInResp?.data?.result?.forEach((r: PromResult) => {
-          const name = r.metric.name || r.metric.vmi || 'Unknown';
-          swapMap.set(name, { inValue: parseFloat(r.value[1]) || 0, outValue: 0 });
-        });
-        swapOutResp?.data?.result?.forEach((r: PromResult) => {
-          const name = r.metric.name || r.metric.vmi || 'Unknown';
-          const existing = swapMap.get(name) || { inValue: 0, outValue: 0 };
-          swapMap.set(name, { ...existing, outValue: parseFloat(r.value[1]) || 0 });
-        });
-        setTopMemorySwap(
-          Array.from(swapMap.entries())
+          return Array.from(map.entries())
             .map(([name, values]) => ({ name, ...values }))
-            .slice(0, 5)
-        );
+            .slice(0, 5);
+        };
 
-        // Query Network Traffic (RX and TX bytes)
-        // Aggregate by VM name to sum all network interfaces per VM
-        const networkRxQuery = `topk(5, sum by (name, namespace) (rate(kubevirt_vmi_network_receive_bytes_total{${nsFilter}}[5m])))`;
-        const networkRxResp = await ApiProxy.request(
-          `${promBaseUrl}/api/v1/query?query=${encodeURIComponent(networkRxQuery)}`
-        ).catch(() => null);
-
-        const networkTxQuery = `topk(5, sum by (name, namespace) (rate(kubevirt_vmi_network_transmit_bytes_total{${nsFilter}}[5m])))`;
-        const networkTxResp = await ApiProxy.request(
-          `${promBaseUrl}/api/v1/query?query=${encodeURIComponent(networkTxQuery)}`
-        ).catch(() => null);
-
-        // Merge network RX/TX data
-        const networkTrafficMap = new Map<string, { rxValue: number; txValue: number }>();
-        networkRxResp?.data?.result?.forEach((r: PromResult) => {
-          const name = r.metric.name || r.metric.vmi || 'Unknown';
-          networkTrafficMap.set(name, { rxValue: parseFloat(r.value[1]) || 0, txValue: 0 });
-        });
-        networkTxResp?.data?.result?.forEach((r: PromResult) => {
-          const name = r.metric.name || r.metric.vmi || 'Unknown';
-          const existing = networkTrafficMap.get(name) || { rxValue: 0, txValue: 0 };
-          networkTrafficMap.set(name, { ...existing, txValue: parseFloat(r.value[1]) || 0 });
-        });
-        setTopNetworkTraffic(
-          Array.from(networkTrafficMap.entries())
-            .map(([name, values]) => ({ name, ...values }))
-            .slice(0, 5)
-        );
-
-        // Query Network Packets (RX and TX packets)
-        const packetsRxQuery = `topk(5, sum by (name, namespace) (rate(kubevirt_vmi_network_receive_packets_total{${nsFilter}}[5m])))`;
-        const packetsRxResp = await ApiProxy.request(
-          `${promBaseUrl}/api/v1/query?query=${encodeURIComponent(packetsRxQuery)}`
-        ).catch(() => null);
-
-        const packetsTxQuery = `topk(5, sum by (name, namespace) (rate(kubevirt_vmi_network_transmit_packets_total{${nsFilter}}[5m])))`;
-        const packetsTxResp = await ApiProxy.request(
-          `${promBaseUrl}/api/v1/query?query=${encodeURIComponent(packetsTxQuery)}`
-        ).catch(() => null);
-
-        // Merge network packets RX/TX data
-        const networkPacketsMap = new Map<string, { rxValue: number; txValue: number }>();
-        packetsRxResp?.data?.result?.forEach((r: PromResult) => {
-          const name = r.metric.name || r.metric.vmi || 'Unknown';
-          networkPacketsMap.set(name, { rxValue: parseFloat(r.value[1]) || 0, txValue: 0 });
-        });
-        packetsTxResp?.data?.result?.forEach((r: PromResult) => {
-          const name = r.metric.name || r.metric.vmi || 'Unknown';
-          const existing = networkPacketsMap.get(name) || { rxValue: 0, txValue: 0 };
-          networkPacketsMap.set(name, { ...existing, txValue: parseFloat(r.value[1]) || 0 });
-        });
-        setTopNetworkPackets(
-          Array.from(networkPacketsMap.entries())
-            .map(([name, values]) => ({ name, ...values }))
-            .slice(0, 5)
-        );
-
-        // Query Network Errors and Drops
-        const networkErrorsQuery = `topk(5, sum by (name, namespace) (rate(kubevirt_vmi_network_receive_errors_total{${nsFilter}}[5m]) + rate(kubevirt_vmi_network_transmit_errors_total{${nsFilter}}[5m])))`;
-        const networkErrorsResp = await ApiProxy.request(
-          `${promBaseUrl}/api/v1/query?query=${encodeURIComponent(networkErrorsQuery)}`
-        ).catch(() => null);
-
-        const networkDropsQuery = `topk(5, sum by (name, namespace) (rate(kubevirt_vmi_network_receive_packets_dropped_total{${nsFilter}}[5m]) + rate(kubevirt_vmi_network_transmit_packets_dropped_total{${nsFilter}}[5m])))`;
-        const networkDropsResp = await ApiProxy.request(
-          `${promBaseUrl}/api/v1/query?query=${encodeURIComponent(networkDropsQuery)}`
-        ).catch(() => null);
-
-        // Merge network errors and drops data
-        const networkErrorsMap = new Map<string, { errorsValue: number; dropsValue: number }>();
-        networkErrorsResp?.data?.result?.forEach((r: PromResult) => {
-          const name = r.metric.name || r.metric.vmi || 'Unknown';
-          networkErrorsMap.set(name, { errorsValue: parseFloat(r.value[1]) || 0, dropsValue: 0 });
-        });
-        networkDropsResp?.data?.result?.forEach((r: PromResult) => {
-          const name = r.metric.name || r.metric.vmi || 'Unknown';
-          const existing = networkErrorsMap.get(name) || { errorsValue: 0, dropsValue: 0 };
-          networkErrorsMap.set(name, { ...existing, dropsValue: parseFloat(r.value[1]) || 0 });
-        });
-        setTopNetworkErrors(
-          Array.from(networkErrorsMap.entries())
-            .map(([name, values]) => ({ name, ...values }))
-            .slice(0, 5)
-        );
-
-        // Query Storage Throughput (read and write traffic)
-        // Aggregate by VM name to sum all drives per VM
-        const throughputReadQuery = `topk(5, sum by (name, namespace) (rate(kubevirt_vmi_storage_read_traffic_bytes_total{${nsFilter}}[5m])))`;
-        const throughputReadResp = await ApiProxy.request(
-          `${promBaseUrl}/api/v1/query?query=${encodeURIComponent(throughputReadQuery)}`
-        ).catch(() => null);
-
-        const throughputWriteQuery = `topk(5, sum by (name, namespace) (rate(kubevirt_vmi_storage_write_traffic_bytes_total{${nsFilter}}[5m])))`;
-        const throughputWriteResp = await ApiProxy.request(
-          `${promBaseUrl}/api/v1/query?query=${encodeURIComponent(throughputWriteQuery)}`
-        ).catch(() => null);
-
-        // Merge throughput read/write data
-        const throughputMap = new Map<string, { readValue: number; writeValue: number }>();
-        throughputReadResp?.data?.result?.forEach((r: PromResult) => {
-          const name = r.metric.name || r.metric.vmi || 'Unknown';
-          throughputMap.set(name, { readValue: parseFloat(r.value[1]) || 0, writeValue: 0 });
-        });
-        throughputWriteResp?.data?.result?.forEach((r: PromResult) => {
-          const name = r.metric.name || r.metric.vmi || 'Unknown';
-          const existing = throughputMap.get(name) || { readValue: 0, writeValue: 0 };
-          throughputMap.set(name, { ...existing, writeValue: parseFloat(r.value[1]) || 0 });
-        });
-        setTopStorageThroughput(
-          Array.from(throughputMap.entries())
-            .map(([name, values]) => ({ name, ...values }))
-            .slice(0, 5)
-        );
-
-        // Query Storage IOPS (read and write)
-        // Aggregate by VM name to sum all drives per VM
-        const iopsReadQuery = `topk(5, sum by (name, namespace) (rate(kubevirt_vmi_storage_iops_read_total{${nsFilter}}[5m])))`;
-        const iopsReadResp = await ApiProxy.request(
-          `${promBaseUrl}/api/v1/query?query=${encodeURIComponent(iopsReadQuery)}`
-        ).catch(() => null);
-
-        const iopsWriteQuery = `topk(5, sum by (name, namespace) (rate(kubevirt_vmi_storage_iops_write_total{${nsFilter}}[5m])))`;
-        const iopsWriteResp = await ApiProxy.request(
-          `${promBaseUrl}/api/v1/query?query=${encodeURIComponent(iopsWriteQuery)}`
-        ).catch(() => null);
-
-        // Merge IOPS read/write data
-        const iopsMap = new Map<string, { readValue: number; writeValue: number }>();
-        iopsReadResp?.data?.result?.forEach((r: PromResult) => {
-          const name = r.metric.name || r.metric.vmi || 'Unknown';
-          iopsMap.set(name, { readValue: parseFloat(r.value[1]) || 0, writeValue: 0 });
-        });
-        iopsWriteResp?.data?.result?.forEach((r: PromResult) => {
-          const name = r.metric.name || r.metric.vmi || 'Unknown';
-          const existing = iopsMap.get(name) || { readValue: 0, writeValue: 0 };
-          iopsMap.set(name, { ...existing, writeValue: parseFloat(r.value[1]) || 0 });
-        });
-        setTopStorageIOPS(
-          Array.from(iopsMap.entries())
-            .map(([name, values]) => ({ name, ...values }))
-            .slice(0, 5)
-        );
+        // Phase 4: Set all state at once — no staggered rendering
+        setTopCpuConsumers(cpuData);
+        setTopMemoryConsumers(memData);
+        setTopMemorySwap(mergePair(swapInResp, swapOutResp, 'inValue', 'outValue'));
+        setTopNetworkTraffic(mergePair(networkRxResp, networkTxResp, 'rxValue', 'txValue'));
+        setTopNetworkPackets(mergePair(packetsRxResp, packetsTxResp, 'rxValue', 'txValue'));
+        setTopNetworkErrors(mergePair(networkErrorsResp, networkDropsResp, 'errorsValue', 'dropsValue'));
+        setTopStorageThroughput(mergePair(throughputReadResp, throughputWriteResp, 'readValue', 'writeValue'));
+        setTopStorageIOPS(mergePair(iopsReadResp, iopsWriteResp, 'readValue', 'writeValue'));
       } catch (err) {
         setPrometheusAvailable(false);
       }
