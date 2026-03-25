@@ -1,10 +1,11 @@
 import { Icon } from '@iconify/react';
 import { Box, IconButton, Tooltip } from '@mui/material';
+import { MRT_TableInstance } from 'material-react-table';
 import { useSnackbar } from 'notistack';
 import { useCallback, useState } from 'react';
-import { MRT_TableInstance } from 'material-react-table';
-import VirtualMachine from './VirtualMachine';
 import BulkConfirmDialog from './BulkConfirmDialog';
+import VirtualMachine from './VirtualMachine';
+import VMCompareDialog from './VMCompareDialog';
 
 type BulkAction = 'start' | 'stop' | 'forceStop' | 'migrate' | 'delete';
 
@@ -16,6 +17,7 @@ interface BulkActionToolbarProps {
 export default function BulkActionToolbar({ table, liveMigrationEnabled }: BulkActionToolbarProps) {
   const { enqueueSnackbar } = useSnackbar();
   const [confirmAction, setConfirmAction] = useState<BulkAction | null>(null);
+  const [compareOpen, setCompareOpen] = useState(false);
 
   const selectedVMs = table.getSelectedRowModel().rows.map(r => r.original);
 
@@ -82,7 +84,9 @@ export default function BulkActionToolbar({ table, liveMigrationEnabled }: BulkA
       }
       if (failed.length > 0) {
         enqueueSnackbar(
-          `Failed on ${failed.length} VM${failed.length > 1 ? 's' : ''}: ${failed.map(f => f.name).join(', ')}`,
+          `Failed on ${failed.length} VM${failed.length > 1 ? 's' : ''}: ${failed
+            .map(f => f.name)
+            .join(', ')}`,
           { variant: 'error' }
         );
       }
@@ -154,12 +158,27 @@ export default function BulkActionToolbar({ table, liveMigrationEnabled }: BulkA
           </Tooltip>
         )}
 
-        <Tooltip title="Delete">
+        <Tooltip
+          title={
+            selectedVMs.length >= 2 && selectedVMs.length <= 3
+              ? 'Compare'
+              : 'Select 2 or 3 VMs to compare'
+          }
+        >
           <span>
             <IconButton
-              onClick={() => setConfirmAction('delete')}
+              onClick={() => setCompareOpen(true)}
+              disabled={selectedVMs.length < 2 || selectedVMs.length > 3}
               sx={{ fontSize: '1.5rem' }}
             >
+              <Icon icon="mdi:compare" />
+            </IconButton>
+          </span>
+        </Tooltip>
+
+        <Tooltip title="Delete">
+          <span>
+            <IconButton onClick={() => setConfirmAction('delete')} sx={{ fontSize: '1.5rem' }}>
               <Icon icon="mdi:delete" />
             </IconButton>
           </span>
@@ -173,6 +192,13 @@ export default function BulkActionToolbar({ table, liveMigrationEnabled }: BulkA
           vms={selectedVMs}
           onConfirm={() => executeBulkAction(confirmAction)}
           onCancel={() => setConfirmAction(null)}
+        />
+      )}
+
+      {compareOpen && selectedVMs.length >= 2 && selectedVMs.length <= 3 && (
+        <VMCompareDialog
+          vms={selectedVMs.slice(0, 3) as [VirtualMachine, ...VirtualMachine[]]}
+          onClose={() => setCompareOpen(false)}
         />
       )}
     </>

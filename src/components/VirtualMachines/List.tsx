@@ -1,6 +1,10 @@
 import { Icon } from '@iconify/react';
 import { Link } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
-import { SectionBox, SectionFilterHeader, Table } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
+import {
+  SectionBox,
+  SectionFilterHeader,
+  Table,
+} from '@kinvolk/headlamp-plugin/lib/CommonComponents';
 import { DateLabel } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
 import { Box, Chip, ListItemIcon, ListItemText, MenuItem, Tooltip } from '@mui/material';
 import { useSnackbar } from 'notistack';
