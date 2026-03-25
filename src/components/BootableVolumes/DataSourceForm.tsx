@@ -79,8 +79,12 @@ export default function DataSourceForm({
         const nsList = response?.items?.map(ns => ns.metadata.name) || ['default'];
         setNamespaces(nsList);
       })
-      .catch(err => { if (!cancelled) console.error('Failed to fetch namespaces:', err); });
-    return () => { cancelled = true; };
+      .catch(err => {
+        if (!cancelled) console.error('Failed to fetch namespaces:', err);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Fetch PVCs for source namespace
@@ -94,8 +98,12 @@ export default function DataSourceForm({
         const pvcList = response?.items?.map(pvc => pvc.metadata.name) || [];
         setPvcs(pvcList);
       })
-      .catch(err => { if (!cancelled) console.error('Failed to fetch PVCs:', err); });
-    return () => { cancelled = true; };
+      .catch(err => {
+        if (!cancelled) console.error('Failed to fetch PVCs:', err);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [sourceNamespace]);
 
   // Fetch VolumeSnapshots for source namespace
@@ -111,8 +119,12 @@ export default function DataSourceForm({
         const snapshotList = response?.items?.map(snap => snap.metadata.name) || [];
         setSnapshots(snapshotList);
       })
-      .catch(err => { if (!cancelled) console.error('Failed to fetch snapshots:', err); });
-    return () => { cancelled = true; };
+      .catch(err => {
+        if (!cancelled) console.error('Failed to fetch snapshots:', err);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [sourceNamespace]);
 
   // Helper functions to update resource

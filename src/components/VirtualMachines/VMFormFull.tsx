@@ -701,7 +701,9 @@ export default function VMFormFull({
         if (cancelled) return;
         console.error('Failed to fetch namespaces:', err);
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Fetch ConfigMaps, Secrets, ServiceAccounts for selected namespace
@@ -721,7 +723,9 @@ export default function VMFormFull({
           setConfigMaps(cmList);
         }
       )
-      .catch(err => { if (!cancelled) console.error('Failed to fetch configmaps:', err); });
+      .catch(err => {
+        if (!cancelled) console.error('Failed to fetch configmaps:', err);
+      });
 
     // Fetch Secrets
     ApiProxy.request(`/api/v1/namespaces/${namespace}/secrets`)
@@ -735,7 +739,9 @@ export default function VMFormFull({
           setSecrets(secretList);
         }
       )
-      .catch(err => { if (!cancelled) console.error('Failed to fetch secrets:', err); });
+      .catch(err => {
+        if (!cancelled) console.error('Failed to fetch secrets:', err);
+      });
 
     // Fetch ServiceAccounts
     ApiProxy.request(`/api/v1/namespaces/${namespace}/serviceaccounts`)
@@ -749,7 +755,9 @@ export default function VMFormFull({
           setServiceAccounts(saList);
         }
       )
-      .catch(err => { if (!cancelled) console.error('Failed to fetch serviceaccounts:', err); });
+      .catch(err => {
+        if (!cancelled) console.error('Failed to fetch serviceaccounts:', err);
+      });
 
     // Fetch PVCs
     ApiProxy.request(`/api/v1/namespaces/${namespace}/persistentvolumeclaims`)
@@ -763,7 +771,9 @@ export default function VMFormFull({
           setPvcs(pvcList);
         }
       )
-      .catch(err => { if (!cancelled) console.error('Failed to fetch pvcs:', err); });
+      .catch(err => {
+        if (!cancelled) console.error('Failed to fetch pvcs:', err);
+      });
 
     // Fetch VolumeSnapshots
     ApiProxy.request(`/apis/snapshot.storage.k8s.io/v1/namespaces/${namespace}/volumesnapshots`)
@@ -777,7 +787,9 @@ export default function VMFormFull({
           setVolumeSnapshots(vsList);
         }
       )
-      .catch(err => { if (!cancelled) console.error('Failed to fetch volume snapshots:', err); });
+      .catch(err => {
+        if (!cancelled) console.error('Failed to fetch volume snapshots:', err);
+      });
 
     // Fetch DataVolumes
     ApiProxy.request(`/apis/cdi.kubevirt.io/v1beta1/namespaces/${namespace}/datavolumes`)
@@ -791,9 +803,13 @@ export default function VMFormFull({
           setDataVolumes(dvList);
         }
       )
-      .catch(err => { if (!cancelled) console.error('Failed to fetch datavolumes:', err); });
+      .catch(err => {
+        if (!cancelled) console.error('Failed to fetch datavolumes:', err);
+      });
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [namespace]);
 
   // Fetch StorageClasses and Nodes (cluster-wide)
@@ -810,7 +826,9 @@ export default function VMFormFull({
           setStorageClasses(scList);
         }
       )
-      .catch(err => { if (!cancelled) console.error('Failed to fetch storage classes:', err); });
+      .catch(err => {
+        if (!cancelled) console.error('Failed to fetch storage classes:', err);
+      });
 
     // Fetch nodes and extract unique label keys
     ApiProxy.request('/api/v1/nodes')
@@ -829,8 +847,12 @@ export default function VMFormFull({
           setNodeLabels(Array.from(labelKeysSet).sort());
         }
       )
-      .catch(err => { if (!cancelled) console.error('Failed to fetch nodes:', err); });
-    return () => { cancelled = true; };
+      .catch(err => {
+        if (!cancelled) console.error('Failed to fetch nodes:', err);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Helper functions to update resource

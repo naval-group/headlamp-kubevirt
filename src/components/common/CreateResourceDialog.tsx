@@ -147,10 +147,9 @@ export default function CreateResourceDialog({
       onClose();
     } catch (error: unknown) {
       console.error(`Failed to ${editMode ? 'update' : 'create'} resource:`, error);
-      enqueueSnackbar(
-        `Failed to ${editMode ? 'update' : 'create'} resource.`,
-        { variant: 'error' }
-      );
+      enqueueSnackbar(`Failed to ${editMode ? 'update' : 'create'} resource.`, {
+        variant: 'error',
+      });
     }
   };
 
@@ -210,7 +209,9 @@ export default function CreateResourceDialog({
       const MAX_SIZE = 50 * 1024 * 1024;
       const contentLength = response.headers.get('content-length');
       if (contentLength && parseInt(contentLength, 10) > MAX_SIZE) {
-        throw new Error('Response too large (exceeds 50 MB). For larger deployments, consider using Helm charts or kubectl apply.');
+        throw new Error(
+          'Response too large (exceeds 50 MB). For larger deployments, consider using Helm charts or kubectl apply.'
+        );
       }
       const reader = response.body?.getReader();
       if (!reader) {
@@ -224,7 +225,9 @@ export default function CreateResourceDialog({
         totalSize += value.byteLength;
         if (totalSize > MAX_SIZE) {
           reader.cancel();
-          throw new Error('Response too large (exceeds 50 MB). For larger deployments, consider using Helm charts or kubectl apply.');
+          throw new Error(
+            'Response too large (exceeds 50 MB). For larger deployments, consider using Helm charts or kubectl apply.'
+          );
         }
         chunks.push(value);
       }

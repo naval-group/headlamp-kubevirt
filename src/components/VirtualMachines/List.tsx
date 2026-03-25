@@ -445,10 +445,9 @@ export default function VirtualMachineList() {
               }
             } catch (e) {
               console.error(`Failed to ${isPaused ? 'unpause' : 'pause'} VM:`, e);
-              enqueueSnackbar(
-                `Failed to ${isPaused ? 'unpause' : 'pause'} VM ${item.getName()}.`,
-                { variant: 'error' }
-              );
+              enqueueSnackbar(`Failed to ${isPaused ? 'unpause' : 'pause'} VM ${item.getName()}.`, {
+                variant: 'error',
+              });
             }
           }}
           disabled={status !== 'Running'}

@@ -251,7 +251,6 @@ export default function VirtualMachineSnapshotList() {
           snapshotNamespace={selectedSnapshot.namespace}
         />
       )}
-
     </>
   );
 }

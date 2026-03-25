@@ -117,7 +117,6 @@ export default function VirtualMachineExportList() {
         formComponent={VMExportForm}
         validate={r => !!(r?.metadata?.name && r?.metadata?.namespace && r?.spec?.source?.name)}
       />
-
     </>
   );
 }

@@ -74,7 +74,11 @@ function registerKubeVirtResource(config: ResourceRoute) {
   registerRoute({
     path: `/kubevirt/${config.path}`,
     sidebar: config.name,
-    component: () => <ErrorBoundary><config.ListComponent /></ErrorBoundary>,
+    component: () => (
+      <ErrorBoundary>
+        <config.ListComponent />
+      </ErrorBoundary>
+    ),
     exact: true,
   });
 
@@ -86,7 +90,11 @@ function registerKubeVirtResource(config: ResourceRoute) {
     registerRoute({
       path: detailPath,
       sidebar: config.name,
-      component: () => <ErrorBoundary><config.DetailsComponent /></ErrorBoundary>,
+      component: () => (
+        <ErrorBoundary>
+          <config.DetailsComponent />
+        </ErrorBoundary>
+      ),
       exact: true,
       name: config.detailsRouteName,
     });
@@ -244,7 +252,11 @@ registerSidebarEntry({
 registerRoute({
   path: '/kubevirt/overview',
   sidebar: 'kubevirt-overview',
-  component: () => <ErrorBoundary><VirtualizationOverview /></ErrorBoundary>,
+  component: () => (
+    <ErrorBoundary>
+      <VirtualizationOverview />
+    </ErrorBoundary>
+  ),
   exact: true,
 });
 
@@ -264,14 +276,22 @@ registerKubeVirtResource({
 registerRoute({
   path: '/kubevirt/virtualmachineinstances',
   sidebar: 'virtualmachines',
-  component: () => <ErrorBoundary><VMIList /></ErrorBoundary>,
+  component: () => (
+    <ErrorBoundary>
+      <VMIList />
+    </ErrorBoundary>
+  ),
   exact: true,
 });
 
 registerRoute({
   path: '/kubevirt/virtualmachineinstances/:namespace/:name',
   sidebar: 'virtualmachines',
-  component: () => <ErrorBoundary><VMIDetails /></ErrorBoundary>,
+  component: () => (
+    <ErrorBoundary>
+      <VMIDetails />
+    </ErrorBoundary>
+  ),
   exact: true,
   name: 'virtualmachineinstance',
 });
@@ -384,6 +404,10 @@ registerSidebarEntry({
 registerRoute({
   path: '/kubevirt/settings',
   sidebar: 'kubevirt-settings',
-  component: () => <ErrorBoundary><KubeVirtSettings /></ErrorBoundary>,
+  component: () => (
+    <ErrorBoundary>
+      <KubeVirtSettings />
+    </ErrorBoundary>
+  ),
   exact: true,
 });
