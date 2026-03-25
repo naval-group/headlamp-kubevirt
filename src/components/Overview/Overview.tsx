@@ -140,9 +140,9 @@ export default function VirtualizationOverview() {
         const nsFilter = selectedNamespace === 'all' ? '' : `namespace="${sanitizedNs}"`;
 
         const promQuery = (query: string) =>
-          ApiProxy.request(
-            `${promBaseUrl}/api/v1/query?query=${encodeURIComponent(query)}`
-          ).catch(() => null);
+          ApiProxy.request(`${promBaseUrl}/api/v1/query?query=${encodeURIComponent(query)}`).catch(
+            () => null
+          );
 
         // Phase 1: Fire all top-level queries in parallel
         const [
@@ -162,19 +162,41 @@ export default function VirtualizationOverview() {
           iopsWriteResp,
         ] = await Promise.all([
           promQuery(`topk(5, rate(kubevirt_vmi_cpu_usage_seconds_total{${nsFilter}}[5m]))`),
-          promQuery(`topk(5, kubevirt_vmi_memory_available_bytes{${nsFilter}} - on(name, namespace) kubevirt_vmi_memory_usable_bytes{${nsFilter}})`),
+          promQuery(
+            `topk(5, kubevirt_vmi_memory_available_bytes{${nsFilter}} - on(name, namespace) kubevirt_vmi_memory_usable_bytes{${nsFilter}})`
+          ),
           promQuery(`topk(5, rate(kubevirt_vmi_memory_swap_in_traffic_bytes{${nsFilter}}[5m]))`),
           promQuery(`topk(5, rate(kubevirt_vmi_memory_swap_out_traffic_bytes{${nsFilter}}[5m]))`),
-          promQuery(`topk(5, sum by (name, namespace) (rate(kubevirt_vmi_network_receive_bytes_total{${nsFilter}}[5m])))`),
-          promQuery(`topk(5, sum by (name, namespace) (rate(kubevirt_vmi_network_transmit_bytes_total{${nsFilter}}[5m])))`),
-          promQuery(`topk(5, sum by (name, namespace) (rate(kubevirt_vmi_network_receive_packets_total{${nsFilter}}[5m])))`),
-          promQuery(`topk(5, sum by (name, namespace) (rate(kubevirt_vmi_network_transmit_packets_total{${nsFilter}}[5m])))`),
-          promQuery(`topk(5, sum by (name, namespace) (rate(kubevirt_vmi_network_receive_errors_total{${nsFilter}}[5m]) + rate(kubevirt_vmi_network_transmit_errors_total{${nsFilter}}[5m])))`),
-          promQuery(`topk(5, sum by (name, namespace) (rate(kubevirt_vmi_network_receive_packets_dropped_total{${nsFilter}}[5m]) + rate(kubevirt_vmi_network_transmit_packets_dropped_total{${nsFilter}}[5m])))`),
-          promQuery(`topk(5, sum by (name, namespace) (rate(kubevirt_vmi_storage_read_traffic_bytes_total{${nsFilter}}[5m])))`),
-          promQuery(`topk(5, sum by (name, namespace) (rate(kubevirt_vmi_storage_write_traffic_bytes_total{${nsFilter}}[5m])))`),
-          promQuery(`topk(5, sum by (name, namespace) (rate(kubevirt_vmi_storage_iops_read_total{${nsFilter}}[5m])))`),
-          promQuery(`topk(5, sum by (name, namespace) (rate(kubevirt_vmi_storage_iops_write_total{${nsFilter}}[5m])))`),
+          promQuery(
+            `topk(5, sum by (name, namespace) (rate(kubevirt_vmi_network_receive_bytes_total{${nsFilter}}[5m])))`
+          ),
+          promQuery(
+            `topk(5, sum by (name, namespace) (rate(kubevirt_vmi_network_transmit_bytes_total{${nsFilter}}[5m])))`
+          ),
+          promQuery(
+            `topk(5, sum by (name, namespace) (rate(kubevirt_vmi_network_receive_packets_total{${nsFilter}}[5m])))`
+          ),
+          promQuery(
+            `topk(5, sum by (name, namespace) (rate(kubevirt_vmi_network_transmit_packets_total{${nsFilter}}[5m])))`
+          ),
+          promQuery(
+            `topk(5, sum by (name, namespace) (rate(kubevirt_vmi_network_receive_errors_total{${nsFilter}}[5m]) + rate(kubevirt_vmi_network_transmit_errors_total{${nsFilter}}[5m])))`
+          ),
+          promQuery(
+            `topk(5, sum by (name, namespace) (rate(kubevirt_vmi_network_receive_packets_dropped_total{${nsFilter}}[5m]) + rate(kubevirt_vmi_network_transmit_packets_dropped_total{${nsFilter}}[5m])))`
+          ),
+          promQuery(
+            `topk(5, sum by (name, namespace) (rate(kubevirt_vmi_storage_read_traffic_bytes_total{${nsFilter}}[5m])))`
+          ),
+          promQuery(
+            `topk(5, sum by (name, namespace) (rate(kubevirt_vmi_storage_write_traffic_bytes_total{${nsFilter}}[5m])))`
+          ),
+          promQuery(
+            `topk(5, sum by (name, namespace) (rate(kubevirt_vmi_storage_iops_read_total{${nsFilter}}[5m])))`
+          ),
+          promQuery(
+            `topk(5, sum by (name, namespace) (rate(kubevirt_vmi_storage_iops_write_total{${nsFilter}}[5m])))`
+          ),
         ]);
 
         // Phase 2: Secondary per-VM queries (vCPU counts, total memory) — also in parallel
@@ -184,7 +206,10 @@ export default function VirtualizationOverview() {
                 const vmName = r.metric.name || r.metric.vmi || 'Unknown';
                 const cpuUsage = parseFloat(r.value[1]) || 0;
                 const vcpuResp = await promQuery(
-                  `kubevirt_vm_resource_requests{name="${vmName.replace(/[\\}"]/g, '')}",resource="cpu"}`
+                  `kubevirt_vm_resource_requests{name="${vmName.replace(
+                    /[\\}"]/g,
+                    ''
+                  )}",resource="cpu"}`
                 );
                 const vcpus = vcpuResp?.data?.result?.[0]?.value?.[1]
                   ? parseFloat(vcpuResp.data.result[0].value[1])
@@ -213,24 +238,33 @@ export default function VirtualizationOverview() {
         const [cpuData, memData] = await Promise.all([cpuDataPromise, memDataPromise]);
 
         // Phase 3: Process all results and merge paired data
-        const mergePair = <T extends Record<string, number>>(
+        const mergePair = <A extends string, B extends string>(
           respA: any,
           respB: any,
-          keyA: string,
-          keyB: string
-        ) => {
-          const map = new Map<string, T>();
+          keyA: A,
+          keyB: B
+        ): ({ name: string } & Record<A, number> & Record<B, number>)[] => {
+          const map = new Map<string, Record<A | B, number>>();
           respA?.data?.result?.forEach((r: PromResult) => {
             const name = r.metric.name || r.metric.vmi || 'Unknown';
-            map.set(name, { [keyA]: parseFloat(r.value[1]) || 0, [keyB]: 0 } as T);
+            map.set(name, { [keyA]: parseFloat(r.value[1]) || 0, [keyB]: 0 } as Record<
+              A | B,
+              number
+            >);
           });
           respB?.data?.result?.forEach((r: PromResult) => {
             const name = r.metric.name || r.metric.vmi || 'Unknown';
-            const existing = map.get(name) || ({ [keyA]: 0, [keyB]: 0 } as T);
-            map.set(name, { ...existing, [keyB]: parseFloat(r.value[1]) || 0 });
+            const existing = map.get(name) || ({ [keyA]: 0, [keyB]: 0 } as Record<A | B, number>);
+            map.set(name, { ...existing, [keyB]: parseFloat(r.value[1]) || 0 } as Record<
+              A | B,
+              number
+            >);
           });
           return Array.from(map.entries())
-            .map(([name, values]) => ({ name, ...values }))
+            .map(
+              ([name, values]) =>
+                ({ name, ...values } as { name: string } & Record<A, number> & Record<B, number>)
+            )
             .slice(0, 5);
         };
 
@@ -240,8 +274,12 @@ export default function VirtualizationOverview() {
         setTopMemorySwap(mergePair(swapInResp, swapOutResp, 'inValue', 'outValue'));
         setTopNetworkTraffic(mergePair(networkRxResp, networkTxResp, 'rxValue', 'txValue'));
         setTopNetworkPackets(mergePair(packetsRxResp, packetsTxResp, 'rxValue', 'txValue'));
-        setTopNetworkErrors(mergePair(networkErrorsResp, networkDropsResp, 'errorsValue', 'dropsValue'));
-        setTopStorageThroughput(mergePair(throughputReadResp, throughputWriteResp, 'readValue', 'writeValue'));
+        setTopNetworkErrors(
+          mergePair(networkErrorsResp, networkDropsResp, 'errorsValue', 'dropsValue')
+        );
+        setTopStorageThroughput(
+          mergePair(throughputReadResp, throughputWriteResp, 'readValue', 'writeValue')
+        );
         setTopStorageIOPS(mergePair(iopsReadResp, iopsWriteResp, 'readValue', 'writeValue'));
       } catch (err) {
         setPrometheusAvailable(false);
