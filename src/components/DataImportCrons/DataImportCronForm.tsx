@@ -17,7 +17,9 @@ import useResourceEditor from '../../hooks/useResourceEditor';
 import { KubeListResponse } from '../../types';
 import FormSection from '../common/FormSection';
 import MandatoryTextField from '../common/MandatoryTextField';
+import CatalogButton from './CatalogButton';
 import { CRON_PRESETS, parseCronExpression } from './cronUtils';
+import ImageCatalogPicker, { CatalogSelection } from './ImageCatalogPicker';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type KubeResourceBuilder = Record<string, any>;
@@ -42,7 +44,55 @@ export default function DataImportCronForm({
   const [namespaces, setNamespaces] = useState<string[]>([]);
   const [storageClasses, setStorageClasses] = useState<string[]>([]);
   const [preferences, setPreferences] = useState<string[]>([]);
+  const [catalogOpen, setCatalogOpen] = useState(false);
   const { updateMetadata, updateSpec } = useResourceEditor(resource, onChange);
+
+  const handleCatalogSelect = (selection: CatalogSelection) => {
+    // Apply all catalog values at once
+    const labels = { ...resource.metadata?.labels };
+    if (selection.osLabel) {
+      labels['os.template.kubevirt.io/name'] = selection.osLabel;
+    }
+    if (selection.defaultPreference) {
+      labels['instancetype.kubevirt.io/default-preference'] = selection.defaultPreference;
+    } else {
+      delete labels['instancetype.kubevirt.io/default-preference'];
+    }
+
+    // Parse storage size
+    const sizeMatch = selection.storageSize.match(/^(\d+)(Gi|Mi|Ti)$/);
+    const sizeValue = sizeMatch ? sizeMatch[1] : '10';
+    const sizeUnit = sizeMatch ? sizeMatch[2] : 'Gi';
+
+    onChange({
+      ...resource,
+      metadata: {
+        ...resource.metadata,
+        labels,
+      },
+      spec: {
+        ...resource.spec,
+        managedDataSource: selection.managedDataSourceSuggestion,
+        template: {
+          ...resource.spec?.template,
+          spec: {
+            ...resource.spec?.template?.spec,
+            source: {
+              registry: { url: selection.registryUrl },
+            },
+            storage: {
+              ...resource.spec?.template?.spec?.storage,
+              resources: {
+                requests: {
+                  storage: `${sizeValue}${sizeUnit}`,
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+  };
 
   const updateLabel = (key: string, value: string) => {
     const labels = { ...resource.metadata?.labels };
@@ -215,48 +265,6 @@ export default function DataImportCronForm({
         </Grid>
 
         <Grid item xs={12} md={6}>
-          <MandatoryTextField
-            fullWidth
-            label="Managed DataSource"
-            value={resource.spec?.managedDataSource || ''}
-            onChange={e => updateSpec({ managedDataSource: e.target.value })}
-            showErrors={showErrors}
-            helperText="Name of the DataSource to manage"
-          />
-        </Grid>
-
-        <Grid item xs={12} md={6}>
-          <TextField
-            fullWidth
-            label="Operating System"
-            value={resource.metadata?.labels?.['os.template.kubevirt.io/name'] || ''}
-            onChange={e => updateLabel('os.template.kubevirt.io/name', e.target.value)}
-            helperText="OS name (propagated to managed DataSource)"
-            placeholder="e.g. fedora, ubuntu, windows"
-          />
-        </Grid>
-
-        <Grid item xs={12} md={6}>
-          <TextField
-            fullWidth
-            select
-            label="Default Preference"
-            value={resource.metadata?.labels?.['instancetype.kubevirt.io/default-preference'] || ''}
-            onChange={e =>
-              updateLabel('instancetype.kubevirt.io/default-preference', e.target.value)
-            }
-            helperText="Default VirtualMachineClusterPreference for VMs using this source"
-          >
-            <MenuItem value="">None</MenuItem>
-            {preferences.map(p => (
-              <MenuItem key={p} value={p}>
-                {p}
-              </MenuItem>
-            ))}
-          </TextField>
-        </Grid>
-
-        <Grid item xs={12} md={6}>
           <FormControl component="fieldset" fullWidth>
             <FormLabel component="legend" sx={{ mb: 0.5, fontSize: '0.85rem' }}>
               Schedule
@@ -268,7 +276,6 @@ export default function DataImportCronForm({
                 const mode = e.target.value as 'preset' | 'custom';
                 setScheduleMode(mode);
                 if (mode === 'preset') {
-                  // Reset to a default preset if current value isn't one
                   if (!presetValues.includes(currentSchedule)) {
                     updateSpec({ schedule: '0 0 * * *' });
                   }
@@ -313,48 +320,12 @@ export default function DataImportCronForm({
         </Grid>
       </FormSection>
 
-      {/* Garbage Collection */}
-      <FormSection icon="mdi:delete-sweep" title="Garbage Collection" color="migration">
-        <Grid item xs={12} md={6}>
-          <TextField
-            fullWidth
-            select
-            label="Garbage Collect"
-            value={resource.spec?.garbageCollect || 'Outdated'}
-            onChange={e => updateGarbageCollect(e.target.value)}
-            helperText="When to garbage collect old imports"
-          >
-            <MenuItem value="Outdated">Outdated</MenuItem>
-            <MenuItem value="Never">Never</MenuItem>
-          </TextField>
-        </Grid>
-
-        {(resource.spec?.garbageCollect || 'Outdated') === 'Outdated' && (
-          <Grid item xs={12} md={6}>
-            <TextField
-              fullWidth
-              label="Imports to Keep"
-              value={resource.spec?.importsToKeep ?? ''}
-              onChange={e => {
-                const val = e.target.value;
-                if (val === '') {
-                  updateSpec({ importsToKeep: undefined });
-                } else {
-                  const num = parseInt(val);
-                  if (!isNaN(num)) {
-                    updateSpec({ importsToKeep: num });
-                  }
-                }
-              }}
-              inputProps={{ min: 0, type: 'number' }}
-              helperText="Number of old imports to keep"
-            />
-          </Grid>
-        )}
-      </FormSection>
-
       {/* Source Configuration */}
       <FormSection icon="mdi:source-branch" title="Source Configuration" color="storage">
+        <Grid item xs={12}>
+          <CatalogButton onClick={() => setCatalogOpen(true)} />
+        </Grid>
+
         <Grid item xs={12}>
           <FormControl>
             <FormLabel>Source Type</FormLabel>
@@ -435,6 +406,96 @@ export default function DataImportCronForm({
               placeholder="s3://bucket/path/to/image.img"
               showErrors={showErrors}
               helperText="S3 URL to the disk image"
+            />
+          </Grid>
+        )}
+      </FormSection>
+
+      {/* Image Target — fields auto-filled by catalog */}
+      <FormSection icon="mdi:bullseye-arrow" title="Image Target" color="storage">
+        <Grid item xs={12} md={6}>
+          <MandatoryTextField
+            fullWidth
+            label="Managed DataSource"
+            value={resource.spec?.managedDataSource || ''}
+            onChange={e => updateSpec({ managedDataSource: e.target.value })}
+            showErrors={showErrors}
+            helperText="Name of the DataSource to manage"
+          />
+        </Grid>
+
+        <Grid item xs={12} md={6}>
+          <TextField
+            fullWidth
+            label="Operating System"
+            value={resource.metadata?.labels?.['os.template.kubevirt.io/name'] || ''}
+            onChange={e => updateLabel('os.template.kubevirt.io/name', e.target.value)}
+            helperText="OS name (propagated to managed DataSource)"
+            placeholder="e.g. fedora, ubuntu, windows"
+          />
+        </Grid>
+
+        <Grid item xs={12} md={6}>
+          <TextField
+            fullWidth
+            select
+            label="Default Preference"
+            value={resource.metadata?.labels?.['instancetype.kubevirt.io/default-preference'] || ''}
+            onChange={e =>
+              updateLabel('instancetype.kubevirt.io/default-preference', e.target.value)
+            }
+            helperText="Default VirtualMachineClusterPreference for VMs using this source"
+          >
+            <MenuItem value="">None</MenuItem>
+            {preferences.map(p => (
+              <MenuItem key={p} value={p}>
+                {p}
+              </MenuItem>
+            ))}
+          </TextField>
+        </Grid>
+      </FormSection>
+
+      {/* Garbage Collection */}
+      <FormSection
+        icon="mdi:delete-sweep"
+        title="Garbage Collection"
+        color="migration"
+        defaultExpanded={false}
+      >
+        <Grid item xs={12} md={6}>
+          <TextField
+            fullWidth
+            select
+            label="Garbage Collect"
+            value={resource.spec?.garbageCollect || 'Outdated'}
+            onChange={e => updateGarbageCollect(e.target.value)}
+            helperText="When to garbage collect old imports"
+          >
+            <MenuItem value="Outdated">Outdated</MenuItem>
+            <MenuItem value="Never">Never</MenuItem>
+          </TextField>
+        </Grid>
+
+        {(resource.spec?.garbageCollect || 'Outdated') === 'Outdated' && (
+          <Grid item xs={12} md={6}>
+            <TextField
+              fullWidth
+              label="Imports to Keep"
+              value={resource.spec?.importsToKeep ?? ''}
+              onChange={e => {
+                const val = e.target.value;
+                if (val === '') {
+                  updateSpec({ importsToKeep: undefined });
+                } else {
+                  const num = parseInt(val);
+                  if (!isNaN(num)) {
+                    updateSpec({ importsToKeep: num });
+                  }
+                }
+              }}
+              inputProps={{ min: 0, type: 'number' }}
+              helperText="Number of old imports to keep"
             />
           </Grid>
         )}
@@ -548,6 +609,12 @@ export default function DataImportCronForm({
           />
         </Grid>
       </FormSection>
+
+      <ImageCatalogPicker
+        open={catalogOpen}
+        onClose={() => setCatalogOpen(false)}
+        onSelect={handleCatalogSelect}
+      />
     </Box>
   );
 }
