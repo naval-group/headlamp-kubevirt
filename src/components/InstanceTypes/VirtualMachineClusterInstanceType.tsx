@@ -59,6 +59,10 @@ class VirtualMachineClusterInstanceType extends KubeObject {
   static isNamespaced = false;
   static apiName = 'virtualmachineclusterinstancetypes';
   static apiPlural = 'virtualmachineclusterinstancetypes';
+
+  static get detailsRoute() {
+    return 'instancetype';
+  }
 }
 
 export default VirtualMachineClusterInstanceType;

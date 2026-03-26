@@ -108,6 +108,10 @@ class DataImportCron extends KubeObject {
   static isNamespaced = true;
   static apiName = 'dataimportcrons';
   static apiPlural = 'dataimportcrons';
+
+  static get detailsRoute() {
+    return 'dataimportcron';
+  }
 }
 
 export default DataImportCron;

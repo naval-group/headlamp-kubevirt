@@ -88,6 +88,10 @@ class DataSource extends KubeObject {
   static isNamespaced = true;
   static apiName = 'datasources';
   static apiPlural = 'datasources';
+
+  static get detailsRoute() {
+    return 'datasource';
+  }
 }
 
 export default DataSource;

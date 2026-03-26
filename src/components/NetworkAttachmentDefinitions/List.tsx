@@ -1,5 +1,11 @@
 import { ApiProxy } from '@kinvolk/headlamp-plugin/lib';
-import { Link, Resource, SectionBox } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
+import {
+  DateLabel,
+  Link,
+  SectionBox,
+  SectionFilterHeader,
+  Table,
+} from '@kinvolk/headlamp-plugin/lib/CommonComponents';
 import { Alert, Chip, Typography } from '@mui/material';
 import React, { useEffect, useState } from 'react';
 import CreateButtonWithMode from '../common/CreateButtonWithMode';
@@ -43,6 +49,7 @@ const TYPE_COLORS: Record<
 };
 
 export default function NADList() {
+  const { items } = NetworkAttachmentDefinition.useList();
   const [createOpen, setCreateOpen] = useState(false);
   const [createInitialTab, setCreateInitialTab] = useState(0);
   const [multusInstalled, setMultusInstalled] = useState<boolean | null>(null);
@@ -57,7 +64,7 @@ export default function NADList() {
 
   if (multusInstalled === false) {
     return (
-      <SectionBox title="Networks">
+      <SectionBox title={<SectionFilterHeader title="Networks" />}>
         <Alert severity="info" sx={{ m: 2 }}>
           <Typography variant="body2">
             <strong>Multus CNI is not installed.</strong> Network Attachment Definitions require{' '}
@@ -77,98 +84,145 @@ export default function NADList() {
 
   return (
     <>
-      <Resource.ResourceListView
-        title="Networks"
-        resourceClass={NetworkAttachmentDefinition}
-        columns={[
-          {
-            id: 'name',
-            label: 'Name',
-            getValue: (nad: InstanceType<typeof NetworkAttachmentDefinition>) => nad.getName(),
-            render: (nad: InstanceType<typeof NetworkAttachmentDefinition>) => (
-              <Link routeName="nad" params={{ name: nad.getName(), namespace: nad.getNamespace() }}>
-                {nad.getName()}
-              </Link>
-            ),
-          },
-          'namespace',
-          {
-            id: 'type',
-            label: 'Type',
-            getValue: (nad: InstanceType<typeof NetworkAttachmentDefinition>) =>
-              nad.getNetworkType(),
-            render: (nad: InstanceType<typeof NetworkAttachmentDefinition>) => {
-              const type = nad.getNetworkType();
-              return (
-                <Chip
-                  label={type}
-                  size="small"
-                  color={TYPE_COLORS[type] || 'default'}
-                  variant="filled"
-                />
-              );
-            },
-          },
-          {
-            id: 'ipam',
-            label: 'IPAM',
-            getValue: (nad: InstanceType<typeof NetworkAttachmentDefinition>) => nad.getIPAMType(),
-            render: (nad: InstanceType<typeof NetworkAttachmentDefinition>) => {
-              const ipamType = nad.getIPAMType();
-              return <Chip label={ipamType} size="small" variant="outlined" />;
-            },
-          },
-          {
-            id: 'details',
-            label: 'Details',
-            getValue: (nad: InstanceType<typeof NetworkAttachmentDefinition>) => {
-              const config = nad.getParsedConfig();
-              const parts: string[] = [];
-              if (config.bridge) parts.push(`bridge: ${config.bridge}`);
-              if (config.master) parts.push(`master: ${config.master}`);
-              if (config.vlanId) parts.push(`vlan: ${config.vlanId}`);
-              if (config.mtu) parts.push(`mtu: ${config.mtu}`);
-              if (config.mode) parts.push(`mode: ${config.mode}`);
-              return parts.join(' · ') || '-';
-            },
-            render: (nad: InstanceType<typeof NetworkAttachmentDefinition>) => {
-              const config = nad.getParsedConfig();
-              const parts: string[] = [];
-              if (config.bridge) parts.push(`bridge: ${config.bridge}`);
-              if (config.master) parts.push(`master: ${config.master}`);
-              if (config.vlanId) parts.push(`vlan: ${config.vlanId}`);
-              if (config.mtu) parts.push(`mtu: ${config.mtu}`);
-              if (config.mode) parts.push(`mode: ${config.mode}`);
-              return (
-                <Typography
-                  variant="body2"
-                  color="text.secondary"
-                  sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}
+      <SectionBox
+        title={
+          <SectionFilterHeader
+            title="Networks"
+            titleSideActions={[
+              <CreateButtonWithMode
+                key="create"
+                label="Create Network"
+                onCreateForm={() => {
+                  setCreateInitialTab(0);
+                  setCreateOpen(true);
+                }}
+                onCreateYAML={() => {
+                  setCreateInitialTab(1);
+                  setCreateOpen(true);
+                }}
+              />,
+            ]}
+          />
+        }
+      >
+        <Table
+          data={items ?? []}
+          loading={items === null}
+          columns={[
+            {
+              id: 'name',
+              header: 'Name',
+              accessorFn: (nad: InstanceType<typeof NetworkAttachmentDefinition>) => nad.getName(),
+              Cell: ({
+                row,
+              }: {
+                row: { original: InstanceType<typeof NetworkAttachmentDefinition> };
+              }) => (
+                <Link
+                  routeName="nad"
+                  params={{
+                    name: row.original.getName(),
+                    namespace: row.original.getNamespace(),
+                  }}
                 >
-                  {parts.join(' · ') || '-'}
-                </Typography>
-              );
+                  {row.original.getName()}
+                </Link>
+              ),
             },
-          },
-          'age',
-        ]}
-        headerProps={{
-          titleSideActions: [
-            <CreateButtonWithMode
-              key="create"
-              label="Create Network"
-              onCreateForm={() => {
-                setCreateInitialTab(0);
-                setCreateOpen(true);
-              }}
-              onCreateYAML={() => {
-                setCreateInitialTab(1);
-                setCreateOpen(true);
-              }}
-            />,
-          ],
-        }}
-      />
+            {
+              id: 'namespace',
+              header: 'Namespace',
+              accessorFn: (nad: InstanceType<typeof NetworkAttachmentDefinition>) =>
+                nad.getNamespace(),
+            },
+            {
+              id: 'type',
+              header: 'Type',
+              accessorFn: (nad: InstanceType<typeof NetworkAttachmentDefinition>) =>
+                nad.getNetworkType(),
+              Cell: ({
+                row,
+              }: {
+                row: { original: InstanceType<typeof NetworkAttachmentDefinition> };
+              }) => {
+                const type = row.original.getNetworkType();
+                return (
+                  <Chip
+                    label={type}
+                    size="small"
+                    color={TYPE_COLORS[type] || 'default'}
+                    variant="filled"
+                  />
+                );
+              },
+            },
+            {
+              id: 'ipam',
+              header: 'IPAM',
+              accessorFn: (nad: InstanceType<typeof NetworkAttachmentDefinition>) =>
+                nad.getIPAMType(),
+              Cell: ({
+                row,
+              }: {
+                row: { original: InstanceType<typeof NetworkAttachmentDefinition> };
+              }) => {
+                const ipamType = row.original.getIPAMType();
+                return <Chip label={ipamType} size="small" variant="outlined" />;
+              },
+            },
+            {
+              id: 'details',
+              header: 'Details',
+              accessorFn: (nad: InstanceType<typeof NetworkAttachmentDefinition>) => {
+                const config = nad.getParsedConfig();
+                const parts: string[] = [];
+                if (config.bridge) parts.push(`bridge: ${config.bridge}`);
+                if (config.master) parts.push(`master: ${config.master}`);
+                if (config.vlanId) parts.push(`vlan: ${config.vlanId}`);
+                if (config.mtu) parts.push(`mtu: ${config.mtu}`);
+                if (config.mode) parts.push(`mode: ${config.mode}`);
+                return parts.join(' · ') || '-';
+              },
+              Cell: ({
+                row,
+              }: {
+                row: { original: InstanceType<typeof NetworkAttachmentDefinition> };
+              }) => {
+                const config = row.original.getParsedConfig();
+                const parts: string[] = [];
+                if (config.bridge) parts.push(`bridge: ${config.bridge}`);
+                if (config.master) parts.push(`master: ${config.master}`);
+                if (config.vlanId) parts.push(`vlan: ${config.vlanId}`);
+                if (config.mtu) parts.push(`mtu: ${config.mtu}`);
+                if (config.mode) parts.push(`mode: ${config.mode}`);
+                return (
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}
+                  >
+                    {parts.join(' · ') || '-'}
+                  </Typography>
+                );
+              },
+            },
+            {
+              id: 'age',
+              header: 'Age',
+              accessorFn: (nad: InstanceType<typeof NetworkAttachmentDefinition>) =>
+                nad.metadata?.creationTimestamp || '',
+              Cell: ({
+                row,
+              }: {
+                row: { original: InstanceType<typeof NetworkAttachmentDefinition> };
+              }) => {
+                const ts = row.original.metadata?.creationTimestamp;
+                return ts ? <DateLabel date={ts} /> : '-';
+              },
+            },
+          ]}
+        />
+      </SectionBox>
 
       <CreateResourceDialog
         open={createOpen}

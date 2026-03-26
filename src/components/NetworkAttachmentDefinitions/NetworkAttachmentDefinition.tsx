@@ -54,6 +54,10 @@ class NetworkAttachmentDefinition extends KubeObject {
   static isNamespaced = true;
   static apiName = 'network-attachment-definitions';
   static apiPlural = 'network-attachment-definitions';
+
+  static get detailsRoute() {
+    return 'nad';
+  }
 }
 
 export default NetworkAttachmentDefinition;
