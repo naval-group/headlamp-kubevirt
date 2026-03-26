@@ -13,7 +13,7 @@ FROM busybox:latest@sha256:b3255e7dfbcd10cb367af0d409747d511aeb66dfac98cf30e97e8
 COPY --from=builder /plugin/dist /plugins/kubevirt/
 COPY --from=builder /plugin/package.json /plugins/kubevirt/
 
-LABEL org.opencontainers.image.source=https://github.com/naval-group/kubevirt
+LABEL org.opencontainers.image.source=https://github.com/naval-group/headlamp-kubevirt
 LABEL org.opencontainers.image.licenses=Apache-2.0
 
 USER 1001
