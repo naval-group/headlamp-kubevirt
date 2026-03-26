@@ -1,14 +1,20 @@
-import { Link, Resource } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
+import {
+  DateLabel,
+  Link,
+  SectionBox,
+  SectionFilterHeader,
+  Table,
+} from '@kinvolk/headlamp-plugin/lib/CommonComponents';
 import { Box, Chip, Typography } from '@mui/material';
 import VirtualMachineInstanceMigration from './VirtualMachineInstanceMigration';
 
 export default function MigrationList() {
-  const { items, errors } = VirtualMachineInstanceMigration.useList();
+  const { items } = VirtualMachineInstanceMigration.useList();
 
   // Check if there are no migrations
   const hasMigrations = items && items.length > 0;
 
-  if (!hasMigrations && !errors) {
+  if (!hasMigrations && items !== null) {
     return (
       <Box
         sx={{
@@ -35,77 +41,98 @@ export default function MigrationList() {
   }
 
   return (
-    <Resource.ResourceListView
-      title="VM Migrations"
-      data={items}
-      columns={[
-        {
-          id: 'name',
-          label: 'Migration Name',
-          getValue: migration => migration.getName(),
-          render: migration => (
-            <Link
-              routeName="/kubevirt/migrations/:namespace/:name"
-              params={{ name: migration.getName(), namespace: migration.getNamespace() }}
-            >
-              {migration.getName()}
-            </Link>
-          ),
-        },
-        {
-          id: 'vmi',
-          label: 'Virtual Machine',
-          getValue: migration => migration.getVMIName(),
-          render: migration => (
-            <Link
-              routeName="/kubevirt/virtualmachines/:namespace/:name"
-              params={{
-                name: migration.getVMIName(),
-                namespace: migration.getNamespace(),
-              }}
-            >
-              {migration.getVMIName()}
-            </Link>
-          ),
-        },
-        {
-          id: 'source',
-          label: 'Source Node',
-          getValue: migration => migration.getSourceNode(),
-        },
-        {
-          id: 'target',
-          label: 'Target Node',
-          getValue: migration => migration.getTargetNode(),
-        },
-        {
-          id: 'phase',
-          label: 'Status',
-          getValue: migration => migration.getPhase(),
-          render: migration => {
-            const phase = migration.getPhase();
-            let color: 'default' | 'primary' | 'success' | 'error' | 'warning' = 'default';
-
-            if (phase === 'Succeeded') {
-              color = 'success';
-            } else if (phase === 'Failed') {
-              color = 'error';
-            } else if (phase === 'Running' || phase === 'Scheduling') {
-              color = 'primary';
-            } else if (phase === 'Pending') {
-              color = 'warning';
-            }
-
-            return <Chip label={phase} color={color} size="small" />;
+    <SectionBox title={<SectionFilterHeader title="VM Migrations" />}>
+      <Table
+        data={items ?? []}
+        loading={items === null}
+        columns={[
+          {
+            id: 'name',
+            header: 'Migration Name',
+            accessorFn: (migration: InstanceType<typeof VirtualMachineInstanceMigration>) =>
+              migration.getName(),
           },
-        },
-        {
-          id: 'started',
-          label: 'Started',
-          getValue: migration => migration.getStartTime(),
-        },
-        'age',
-      ]}
-    />
+          {
+            id: 'vmi',
+            header: 'Virtual Machine',
+            accessorFn: (migration: InstanceType<typeof VirtualMachineInstanceMigration>) =>
+              migration.getVMIName(),
+            Cell: ({
+              row,
+            }: {
+              row: { original: InstanceType<typeof VirtualMachineInstanceMigration> };
+            }) => (
+              <Link
+                routeName="virtualmachine"
+                params={{
+                  name: row.original.getVMIName(),
+                  namespace: row.original.getNamespace(),
+                }}
+              >
+                {row.original.getVMIName()}
+              </Link>
+            ),
+          },
+          {
+            id: 'source',
+            header: 'Source Node',
+            accessorFn: (migration: InstanceType<typeof VirtualMachineInstanceMigration>) =>
+              migration.getSourceNode(),
+          },
+          {
+            id: 'target',
+            header: 'Target Node',
+            accessorFn: (migration: InstanceType<typeof VirtualMachineInstanceMigration>) =>
+              migration.getTargetNode(),
+          },
+          {
+            id: 'phase',
+            header: 'Status',
+            accessorFn: (migration: InstanceType<typeof VirtualMachineInstanceMigration>) =>
+              migration.getPhase(),
+            Cell: ({
+              row,
+            }: {
+              row: { original: InstanceType<typeof VirtualMachineInstanceMigration> };
+            }) => {
+              const phase = row.original.getPhase();
+              let color: 'default' | 'primary' | 'success' | 'error' | 'warning' = 'default';
+
+              if (phase === 'Succeeded') {
+                color = 'success';
+              } else if (phase === 'Failed') {
+                color = 'error';
+              } else if (phase === 'Running' || phase === 'Scheduling') {
+                color = 'primary';
+              } else if (phase === 'Pending') {
+                color = 'warning';
+              }
+
+              return <Chip label={phase} color={color} size="small" />;
+            },
+          },
+          {
+            id: 'started',
+            header: 'Started',
+            accessorFn: (migration: InstanceType<typeof VirtualMachineInstanceMigration>) =>
+              migration.getStartTime(),
+          },
+          {
+            id: 'age',
+            header: 'Age',
+            accessorFn: (migration: InstanceType<typeof VirtualMachineInstanceMigration>) =>
+              migration.metadata?.creationTimestamp || '',
+            Cell: ({
+              row,
+            }: {
+              row: { original: InstanceType<typeof VirtualMachineInstanceMigration> };
+            }) => {
+              const ts = row.original.metadata?.creationTimestamp;
+              return ts ? <DateLabel date={ts} /> : '-';
+            },
+          },
+        ]}
+      />
+    </SectionBox>
   );
 }

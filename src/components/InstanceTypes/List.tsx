@@ -1,4 +1,10 @@
-import { Link, Resource } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
+import {
+  DateLabel,
+  Link,
+  SectionBox,
+  SectionFilterHeader,
+  Table,
+} from '@kinvolk/headlamp-plugin/lib/CommonComponents';
 import { Box, Tab, Tabs } from '@mui/material';
 import React from 'react';
 import CreateButtonWithMode from '../common/CreateButtonWithMode';
@@ -59,54 +65,69 @@ export default function InstanceTypeList() {
         </Tabs>
       </Box>
 
-      <Resource.ResourceListView
-        title="Instance Types"
-        data={currentData}
-        headerProps={{
-          titleSideActions: [
-            <CreateButtonWithMode
-              key="create"
-              label="Create Instance Type"
-              onCreateForm={() => {
-                setCreateInitialTab(0);
-                setCreateDialogOpen(true);
-              }}
-              onCreateYAML={() => {
-                setCreateInitialTab(1);
-                setCreateDialogOpen(true);
-              }}
-            />,
-          ],
-        }}
-        columns={[
-          {
-            id: 'name',
-            label: 'Name',
-            getValue: it => it.getName(),
-            render: it => (
-              <Link routeName="/kubevirt/instancetypes/:name" params={{ name: it.getName() }}>
-                {it.getName()}
-              </Link>
-            ),
-          },
-          {
-            id: 'cpu',
-            label: 'CPU',
-            getValue: it => it.getCPU(),
-          },
-          {
-            id: 'memory',
-            label: 'Memory',
-            getValue: it => it.getMemory(),
-          },
-          {
-            id: 'vendor',
-            label: 'Vendor',
-            getValue: it => it.getVendor(),
-          },
-          'age',
-        ]}
-      />
+      <SectionBox
+        title={
+          <SectionFilterHeader
+            title="Instance Types"
+            titleSideActions={[
+              <CreateButtonWithMode
+                key="create"
+                label="Create Instance Type"
+                onCreateForm={() => {
+                  setCreateInitialTab(0);
+                  setCreateDialogOpen(true);
+                }}
+                onCreateYAML={() => {
+                  setCreateInitialTab(1);
+                  setCreateDialogOpen(true);
+                }}
+              />,
+            ]}
+          />
+        }
+      >
+        <Table
+          data={currentData ?? []}
+          loading={instanceTypes === null}
+          columns={[
+            {
+              id: 'name',
+              header: 'Name',
+              accessorFn: (it: VirtualMachineClusterInstanceType) => it.getName(),
+              Cell: ({ row }: { row: { original: VirtualMachineClusterInstanceType } }) => (
+                <Link routeName="instancetype" params={{ name: row.original.getName() }}>
+                  {row.original.getName()}
+                </Link>
+              ),
+            },
+            {
+              id: 'cpu',
+              header: 'CPU',
+              accessorFn: (it: VirtualMachineClusterInstanceType) => it.getCPU(),
+            },
+            {
+              id: 'memory',
+              header: 'Memory',
+              accessorFn: (it: VirtualMachineClusterInstanceType) => it.getMemory(),
+            },
+            {
+              id: 'vendor',
+              header: 'Vendor',
+              accessorFn: (it: VirtualMachineClusterInstanceType) => it.getVendor(),
+            },
+            {
+              id: 'age',
+              header: 'Age',
+              accessorFn: (it: VirtualMachineClusterInstanceType) =>
+                it.metadata?.creationTimestamp || '',
+              Cell: ({ row }: { row: { original: VirtualMachineClusterInstanceType } }) => {
+                const ts = row.original.metadata?.creationTimestamp;
+                return ts ? <DateLabel date={ts} /> : '-';
+              },
+            },
+          ]}
+        />
+      </SectionBox>
 
       <CreateResourceDialog
         open={createDialogOpen}

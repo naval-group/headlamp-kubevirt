@@ -42,6 +42,10 @@ class VirtualMachineSnapshot extends KubeObject {
   static isNamespaced = true;
   static apiName = 'virtualmachinesnapshots';
   static apiPlural = 'virtualmachinesnapshots';
+
+  static get detailsRoute() {
+    return 'snapshot';
+  }
 }
 
 export default VirtualMachineSnapshot;

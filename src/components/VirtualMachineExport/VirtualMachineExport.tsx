@@ -57,6 +57,10 @@ class VirtualMachineExport extends KubeObject {
   static isNamespaced = true;
   static apiName = 'virtualmachineexports';
   static apiPlural = 'virtualmachineexports';
+
+  static get detailsRoute() {
+    return 'export';
+  }
 }
 
 export default VirtualMachineExport;

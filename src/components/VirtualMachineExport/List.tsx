@@ -1,4 +1,10 @@
-import { Link, Resource } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
+import {
+  DateLabel,
+  Link,
+  SectionBox,
+  SectionFilterHeader,
+  Table,
+} from '@kinvolk/headlamp-plugin/lib/CommonComponents';
 import { Chip, Tooltip } from '@mui/material';
 import { useState } from 'react';
 import CreateButtonWithMode from '../common/CreateButtonWithMode';
@@ -24,88 +30,115 @@ const INITIAL_EXPORT = {
 };
 
 export default function VirtualMachineExportList() {
+  const { items } = VirtualMachineExport.useList();
   const [createOpen, setCreateOpen] = useState(false);
   const [createInitialTab, setCreateInitialTab] = useState(0);
 
   return (
     <>
-      <Resource.ResourceListView
-        title="VM Exports"
-        resourceClass={VirtualMachineExport}
-        headerProps={{
-          titleSideActions: [
-            <CreateButtonWithMode
-              key="create"
-              label="Create Export"
-              onCreateForm={() => {
-                setCreateInitialTab(0);
-                setCreateOpen(true);
-              }}
-              onCreateYAML={() => {
-                setCreateInitialTab(1);
-                setCreateOpen(true);
-              }}
-            />,
-          ],
-        }}
-        actions={[]}
-        columns={[
-          {
-            id: 'name',
-            label: 'Name',
-            getValue: vmExport => vmExport.getName(),
-            render: vmExport => (
-              <Link
-                routeName="export"
-                params={{ name: vmExport.getName(), namespace: vmExport.getNamespace() }}
-              >
-                {vmExport.getName()}
-              </Link>
-            ),
-          },
-          'namespace',
-          {
-            id: 'source',
-            label: 'Source',
-            getValue: vmExport => `${vmExport.getSourceKind()}/${vmExport.getSourceName()}`,
-            render: vmExport => (
-              <Tooltip title={vmExport.getSourceKind()}>
-                <span>{vmExport.getSourceName()}</span>
-              </Tooltip>
-            ),
-          },
-          {
-            id: 'status',
-            label: 'Status',
-            getValue: vmExport => vmExport.getPhase(),
-            render: vmExport => {
-              const phase = vmExport.getPhase();
-              const isReady = vmExport.isReady();
-              let color: 'success' | 'info' | 'error' | 'warning' | 'default' = 'default';
-              if (phase === 'Ready' && isReady) color = 'success';
-              else if (phase === 'Pending') color = 'info';
-              else if (phase === 'Failed') color = 'error';
-              else if (phase === 'Terminated') color = 'warning';
-              return <Chip label={phase} size="small" color={color} />;
+      <SectionBox
+        title={
+          <SectionFilterHeader
+            title="VM Exports"
+            titleSideActions={[
+              <CreateButtonWithMode
+                key="create"
+                label="Create Export"
+                onCreateForm={() => {
+                  setCreateInitialTab(0);
+                  setCreateOpen(true);
+                }}
+                onCreateYAML={() => {
+                  setCreateInitialTab(1);
+                  setCreateOpen(true);
+                }}
+              />,
+            ]}
+          />
+        }
+      >
+        <Table
+          data={items ?? []}
+          loading={items === null}
+          columns={[
+            {
+              id: 'name',
+              header: 'Name',
+              accessorFn: (vmExport: InstanceType<typeof VirtualMachineExport>) =>
+                vmExport.getName(),
+              Cell: ({ row }: { row: { original: InstanceType<typeof VirtualMachineExport> } }) => (
+                <Link
+                  routeName="export"
+                  params={{
+                    name: row.original.getName(),
+                    namespace: row.original.getNamespace(),
+                  }}
+                >
+                  {row.original.getName()}
+                </Link>
+              ),
             },
-          },
-          {
-            id: 'ttl',
-            label: 'TTL',
-            getValue: vmExport => vmExport.getTTLDuration() || '-',
-          },
-          {
-            id: 'expires',
-            label: 'Expires',
-            getValue: vmExport => {
-              const time = vmExport.getTTLExpirationTime();
-              if (!time) return '-';
-              return new Date(time).toLocaleString();
+            {
+              id: 'namespace',
+              header: 'Namespace',
+              accessorFn: (vmExport: InstanceType<typeof VirtualMachineExport>) =>
+                vmExport.getNamespace(),
             },
-          },
-          'age',
-        ]}
-      />
+            {
+              id: 'source',
+              header: 'Source',
+              accessorFn: (vmExport: InstanceType<typeof VirtualMachineExport>) =>
+                `${vmExport.getSourceKind()}/${vmExport.getSourceName()}`,
+              Cell: ({ row }: { row: { original: InstanceType<typeof VirtualMachineExport> } }) => (
+                <Tooltip title={row.original.getSourceKind()}>
+                  <span>{row.original.getSourceName()}</span>
+                </Tooltip>
+              ),
+            },
+            {
+              id: 'status',
+              header: 'Status',
+              accessorFn: (vmExport: InstanceType<typeof VirtualMachineExport>) =>
+                vmExport.getPhase(),
+              Cell: ({ row }: { row: { original: InstanceType<typeof VirtualMachineExport> } }) => {
+                const phase = row.original.getPhase();
+                const isReady = row.original.isReady();
+                let color: 'success' | 'info' | 'error' | 'warning' | 'default' = 'default';
+                if (phase === 'Ready' && isReady) color = 'success';
+                else if (phase === 'Pending') color = 'info';
+                else if (phase === 'Failed') color = 'error';
+                else if (phase === 'Terminated') color = 'warning';
+                return <Chip label={phase} size="small" color={color} />;
+              },
+            },
+            {
+              id: 'ttl',
+              header: 'TTL',
+              accessorFn: (vmExport: InstanceType<typeof VirtualMachineExport>) =>
+                vmExport.getTTLDuration() || '-',
+            },
+            {
+              id: 'expires',
+              header: 'Expires',
+              accessorFn: (vmExport: InstanceType<typeof VirtualMachineExport>) => {
+                const time = vmExport.getTTLExpirationTime();
+                if (!time) return '-';
+                return new Date(time).toLocaleString();
+              },
+            },
+            {
+              id: 'age',
+              header: 'Age',
+              accessorFn: (vmExport: InstanceType<typeof VirtualMachineExport>) =>
+                vmExport.metadata?.creationTimestamp || '',
+              Cell: ({ row }: { row: { original: InstanceType<typeof VirtualMachineExport> } }) => {
+                const ts = row.original.metadata?.creationTimestamp;
+                return ts ? <DateLabel date={ts} /> : '-';
+              },
+            },
+          ]}
+        />
+      </SectionBox>
 
       <CreateResourceDialog
         open={createOpen}

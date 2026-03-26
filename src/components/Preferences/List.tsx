@@ -1,5 +1,11 @@
 import { Icon } from '@iconify/react';
-import { Link, Resource } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
+import {
+  DateLabel,
+  Link,
+  SectionBox,
+  SectionFilterHeader,
+  Table,
+} from '@kinvolk/headlamp-plugin/lib/CommonComponents';
 import { Box, Tab, Tabs } from '@mui/material';
 import React from 'react';
 import CreateButtonWithMode from '../common/CreateButtonWithMode';
@@ -63,61 +69,76 @@ export default function PreferenceList() {
         </Tabs>
       </Box>
 
-      <Resource.ResourceListView
-        title="Preferences"
-        data={currentData}
-        headerProps={{
-          titleSideActions: [
-            <CreateButtonWithMode
-              key="create"
-              label="Create Preference"
-              onCreateForm={() => {
-                setCreateInitialTab(0);
-                setCreateDialogOpen(true);
-              }}
-              onCreateYAML={() => {
-                setCreateInitialTab(1);
-                setCreateDialogOpen(true);
-              }}
-            />,
-          ],
-        }}
-        columns={[
-          {
-            id: 'name',
-            label: 'Name',
-            getValue: pref => pref.getName(),
-            render: pref => {
-              const iconClass = pref.getIconClass();
-              const hasIcon = iconClass !== '-';
-              return (
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  {hasIcon && <Icon icon={mapIconClass(iconClass)} width="20" height="20" />}
-                  <Link routeName="/kubevirt/preferences/:name" params={{ name: pref.getName() }}>
-                    {pref.getName()}
-                  </Link>
-                </Box>
-              );
+      <SectionBox
+        title={
+          <SectionFilterHeader
+            title="Preferences"
+            titleSideActions={[
+              <CreateButtonWithMode
+                key="create"
+                label="Create Preference"
+                onCreateForm={() => {
+                  setCreateInitialTab(0);
+                  setCreateDialogOpen(true);
+                }}
+                onCreateYAML={() => {
+                  setCreateInitialTab(1);
+                  setCreateDialogOpen(true);
+                }}
+              />,
+            ]}
+          />
+        }
+      >
+        <Table
+          data={currentData ?? []}
+          loading={preferences === null}
+          columns={[
+            {
+              id: 'name',
+              header: 'Name',
+              accessorFn: (pref: VirtualMachineClusterPreference) => pref.getName(),
+              Cell: ({ row }: { row: { original: VirtualMachineClusterPreference } }) => {
+                const iconClass = row.original.getIconClass();
+                const hasIcon = iconClass !== '-';
+                return (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    {hasIcon && <Icon icon={mapIconClass(iconClass)} width="20" height="20" />}
+                    <Link routeName="preference" params={{ name: row.original.getName() }}>
+                      {row.original.getName()}
+                    </Link>
+                  </Box>
+                );
+              },
             },
-          },
-          {
-            id: 'display-name',
-            label: 'Display Name',
-            getValue: pref => pref.getDisplayName(),
-          },
-          {
-            id: 'os-type',
-            label: 'OS Type',
-            getValue: pref => pref.getOSType(),
-          },
-          {
-            id: 'vendor',
-            label: 'Vendor',
-            getValue: pref => pref.getVendor(),
-          },
-          'age',
-        ]}
-      />
+            {
+              id: 'display-name',
+              header: 'Display Name',
+              accessorFn: (pref: VirtualMachineClusterPreference) => pref.getDisplayName(),
+            },
+            {
+              id: 'os-type',
+              header: 'OS Type',
+              accessorFn: (pref: VirtualMachineClusterPreference) => pref.getOSType(),
+            },
+            {
+              id: 'vendor',
+              header: 'Vendor',
+              accessorFn: (pref: VirtualMachineClusterPreference) => pref.getVendor(),
+            },
+            {
+              id: 'age',
+              header: 'Age',
+              accessorFn: (pref: VirtualMachineClusterPreference) =>
+                pref.metadata?.creationTimestamp || '',
+              Cell: ({ row }: { row: { original: VirtualMachineClusterPreference } }) => {
+                const ts = row.original.metadata?.creationTimestamp;
+                return ts ? <DateLabel date={ts} /> : '-';
+              },
+            },
+          ]}
+        />
+      </SectionBox>
 
       <CreateResourceDialog
         open={createDialogOpen}

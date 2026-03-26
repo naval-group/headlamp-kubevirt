@@ -1,6 +1,12 @@
 import { Icon } from '@iconify/react';
 import { ApiProxy } from '@kinvolk/headlamp-plugin/lib';
-import { Link, Resource } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
+import {
+  DateLabel,
+  Link,
+  SectionBox,
+  SectionFilterHeader,
+  Table,
+} from '@kinvolk/headlamp-plugin/lib/CommonComponents';
 import {
   Box,
   Button,
@@ -132,6 +138,7 @@ function CreateExportDialog({
 }
 
 export default function VirtualMachineSnapshotList() {
+  const { items } = VirtualMachineSnapshot.useList();
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [selectedSnapshot, setSelectedSnapshot] = useState<{
     name: string;
@@ -144,101 +151,143 @@ export default function VirtualMachineSnapshotList() {
     return subscribeToFeatureGates(() => setVmExportEnabled(isFeatureGateEnabled('VMExport')));
   }, []);
 
-  const actions = [
-    ...(vmExportEnabled
-      ? [
-          {
-            id: 'export',
-            action: ({
-              item,
-              closeMenu,
-            }: {
-              item: VirtualMachineSnapshot;
-              closeMenu: () => void;
-            }) => {
-              return (
-                <MenuItem
-                  onClick={() => {
-                    closeMenu();
-                    setSelectedSnapshot({ name: item.getName(), namespace: item.getNamespace() });
-                    setExportDialogOpen(true);
-                  }}
-                >
-                  <ListItemIcon>
-                    <Icon icon="mdi:export" />
-                  </ListItemIcon>
-                  <ListItemText>Export</ListItemText>
-                </MenuItem>
-              );
-            },
-          },
-        ]
-      : []),
-  ];
-
   return (
     <>
-      <Resource.ResourceListView
-        title="VM Snapshots"
-        resourceClass={VirtualMachineSnapshot}
-        actions={actions}
-        columns={[
-          {
-            id: 'name',
-            label: 'Name',
-            getValue: snapshot => snapshot.getName(),
-            render: snapshot => (
-              <Link
-                routeName="snapshot"
-                params={{ name: snapshot.getName(), namespace: snapshot.getNamespace() }}
-              >
-                {snapshot.getName()}
-              </Link>
-            ),
-          },
-          'namespace',
-          {
-            id: 'source',
-            label: 'Source VM',
-            getValue: snapshot => snapshot.getSourceName(),
-            render: snapshot => (
-              <Link
-                routeName="virtualmachine"
-                params={{ name: snapshot.getSourceName(), namespace: snapshot.getNamespace() }}
-              >
-                {snapshot.getSourceName()}
-              </Link>
-            ),
-          },
-          {
-            id: 'status',
-            label: 'Status',
-            getValue: snapshot => snapshot.getPhase(),
-            render: snapshot => {
-              const phase = snapshot.getPhase();
-              const isReady = snapshot.isReadyToUse();
-              let color: 'success' | 'info' | 'error' | 'default' = 'default';
-              if (phase === 'Succeeded' && isReady) color = 'success';
-              else if (phase === 'InProgress') color = 'info';
-              else if (phase === 'Failed') color = 'error';
-              return <Chip label={phase} size="small" color={color} />;
+      <SectionBox title={<SectionFilterHeader title="VM Snapshots" />}>
+        <Table
+          data={items ?? []}
+          loading={items === null}
+          enableRowActions={vmExportEnabled}
+          renderRowActionMenuItems={
+            vmExportEnabled
+              ? ({
+                  row,
+                  closeMenu,
+                }: {
+                  row: { original: InstanceType<typeof VirtualMachineSnapshot> };
+                  closeMenu: () => void;
+                }) => [
+                  <MenuItem
+                    key="export"
+                    onClick={() => {
+                      closeMenu();
+                      setSelectedSnapshot({
+                        name: row.original.getName(),
+                        namespace: row.original.getNamespace(),
+                      });
+                      setExportDialogOpen(true);
+                    }}
+                  >
+                    <ListItemIcon>
+                      <Icon icon="mdi:export" />
+                    </ListItemIcon>
+                    <ListItemText>Export</ListItemText>
+                  </MenuItem>,
+                ]
+              : undefined
+          }
+          columns={[
+            {
+              id: 'name',
+              header: 'Name',
+              accessorFn: (snapshot: InstanceType<typeof VirtualMachineSnapshot>) =>
+                snapshot.getName(),
+              Cell: ({
+                row,
+              }: {
+                row: { original: InstanceType<typeof VirtualMachineSnapshot> };
+              }) => (
+                <Link
+                  routeName="snapshot"
+                  params={{
+                    name: row.original.getName(),
+                    namespace: row.original.getNamespace(),
+                  }}
+                >
+                  {row.original.getName()}
+                </Link>
+              ),
             },
-          },
-          {
-            id: 'ready',
-            label: 'Ready',
-            getValue: snapshot => (snapshot.isReadyToUse() ? 'Yes' : 'No'),
-            render: snapshot => (
-              <Chip
-                label={snapshot.isReadyToUse() ? 'Yes' : 'No'}
-                size="small"
-                color={snapshot.isReadyToUse() ? 'success' : 'default'}
-              />
-            ),
-          },
-          'age',
-        ]}
-      />
+            {
+              id: 'namespace',
+              header: 'Namespace',
+              accessorFn: (snapshot: InstanceType<typeof VirtualMachineSnapshot>) =>
+                snapshot.getNamespace(),
+            },
+            {
+              id: 'source',
+              header: 'Source VM',
+              accessorFn: (snapshot: InstanceType<typeof VirtualMachineSnapshot>) =>
+                snapshot.getSourceName(),
+              Cell: ({
+                row,
+              }: {
+                row: { original: InstanceType<typeof VirtualMachineSnapshot> };
+              }) => (
+                <Link
+                  routeName="virtualmachine"
+                  params={{
+                    name: row.original.getSourceName(),
+                    namespace: row.original.getNamespace(),
+                  }}
+                >
+                  {row.original.getSourceName()}
+                </Link>
+              ),
+            },
+            {
+              id: 'status',
+              header: 'Status',
+              accessorFn: (snapshot: InstanceType<typeof VirtualMachineSnapshot>) =>
+                snapshot.getPhase(),
+              Cell: ({
+                row,
+              }: {
+                row: { original: InstanceType<typeof VirtualMachineSnapshot> };
+              }) => {
+                const phase = row.original.getPhase();
+                const isReady = row.original.isReadyToUse();
+                let color: 'success' | 'info' | 'error' | 'default' = 'default';
+                if (phase === 'Succeeded' && isReady) color = 'success';
+                else if (phase === 'InProgress') color = 'info';
+                else if (phase === 'Failed') color = 'error';
+                return <Chip label={phase} size="small" color={color} />;
+              },
+            },
+            {
+              id: 'ready',
+              header: 'Ready',
+              accessorFn: (snapshot: InstanceType<typeof VirtualMachineSnapshot>) =>
+                snapshot.isReadyToUse() ? 'Yes' : 'No',
+              Cell: ({
+                row,
+              }: {
+                row: { original: InstanceType<typeof VirtualMachineSnapshot> };
+              }) => (
+                <Chip
+                  label={row.original.isReadyToUse() ? 'Yes' : 'No'}
+                  size="small"
+                  color={row.original.isReadyToUse() ? 'success' : 'default'}
+                />
+              ),
+            },
+            {
+              id: 'age',
+              header: 'Age',
+              accessorFn: (snapshot: InstanceType<typeof VirtualMachineSnapshot>) =>
+                snapshot.metadata?.creationTimestamp || '',
+              Cell: ({
+                row,
+              }: {
+                row: { original: InstanceType<typeof VirtualMachineSnapshot> };
+              }) => {
+                const ts = row.original.metadata?.creationTimestamp;
+                return ts ? <DateLabel date={ts} /> : '-';
+              },
+            },
+          ]}
+        />
+      </SectionBox>
       {selectedSnapshot && (
         <CreateExportDialog
           open={exportDialogOpen}

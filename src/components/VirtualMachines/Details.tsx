@@ -408,7 +408,7 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                                 label: 'DataVolume',
                                 getter: (dv: InstanceType<typeof DataVolume>) => (
                                   <Link
-                                    routeName="/kubevirt/datavolumes/:namespace/:name"
+                                    routeName="datavolume"
                                     params={{
                                       name: dv.getName(),
                                       namespace: dv.getNamespace(),

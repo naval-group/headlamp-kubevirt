@@ -59,6 +59,10 @@ class VirtualMachineClusterPreference extends KubeObject {
   static isNamespaced = false;
   static apiName = 'virtualmachineclusterpreferences';
   static apiPlural = 'virtualmachineclusterpreferences';
+
+  static get detailsRoute() {
+    return 'preference';
+  }
 }
 
 export default VirtualMachineClusterPreference;

@@ -1,5 +1,11 @@
 import { Icon } from '@iconify/react';
-import { Link, Resource } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
+import {
+  DateLabel,
+  Link,
+  SectionBox,
+  SectionFilterHeader,
+  Table,
+} from '@kinvolk/headlamp-plugin/lib/CommonComponents';
 import { Box, Chip, Typography } from '@mui/material';
 import React, { useState } from 'react';
 import CreateButtonWithMode from '../common/CreateButtonWithMode';
@@ -91,132 +97,156 @@ export default function DataImportCronList() {
 
   return (
     <>
-      <Resource.ResourceListView
-        title="DataImportCrons"
-        data={items}
-        headerProps={{
-          titleSideActions: [
-            <CreateButtonWithMode
-              key="create"
-              label="Create DataImportCron"
-              onCreateForm={() => {
-                setCreateInitialTab(0);
-                setCreateDialogOpen(true);
-              }}
-              onCreateYAML={() => {
-                setCreateInitialTab(1);
-                setCreateDialogOpen(true);
-              }}
-            />,
-          ],
-        }}
-        columns={[
-          {
-            id: 'name',
-            label: 'Name',
-            getValue: dic => dic.getName(),
-            render: dic => (
-              <Link
-                routeName="/kubevirt/dataimportcrons/:namespace/:name"
-                params={{ name: dic.getName(), namespace: dic.getNamespace() }}
-              >
-                {dic.getName()}
-              </Link>
-            ),
-          },
-          {
-            id: 'namespace',
-            label: 'Namespace',
-            getValue: dic => dic.getNamespace(),
-            render: dic => <Chip label={dic.getNamespace()} size="small" variant="outlined" />,
-          },
-          {
-            id: 'managed-datasource',
-            label: 'Managed DataSource',
-            getValue: dic => dic.getManagedDataSource(),
-            render: dic => (
-              <Link
-                routeName="datasource"
-                params={{ name: dic.getManagedDataSource(), namespace: dic.getNamespace() }}
-              >
-                {dic.getManagedDataSource()}
-              </Link>
-            ),
-          },
-          {
-            id: 'schedule',
-            label: 'Schedule',
-            getValue: dic => dic.getSchedule(),
-          },
-          {
-            id: 'source-type',
-            label: 'Source Type',
-            getValue: dic => dic.getSourceType(),
-          },
-          {
-            id: 'source-url',
-            label: 'Source URL',
-            getValue: dic => dic.getSourceURL(),
-            render: dic => {
-              const url = dic.getSourceURL();
-              if (url === '-') return url;
-              return (
-                <Typography
-                  variant="body2"
-                  sx={{
-                    maxWidth: 300,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
+      <SectionBox
+        title={
+          <SectionFilterHeader
+            title="DataImportCrons"
+            titleSideActions={[
+              <CreateButtonWithMode
+                key="create"
+                label="Create DataImportCron"
+                onCreateForm={() => {
+                  setCreateInitialTab(0);
+                  setCreateDialogOpen(true);
+                }}
+                onCreateYAML={() => {
+                  setCreateInitialTab(1);
+                  setCreateDialogOpen(true);
+                }}
+              />,
+            ]}
+          />
+        }
+      >
+        <Table
+          data={items ?? []}
+          loading={items === null}
+          columns={[
+            {
+              id: 'name',
+              header: 'Name',
+              accessorFn: (dic: InstanceType<typeof DataImportCron>) => dic.getName(),
+              Cell: ({ row }: { row: { original: InstanceType<typeof DataImportCron> } }) => (
+                <Link
+                  routeName="dataimportcron"
+                  params={{
+                    name: row.original.getName(),
+                    namespace: row.original.getNamespace(),
                   }}
                 >
-                  {url}
-                </Typography>
-              );
+                  {row.original.getName()}
+                </Link>
+              ),
             },
-          },
-          {
-            id: 'garbage-collect',
-            label: 'Garbage Collect',
-            getValue: dic => dic.getGarbageCollect(),
-          },
-          {
-            id: 'imports-to-keep',
-            label: 'Imports to Keep',
-            getValue: dic => dic.getImportsToKeep(),
-          },
-          {
-            id: 'status',
-            label: 'Status',
-            getValue: dic => {
-              if (dic.isUpToDate()) return 'Up to Date';
-              if (dic.isProgressing()) return 'Progressing';
-              return 'Out of Date';
+            {
+              id: 'namespace',
+              header: 'Namespace',
+              accessorFn: (dic: InstanceType<typeof DataImportCron>) => dic.getNamespace(),
+              Cell: ({ row }: { row: { original: InstanceType<typeof DataImportCron> } }) => (
+                <Chip label={row.original.getNamespace()} size="small" variant="outlined" />
+              ),
             },
-            render: dic => {
-              if (dic.isUpToDate()) {
-                return <Chip label="Up to Date" size="small" color="success" />;
-              } else if (dic.isProgressing()) {
+            {
+              id: 'managed-datasource',
+              header: 'Managed DataSource',
+              accessorFn: (dic: InstanceType<typeof DataImportCron>) => dic.getManagedDataSource(),
+              Cell: ({ row }: { row: { original: InstanceType<typeof DataImportCron> } }) => (
+                <Link
+                  routeName="datasource"
+                  params={{
+                    name: row.original.getManagedDataSource(),
+                    namespace: row.original.getNamespace(),
+                  }}
+                >
+                  {row.original.getManagedDataSource()}
+                </Link>
+              ),
+            },
+            {
+              id: 'schedule',
+              header: 'Schedule',
+              accessorFn: (dic: InstanceType<typeof DataImportCron>) => dic.getSchedule(),
+            },
+            {
+              id: 'source-type',
+              header: 'Source Type',
+              accessorFn: (dic: InstanceType<typeof DataImportCron>) => dic.getSourceType(),
+            },
+            {
+              id: 'source-url',
+              header: 'Source URL',
+              accessorFn: (dic: InstanceType<typeof DataImportCron>) => dic.getSourceURL(),
+              Cell: ({ row }: { row: { original: InstanceType<typeof DataImportCron> } }) => {
+                const url = row.original.getSourceURL();
+                if (url === '-') return url;
                 return (
-                  <Chip
-                    label="Progressing"
-                    size="small"
-                    color="info"
-                    icon={<Icon icon="mdi:sync" />}
-                  />
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      maxWidth: 300,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {url}
+                  </Typography>
                 );
-              }
-              return <Chip label="Out of Date" size="small" color="warning" />;
+              },
             },
-          },
-          {
-            id: 'last-execution',
-            label: 'Last Execution',
-            getValue: dic => dic.getLastExecutionTimestamp(),
-          },
-          'age',
-        ]}
-      />
+            {
+              id: 'garbage-collect',
+              header: 'Garbage Collect',
+              accessorFn: (dic: InstanceType<typeof DataImportCron>) => dic.getGarbageCollect(),
+            },
+            {
+              id: 'imports-to-keep',
+              header: 'Imports to Keep',
+              accessorFn: (dic: InstanceType<typeof DataImportCron>) => dic.getImportsToKeep(),
+            },
+            {
+              id: 'status',
+              header: 'Status',
+              accessorFn: (dic: InstanceType<typeof DataImportCron>) => {
+                if (dic.isUpToDate()) return 'Up to Date';
+                if (dic.isProgressing()) return 'Progressing';
+                return 'Out of Date';
+              },
+              Cell: ({ row }: { row: { original: InstanceType<typeof DataImportCron> } }) => {
+                if (row.original.isUpToDate()) {
+                  return <Chip label="Up to Date" size="small" color="success" />;
+                } else if (row.original.isProgressing()) {
+                  return (
+                    <Chip
+                      label="Progressing"
+                      size="small"
+                      color="info"
+                      icon={<Icon icon="mdi:sync" />}
+                    />
+                  );
+                }
+                return <Chip label="Out of Date" size="small" color="warning" />;
+              },
+            },
+            {
+              id: 'last-execution',
+              header: 'Last Execution',
+              accessorFn: (dic: InstanceType<typeof DataImportCron>) =>
+                dic.getLastExecutionTimestamp(),
+            },
+            {
+              id: 'age',
+              header: 'Age',
+              accessorFn: (dic: InstanceType<typeof DataImportCron>) =>
+                dic.metadata?.creationTimestamp || '',
+              Cell: ({ row }: { row: { original: InstanceType<typeof DataImportCron> } }) => {
+                const ts = row.original.metadata?.creationTimestamp;
+                return ts ? <DateLabel date={ts} /> : '-';
+              },
+            },
+          ]}
+        />
+      </SectionBox>
 
       <CreateResourceDialog
         open={createDialogOpen}
