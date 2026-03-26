@@ -66,7 +66,8 @@ function CreateExportDialog({
       enqueueSnackbar(`Export ${exportName} created`, { variant: 'success' });
       onClose();
     } catch (error: unknown) {
-      enqueueSnackbar(`Failed to create export: ${(error as Error).message}`, { variant: 'error' });
+      console.error('Failed to create export:', error);
+      enqueueSnackbar('Failed to create export.', { variant: 'error' });
     } finally {
       setCreating(false);
     }
@@ -131,7 +132,6 @@ function CreateExportDialog({
 }
 
 export default function VirtualMachineSnapshotList() {
-  const { enqueueSnackbar } = useSnackbar();
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [selectedSnapshot, setSelectedSnapshot] = useState<{
     name: string;
@@ -174,32 +174,6 @@ export default function VirtualMachineSnapshotList() {
           },
         ]
       : []),
-    {
-      id: 'delete',
-      action: ({ item, closeMenu }: { item: VirtualMachineSnapshot; closeMenu: () => void }) => {
-        return (
-          <MenuItem
-            onClick={async () => {
-              closeMenu();
-              if (!confirm(`Are you sure you want to delete snapshot "${item.getName()}"?`)) {
-                return;
-              }
-              try {
-                await item.delete();
-                enqueueSnackbar(`Snapshot ${item.getName()} deleted`, { variant: 'success' });
-              } catch (e) {
-                enqueueSnackbar(`Failed to delete snapshot: ${e}`, { variant: 'error' });
-              }
-            }}
-          >
-            <ListItemIcon>
-              <Icon icon="mdi:delete" />
-            </ListItemIcon>
-            <ListItemText>Delete</ListItemText>
-          </MenuItem>
-        );
-      },
-    },
   ];
 
   return (

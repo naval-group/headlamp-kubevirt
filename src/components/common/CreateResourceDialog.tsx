@@ -116,6 +116,7 @@ export default function CreateResourceDialog({
         try {
           resourceToSave = yaml.load(yamlContent, { schema: yaml.JSON_SCHEMA });
         } catch (error: unknown) {
+          console.error('Invalid YAML:', error);
           enqueueSnackbar(`Invalid YAML: ${(error as Error).message}`, { variant: 'error' });
           return;
         }
@@ -145,10 +146,10 @@ export default function CreateResourceDialog({
       setActiveTab(0);
       onClose();
     } catch (error: unknown) {
-      enqueueSnackbar(
-        `Failed to ${editMode ? 'update' : 'create'} resource: ${(error as Error).message}`,
-        { variant: 'error' }
-      );
+      console.error(`Failed to ${editMode ? 'update' : 'create'} resource:`, error);
+      enqueueSnackbar(`Failed to ${editMode ? 'update' : 'create'} resource.`, {
+        variant: 'error',
+      });
     }
   };
 
@@ -177,6 +178,7 @@ export default function CreateResourceDialog({
         setActiveTab(1);
         enqueueSnackbar(`File "${file.name}" loaded successfully`, { variant: 'success' });
       } catch (error: unknown) {
+        console.error('Failed to parse file:', error);
         enqueueSnackbar(`Failed to parse file: ${(error as Error).message}`, { variant: 'error' });
       }
     };
@@ -201,7 +203,42 @@ export default function CreateResourceDialog({
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
-      const content = await response.text();
+      // Stream the response with a 50 MB size limit to prevent the browser tab
+      // from crashing on unbounded responses (e.g. infinite streams, huge files).
+      // For larger deployments, consider using Helm charts or kubectl apply.
+      const MAX_SIZE = 50 * 1024 * 1024;
+      const contentLength = response.headers.get('content-length');
+      if (contentLength && parseInt(contentLength, 10) > MAX_SIZE) {
+        throw new Error(
+          'Response too large (exceeds 50 MB). For larger deployments, consider using Helm charts or kubectl apply.'
+        );
+      }
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('Unable to read response');
+      }
+      const chunks: Uint8Array[] = [];
+      let totalSize = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        totalSize += value.byteLength;
+        if (totalSize > MAX_SIZE) {
+          reader.cancel();
+          throw new Error(
+            'Response too large (exceeds 50 MB). For larger deployments, consider using Helm charts or kubectl apply.'
+          );
+        }
+        chunks.push(value);
+      }
+      const content = new TextDecoder().decode(
+        chunks.reduce((acc, chunk) => {
+          const merged = new Uint8Array(acc.length + chunk.length);
+          merged.set(acc);
+          merged.set(chunk, acc.length);
+          return merged;
+        }, new Uint8Array())
+      );
       const parsed = yaml.load(content, { schema: yaml.JSON_SCHEMA });
       setResource(parsed);
       setYamlContent(content);
@@ -209,6 +246,7 @@ export default function CreateResourceDialog({
       setActiveTab(1);
       enqueueSnackbar('Resource loaded from URL successfully', { variant: 'success' });
     } catch (error: unknown) {
+      console.error('Failed to load from URL:', error);
       enqueueSnackbar(`Failed to load from URL: ${(error as Error).message}`, { variant: 'error' });
     } finally {
       clearTimeout(timeoutId);

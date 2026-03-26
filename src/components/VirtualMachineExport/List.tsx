@@ -1,7 +1,5 @@
-import { Icon } from '@iconify/react';
 import { Link, Resource } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
-import { Chip, ListItemIcon, ListItemText, MenuItem, Tooltip } from '@mui/material';
-import { useSnackbar } from 'notistack';
+import { Chip, Tooltip } from '@mui/material';
 import { useState } from 'react';
 import CreateButtonWithMode from '../common/CreateButtonWithMode';
 import CreateResourceDialog from '../common/CreateResourceDialog';
@@ -26,7 +24,6 @@ const INITIAL_EXPORT = {
 };
 
 export default function VirtualMachineExportList() {
-  const { enqueueSnackbar } = useSnackbar();
   const [createOpen, setCreateOpen] = useState(false);
   const [createInitialTab, setCreateInitialTab] = useState(0);
 
@@ -51,40 +48,7 @@ export default function VirtualMachineExportList() {
             />,
           ],
         }}
-        actions={[
-          {
-            id: 'delete',
-            action: ({
-              item,
-              closeMenu,
-            }: {
-              item: VirtualMachineExport;
-              closeMenu: () => void;
-            }) => {
-              return (
-                <MenuItem
-                  onClick={async () => {
-                    closeMenu();
-                    if (!confirm(`Are you sure you want to delete export "${item.getName()}"?`)) {
-                      return;
-                    }
-                    try {
-                      await item.delete();
-                      enqueueSnackbar(`Export ${item.getName()} deleted`, { variant: 'success' });
-                    } catch (e) {
-                      enqueueSnackbar(`Failed to delete export: ${e}`, { variant: 'error' });
-                    }
-                  }}
-                >
-                  <ListItemIcon>
-                    <Icon icon="mdi:delete" />
-                  </ListItemIcon>
-                  <ListItemText>Delete</ListItemText>
-                </MenuItem>
-              );
-            },
-          },
-        ]}
+        actions={[]}
         columns={[
           {
             id: 'name',

@@ -684,11 +684,13 @@ export default function VMFormFull({
   const hasPodNetworking = currentNetworkInterfaces.some(iface => iface.type === 'pod');
 
   React.useEffect(() => {
+    let cancelled = false;
     ApiProxy.request('/api/v1/namespaces')
       .then(
         (response: {
           items?: Array<{ metadata: { name: string; labels?: Record<string, string> } }>;
         }) => {
+          if (cancelled) return;
           const nsList = response?.items?.map(
             (ns: { metadata: { name: string } }) => ns.metadata.name
           ) || ['default'];
@@ -696,13 +698,18 @@ export default function VMFormFull({
         }
       )
       .catch(err => {
+        if (cancelled) return;
         console.error('Failed to fetch namespaces:', err);
       });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Fetch ConfigMaps, Secrets, ServiceAccounts for selected namespace
   React.useEffect(() => {
     if (!namespace) return;
+    let cancelled = false;
 
     // Fetch ConfigMaps
     ApiProxy.request(`/api/v1/namespaces/${namespace}/configmaps`)
@@ -710,12 +717,15 @@ export default function VMFormFull({
         (response: {
           items?: Array<{ metadata: { name: string; labels?: Record<string, string> } }>;
         }) => {
+          if (cancelled) return;
           const cmList =
             response?.items?.map((cm: { metadata: { name: string } }) => cm.metadata.name) || [];
           setConfigMaps(cmList);
         }
       )
-      .catch(err => console.error('Failed to fetch configmaps:', err));
+      .catch(err => {
+        if (!cancelled) console.error('Failed to fetch configmaps:', err);
+      });
 
     // Fetch Secrets
     ApiProxy.request(`/api/v1/namespaces/${namespace}/secrets`)
@@ -723,12 +733,15 @@ export default function VMFormFull({
         (response: {
           items?: Array<{ metadata: { name: string; labels?: Record<string, string> } }>;
         }) => {
+          if (cancelled) return;
           const secretList =
             response?.items?.map((s: { metadata: { name: string } }) => s.metadata.name) || [];
           setSecrets(secretList);
         }
       )
-      .catch(err => console.error('Failed to fetch secrets:', err));
+      .catch(err => {
+        if (!cancelled) console.error('Failed to fetch secrets:', err);
+      });
 
     // Fetch ServiceAccounts
     ApiProxy.request(`/api/v1/namespaces/${namespace}/serviceaccounts`)
@@ -736,12 +749,15 @@ export default function VMFormFull({
         (response: {
           items?: Array<{ metadata: { name: string; labels?: Record<string, string> } }>;
         }) => {
+          if (cancelled) return;
           const saList =
             response?.items?.map((sa: { metadata: { name: string } }) => sa.metadata.name) || [];
           setServiceAccounts(saList);
         }
       )
-      .catch(err => console.error('Failed to fetch serviceaccounts:', err));
+      .catch(err => {
+        if (!cancelled) console.error('Failed to fetch serviceaccounts:', err);
+      });
 
     // Fetch PVCs
     ApiProxy.request(`/api/v1/namespaces/${namespace}/persistentvolumeclaims`)
@@ -749,12 +765,15 @@ export default function VMFormFull({
         (response: {
           items?: Array<{ metadata: { name: string; labels?: Record<string, string> } }>;
         }) => {
+          if (cancelled) return;
           const pvcList =
             response?.items?.map((pvc: { metadata: { name: string } }) => pvc.metadata.name) || [];
           setPvcs(pvcList);
         }
       )
-      .catch(err => console.error('Failed to fetch pvcs:', err));
+      .catch(err => {
+        if (!cancelled) console.error('Failed to fetch pvcs:', err);
+      });
 
     // Fetch VolumeSnapshots
     ApiProxy.request(`/apis/snapshot.storage.k8s.io/v1/namespaces/${namespace}/volumesnapshots`)
@@ -762,12 +781,15 @@ export default function VMFormFull({
         (response: {
           items?: Array<{ metadata: { name: string; labels?: Record<string, string> } }>;
         }) => {
+          if (cancelled) return;
           const vsList =
             response?.items?.map((vs: { metadata: { name: string } }) => vs.metadata.name) || [];
           setVolumeSnapshots(vsList);
         }
       )
-      .catch(err => console.error('Failed to fetch volume snapshots:', err));
+      .catch(err => {
+        if (!cancelled) console.error('Failed to fetch volume snapshots:', err);
+      });
 
     // Fetch DataVolumes
     ApiProxy.request(`/apis/cdi.kubevirt.io/v1beta1/namespaces/${namespace}/datavolumes`)
@@ -775,27 +797,38 @@ export default function VMFormFull({
         (response: {
           items?: Array<{ metadata: { name: string; labels?: Record<string, string> } }>;
         }) => {
+          if (cancelled) return;
           const dvList =
             response?.items?.map((dv: { metadata: { name: string } }) => dv.metadata.name) || [];
           setDataVolumes(dvList);
         }
       )
-      .catch(err => console.error('Failed to fetch datavolumes:', err));
+      .catch(err => {
+        if (!cancelled) console.error('Failed to fetch datavolumes:', err);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [namespace]);
 
   // Fetch StorageClasses and Nodes (cluster-wide)
   React.useEffect(() => {
+    let cancelled = false;
     ApiProxy.request('/apis/storage.k8s.io/v1/storageclasses')
       .then(
         (response: {
           items?: Array<{ metadata: { name: string; labels?: Record<string, string> } }>;
         }) => {
+          if (cancelled) return;
           const scList =
             response?.items?.map((sc: { metadata: { name: string } }) => sc.metadata.name) || [];
           setStorageClasses(scList);
         }
       )
-      .catch(err => console.error('Failed to fetch storage classes:', err));
+      .catch(err => {
+        if (!cancelled) console.error('Failed to fetch storage classes:', err);
+      });
 
     // Fetch nodes and extract unique label keys
     ApiProxy.request('/api/v1/nodes')
@@ -803,6 +836,7 @@ export default function VMFormFull({
         (response: {
           items?: Array<{ metadata: { name: string; labels?: Record<string, string> } }>;
         }) => {
+          if (cancelled) return;
           const nodes = response?.items || [];
           const labelKeysSet = new Set<string>();
           nodes.forEach((node: KubeResourceBuilder) => {
@@ -813,7 +847,12 @@ export default function VMFormFull({
           setNodeLabels(Array.from(labelKeysSet).sort());
         }
       )
-      .catch(err => console.error('Failed to fetch nodes:', err));
+      .catch(err => {
+        if (!cancelled) console.error('Failed to fetch nodes:', err);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Helper functions to update resource

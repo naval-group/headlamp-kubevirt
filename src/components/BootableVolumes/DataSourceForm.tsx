@@ -72,38 +72,59 @@ export default function DataSourceForm({
   const { items: dataSources } = DataSource.useList();
 
   React.useEffect(() => {
+    let cancelled = false;
     ApiProxy.request('/api/v1/namespaces')
       .then((response: KubeListResponse<KubeNamedItem>) => {
+        if (cancelled) return;
         const nsList = response?.items?.map(ns => ns.metadata.name) || ['default'];
         setNamespaces(nsList);
       })
-      .catch(err => console.error('Failed to fetch namespaces:', err));
+      .catch(err => {
+        if (!cancelled) console.error('Failed to fetch namespaces:', err);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Fetch PVCs for source namespace
   React.useEffect(() => {
     if (!sourceNamespace) return;
+    let cancelled = false;
 
     ApiProxy.request(`/api/v1/namespaces/${sourceNamespace}/persistentvolumeclaims`)
       .then((response: KubeListResponse<KubeNamedItem>) => {
+        if (cancelled) return;
         const pvcList = response?.items?.map(pvc => pvc.metadata.name) || [];
         setPvcs(pvcList);
       })
-      .catch(err => console.error('Failed to fetch PVCs:', err));
+      .catch(err => {
+        if (!cancelled) console.error('Failed to fetch PVCs:', err);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [sourceNamespace]);
 
   // Fetch VolumeSnapshots for source namespace
   React.useEffect(() => {
     if (!sourceNamespace) return;
+    let cancelled = false;
 
     ApiProxy.request(
       `/apis/snapshot.storage.k8s.io/v1/namespaces/${sourceNamespace}/volumesnapshots`
     )
       .then((response: KubeListResponse<KubeNamedItem>) => {
+        if (cancelled) return;
         const snapshotList = response?.items?.map(snap => snap.metadata.name) || [];
         setSnapshots(snapshotList);
       })
-      .catch(err => console.error('Failed to fetch snapshots:', err));
+      .catch(err => {
+        if (!cancelled) console.error('Failed to fetch snapshots:', err);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [sourceNamespace]);
 
   // Helper functions to update resource

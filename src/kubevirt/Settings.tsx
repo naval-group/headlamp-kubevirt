@@ -550,7 +550,7 @@ export default function KubeVirtSettings() {
       enqueueSnackbar('VM Delete Protection deployed successfully', { variant: 'success' });
     } catch (error: unknown) {
       console.error('Failed to deploy delete protection:', error);
-      enqueueSnackbar(`Failed to deploy delete protection: ${(error as Error).message}`, {
+      enqueueSnackbar('Failed to deploy delete protection.', {
         variant: 'error',
       });
     } finally {
@@ -578,7 +578,7 @@ export default function KubeVirtSettings() {
       enqueueSnackbar('VM Delete Protection removed successfully', { variant: 'success' });
     } catch (error: unknown) {
       console.error('Failed to remove delete protection:', error);
-      enqueueSnackbar(`Failed to remove delete protection: ${(error as Error).message}`, {
+      enqueueSnackbar('Failed to remove delete protection.', {
         variant: 'error',
       });
     } finally {
@@ -1078,7 +1078,7 @@ export default function KubeVirtSettings() {
       }
     } catch (error: unknown) {
       console.error('Failed to update feature gates', error);
-      enqueueSnackbar(`Failed to update feature gate: ${(error as Error).message}`, {
+      enqueueSnackbar('Failed to update feature gate.', {
         variant: 'error',
       });
     } finally {
@@ -1117,7 +1117,7 @@ export default function KubeVirtSettings() {
       enqueueSnackbar('Migration configuration updated successfully', { variant: 'success' });
     } catch (error: unknown) {
       console.error('Failed to update migration configuration', error);
-      enqueueSnackbar(`Failed to update migration configuration: ${(error as Error).message}`, {
+      enqueueSnackbar('Failed to update migration configuration.', {
         variant: 'error',
       });
     } finally {
@@ -1135,7 +1135,7 @@ export default function KubeVirtSettings() {
       });
     } catch (error: unknown) {
       console.error('Failed to update common instance types', error);
-      enqueueSnackbar(`Failed to update common instance types: ${(error as Error).message}`, {
+      enqueueSnackbar('Failed to update common instance types.', {
         variant: 'error',
       });
     } finally {
@@ -1150,7 +1150,7 @@ export default function KubeVirtSettings() {
       enqueueSnackbar('Memory overcommit updated successfully', { variant: 'success' });
     } catch (error: unknown) {
       console.error('Failed to update memory overcommit', error);
-      enqueueSnackbar(`Failed to update memory overcommit: ${(error as Error).message}`, {
+      enqueueSnackbar('Failed to update memory overcommit.', {
         variant: 'error',
       });
     } finally {
@@ -1165,7 +1165,7 @@ export default function KubeVirtSettings() {
       enqueueSnackbar('Eviction strategy updated successfully', { variant: 'success' });
     } catch (error: unknown) {
       console.error('Failed to update eviction strategy', error);
-      enqueueSnackbar(`Failed to update eviction strategy: ${(error as Error).message}`, {
+      enqueueSnackbar('Failed to update eviction strategy.', {
         variant: 'error',
       });
     } finally {
@@ -1221,7 +1221,7 @@ export default function KubeVirtSettings() {
       );
     } catch (error: unknown) {
       console.error('Failed to update monitoring config', error);
-      enqueueSnackbar(`Failed to update monitoring config: ${(error as Error).message}`, {
+      enqueueSnackbar('Failed to update monitoring config.', {
         variant: 'error',
       });
     } finally {
@@ -1244,7 +1244,7 @@ export default function KubeVirtSettings() {
       enqueueSnackbar('Live update configuration updated successfully', { variant: 'success' });
     } catch (error: unknown) {
       console.error('Failed to update live update configuration', error);
-      enqueueSnackbar(`Failed to update live update configuration: ${(error as Error).message}`, {
+      enqueueSnackbar('Failed to update live update configuration.', {
         variant: 'error',
       });
     } finally {
@@ -1266,7 +1266,7 @@ export default function KubeVirtSettings() {
       enqueueSnackbar('Network configuration updated successfully', { variant: 'success' });
     } catch (error: unknown) {
       console.error('Failed to update network configuration', error);
-      enqueueSnackbar(`Failed to update network configuration: ${(error as Error).message}`, {
+      enqueueSnackbar('Failed to update network configuration.', {
         variant: 'error',
       });
     } finally {
@@ -1291,7 +1291,7 @@ export default function KubeVirtSettings() {
       enqueueSnackbar('Host devices configuration updated successfully', { variant: 'success' });
     } catch (error: unknown) {
       console.error('Failed to update host devices configuration', error);
-      enqueueSnackbar(`Failed to update host devices configuration: ${(error as Error).message}`, {
+      enqueueSnackbar('Failed to update host devices configuration.', {
         variant: 'error',
       });
     } finally {

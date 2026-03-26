@@ -133,7 +133,8 @@ export default function CreatePreference({ onClose }: CreatePreferenceProps) {
       enqueueSnackbar(`Preference ${name} created successfully`, { variant: 'success' });
       onClose();
     } catch (error: unknown) {
-      enqueueSnackbar(`Failed to create Preference: ${(error as Error).message}`, {
+      console.error('Failed to create Preference:', error);
+      enqueueSnackbar('Failed to create Preference.', {
         variant: 'error',
       });
     }

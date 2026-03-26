@@ -29,6 +29,7 @@ import { useSnackbar } from 'notistack';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
+import ConfirmDialog from '../common/ConfirmDialog';
 import CopyCodeBlock from '../common/CopyCodeBlock';
 import VMConsole from '../VMConsole/VMConsole';
 import VirtualMachine from './VirtualMachine';
@@ -968,7 +969,7 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                               });
                             } catch (e) {
                               console.error('migration failed', e);
-                              enqueueSnackbar(`Failed to migrate Virtual Machine: ${e}`, {
+                              enqueueSnackbar('Failed to migrate Virtual Machine.', {
                                 variant: 'error',
                               });
                             }
@@ -1124,6 +1125,7 @@ function SnapshotsList({ vmName, namespace }: SnapshotsListProps) {
   const [currentPage, setCurrentPage] = useState(0);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [selectedSnapshot, setSelectedSnapshot] = useState<VirtualMachineSnapshot | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<VirtualMachineSnapshot | null>(null);
   const itemsPerPage = 10;
 
   // Filter snapshots for this VM and sort by creation time (newest first)
@@ -1142,15 +1144,16 @@ function SnapshotsList({ vmName, namespace }: SnapshotsListProps) {
     (currentPage + 1) * itemsPerPage
   );
 
-  const handleDelete = async (snapshot: VirtualMachineSnapshot) => {
-    if (!confirm(`Are you sure you want to delete snapshot "${snapshot.getName()}"?`)) {
-      return;
-    }
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
+    const name = deleteTarget.getName();
+    setDeleteTarget(null);
     try {
-      await snapshot.delete();
-      enqueueSnackbar(`Snapshot ${snapshot.getName()} deleted`, { variant: 'success' });
+      await deleteTarget.delete();
+      enqueueSnackbar(`Snapshot ${name} deleted`, { variant: 'success' });
     } catch (e) {
-      enqueueSnackbar(`Failed to delete snapshot: ${e}`, { variant: 'error' });
+      console.error('Failed to delete snapshot:', e);
+      enqueueSnackbar('Failed to delete snapshot.', { variant: 'error' });
     }
   };
 
@@ -1209,7 +1212,7 @@ function SnapshotsList({ vmName, namespace }: SnapshotsListProps) {
                   </Tooltip>
                 )}
                 <Tooltip title="Delete snapshot">
-                  <IconButton size="small" color="error" onClick={() => handleDelete(snapshot)}>
+                  <IconButton size="small" color="error" onClick={() => setDeleteTarget(snapshot)}>
                     <Icon icon="mdi:delete" width={18} />
                   </IconButton>
                 </Tooltip>
@@ -1257,6 +1260,13 @@ function SnapshotsList({ vmName, namespace }: SnapshotsListProps) {
           namespace={namespace}
         />
       )}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="Delete Snapshot"
+        message={`Are you sure you want to delete snapshot "${deleteTarget?.getName()}"?`}
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </Box>
   );
 }
@@ -1328,7 +1338,7 @@ function CreateExportDialog({ open, onClose, snapshotName, namespace }: CreateEx
       onClose();
     } catch (e) {
       console.error('export failed', e);
-      enqueueSnackbar(`Failed to create export: ${e}`, { variant: 'error' });
+      enqueueSnackbar('Failed to create export.', { variant: 'error' });
     } finally {
       setCreating(false);
     }
@@ -1453,7 +1463,7 @@ function CreateSnapshotDialog({ open, onClose, vmName, namespace }: CreateSnapsh
       onClose();
     } catch (e) {
       console.error('snapshot failed', e);
-      enqueueSnackbar(`Failed to create snapshot: ${e}`, { variant: 'error' });
+      enqueueSnackbar('Failed to create snapshot.', { variant: 'error' });
     } finally {
       setCreating(false);
     }

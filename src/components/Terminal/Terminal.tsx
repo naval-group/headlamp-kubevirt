@@ -147,38 +147,54 @@ export default function Terminal(props: TerminalProps) {
     fitAddonRef.current = new FitAddon();
     xtermRef.current.xterm.loadAddon(fitAddonRef.current);
 
+    let isCancelled = false;
+
     (async function () {
       setConnectionStatus('connecting');
-      execRef.current = await item.exec(items => onData(xtermRef.current!, items), {
-        reconnectOnFailure: false,
-        failCb: () => {
-          xtermRef.current!.xterm.write(encoder.encode(t('\r\n')));
+      const connection = await item.exec(
+        items => {
+          if (isCancelled || !xtermRef.current) return;
+          onData(xtermRef.current, items);
         },
-        connectCb: () => {
-          xtermRef.current!.connected = true;
-          setConnectionStatus('connected');
-          // Clear any pending input (Ctrl+U) then send Enter to trigger prompt.
-          // Ctrl+U discards the current line buffer, preventing accidental execution
-          // of commands left over from a previous serial console session.
-          setTimeout(() => {
-            send(0, '\x15\r');
-          }, 500);
-        },
-        tty: false,
-        stderr: false,
-        stdin: false,
-        stdout: false,
-      });
-      setupTerminal(terminalRef, xtermRef.current!.xterm, fitAddonRef.current!);
+        {
+          reconnectOnFailure: false,
+          failCb: () => {
+            if (isCancelled || !xtermRef.current) return;
+            xtermRef.current.xterm.write(encoder.encode(t('\r\n')));
+          },
+          connectCb: () => {
+            if (isCancelled || !xtermRef.current) return;
+            xtermRef.current.connected = true;
+            setConnectionStatus('connected');
+            setTimeout(() => {
+              if (!isCancelled) send(0, '\x15\r');
+            }, 500);
+          },
+          tty: false,
+          stderr: false,
+          stdin: false,
+          stdout: false,
+        }
+      );
+
+      if (isCancelled) {
+        connection.cancel();
+        return;
+      }
+      execRef.current = connection;
+      if (terminalRef && xtermRef.current && fitAddonRef.current) {
+        setupTerminal(terminalRef, xtermRef.current.xterm, fitAddonRef.current);
+      }
     })();
 
     const handler = () => {
-      fitAddonRef.current!.fit();
+      fitAddonRef.current?.fit();
     };
 
     window.addEventListener('resize', handler);
 
     return function cleanup() {
+      isCancelled = true;
       xtermRef.current?.xterm.dispose();
       execRef.current?.cancel();
       window.removeEventListener('resize', handler);
