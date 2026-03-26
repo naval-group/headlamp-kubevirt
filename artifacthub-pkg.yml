@@ -16,17 +16,36 @@ keywords:
   - virtualization
   - virtual-machine
   - vnc
+provider:
+  name: Naval Group
+maintainers:
+  - name: Alexandre Knecht
+    email: knecht.alexandre@gmail.com
+  - name: Aymeric Deliencourt
+    email: aymeric.deliencourt@aydev.fr
 links:
   - name: GitHub
     url: https://github.com/naval-group/headlamp-kubevirt
+screenshots:
+  - title: Overview Dashboard
+    url: https://raw.githubusercontent.com/naval-group/headlamp-kubevirt/main/screenshots/overview-dashboard.png
+  - title: VM Details
+    url: https://raw.githubusercontent.com/naval-group/headlamp-kubevirt/main/screenshots/vm-details.png
+  - title: Serial Console
+    url: https://raw.githubusercontent.com/naval-group/headlamp-kubevirt/main/screenshots/serial-console.png
+  - title: VNC Console
+    url: https://raw.githubusercontent.com/naval-group/headlamp-kubevirt/main/screenshots/vnc-console.png
+  - title: Create VM
+    url: https://raw.githubusercontent.com/naval-group/headlamp-kubevirt/main/screenshots/create-vm.png
+  - title: Settings
+    url: https://raw.githubusercontent.com/naval-group/headlamp-kubevirt/main/screenshots/settings.png
 install: |
   ## Desktop Installation
 
   Download the latest release tarball and extract to your Headlamp plugins directory:
 
   ```bash
-  mkdir -p ~/.config/Headlamp/plugins/kubevirt
-  tar -xzf headlamp-kubevirt-*.tar.gz -C ~/.config/Headlamp/plugins/kubevirt
+  tar -xzf headlamp-kubevirt-*.tar.gz -C ~/.config/Headlamp/plugins/
   ```
 
   ## In-Cluster Installation
@@ -45,6 +64,6 @@ install: |
   ```
 annotations:
   headlamp/plugin/archive-url: https://github.com/naval-group/headlamp-kubevirt/releases/download/v0.1.0/headlamp-kubevirt-0.1.0.tar.gz
-  headlamp/plugin/archive-checksum: ""
+  headlamp/plugin/archive-checksum: sha256:37457194bf1c39825e4a564c369f1d7cc2badc6dc0dae398e990bd4825de9bd0
   headlamp/plugin/version-compat: ">=0.24.0"
   headlamp/plugin/distro-compat: in-cluster,desktop,docker-desktop,web
