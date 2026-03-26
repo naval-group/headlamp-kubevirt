@@ -112,34 +112,30 @@ For users running the Headlamp desktop application (Linux, macOS, Windows).
 
 1. Download the latest `headlamp-kubevirt-*.tar.gz` from the [Releases](https://github.com/naval-group/headlamp-kubevirt/releases) page
 
-2. Extract to your Headlamp plugins directory:
+2. Extract to your Headlamp plugins directory (the archive creates the `kubevirt/` folder automatically):
 
    **Linux (native)**
 
    ```bash
-   mkdir -p ~/.config/Headlamp/plugins/kubevirt
-   tar -xzf headlamp-kubevirt-*.tar.gz -C ~/.config/Headlamp/plugins/kubevirt
+   tar -xzf headlamp-kubevirt-*.tar.gz -C ~/.config/Headlamp/plugins/
    ```
 
    **Linux (Flatpak)**
 
    ```bash
-   mkdir -p ~/.var/app/io.kinvolk.Headlamp/config/Headlamp/plugins/kubevirt
-   tar -xzf headlamp-kubevirt-*.tar.gz -C ~/.var/app/io.kinvolk.Headlamp/config/Headlamp/plugins/kubevirt
+   tar -xzf headlamp-kubevirt-*.tar.gz -C ~/.var/app/io.kinvolk.Headlamp/config/Headlamp/plugins/
    ```
 
    **macOS**
 
    ```bash
-   mkdir -p ~/Library/Application\ Support/Headlamp/plugins/kubevirt
-   tar -xzf headlamp-kubevirt-*.tar.gz -C ~/Library/Application\ Support/Headlamp/plugins/kubevirt
+   tar -xzf headlamp-kubevirt-*.tar.gz -C ~/Library/Application\ Support/Headlamp/plugins/
    ```
 
    **Windows (PowerShell)**
 
    ```powershell
-   mkdir -Force "$env:APPDATA\Headlamp\Config\plugins\kubevirt"
-   tar -xzf headlamp-kubevirt-*.tar.gz -C "$env:APPDATA\Headlamp\Config\plugins\kubevirt"
+   tar -xzf headlamp-kubevirt-*.tar.gz -C "$env:APPDATA\Headlamp\Config\plugins\"
    ```
 
 3. Restart (or reload) Headlamp
@@ -153,10 +149,9 @@ npm install
 npm run build
 ```
 
-Then copy `dist/main.js` and `package.json` to the appropriate plugins directory (see paths above):
+Then copy the files to the appropriate plugins directory:
 
 ```bash
-# Example for Linux Flatpak
 mkdir -p ~/.var/app/io.kinvolk.Headlamp/config/Headlamp/plugins/kubevirt
 cp dist/main.js package.json ~/.var/app/io.kinvolk.Headlamp/config/Headlamp/plugins/kubevirt/
 ```

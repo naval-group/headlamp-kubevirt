@@ -40,7 +40,10 @@ jobs:
 
       - name: Package
         run: |
-          npx @kinvolk/headlamp-plugin package .
+          mkdir -p kubevirt/dist
+          cp dist/main.js kubevirt/dist/
+          cp package.json kubevirt/
+          npx @kinvolk/headlamp-plugin package kubevirt
           for f in kubevirt-*.tar.gz; do mv "$f" "headlamp-${f}"; done
 
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
