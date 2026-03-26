@@ -114,3 +114,4 @@ jobs:
             headlamp-kubevirt-*.tar.gz
             checksums.txt
           generate_release_notes: true
+          prerelease: ${{ contains(github.ref, '-rc') }}
