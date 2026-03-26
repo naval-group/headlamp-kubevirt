@@ -108,7 +108,7 @@ jobs:
           sha256sum headlamp-kubevirt-*.tar.gz > checksums.txt
           cat checksums.txt
 
-      - uses: softprops/action-gh-release@c062e08bd532815e2082a07e6cbe248321225571 # v2.1.0
+      - uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2.6.1
         with:
           files: |
             headlamp-kubevirt-*.tar.gz
