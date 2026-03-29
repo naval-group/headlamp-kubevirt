@@ -11,6 +11,7 @@ import { Box, Chip, Divider, ListItemIcon, ListItemText, MenuItem } from '@mui/m
 import { useSnackbar } from 'notistack';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
+import useVMActions from '../../hooks/useVMActions';
 import { isFeatureGateEnabled, subscribeToFeatureGates } from '../../utils/featureGates';
 import { getLabelColumns, LabelColumn } from '../../utils/pluginSettings';
 import { safeError } from '../../utils/sanitize';
@@ -25,6 +26,99 @@ import BulkActionToolbar from './BulkActionToolbar';
 import VirtualMachine from './VirtualMachine';
 import VMFormWrapper from './VMFormWrapper';
 
+function VMRowActionMenuItems({
+  vm,
+  closeMenu,
+  liveMigrationEnabled,
+  onDoctor,
+  onEdit,
+  onViewYaml,
+  onDelete,
+}: {
+  vm: VirtualMachine;
+  closeMenu: () => void;
+  liveMigrationEnabled: boolean;
+  onDoctor: (vm: VirtualMachine) => void;
+  onEdit: (vm: VirtualMachine) => void;
+  onViewYaml: (vm: VirtualMachine) => void;
+  onDelete: (vm: VirtualMachine) => void;
+}) {
+  // Use live VM data instead of stale row.original snapshot
+  const [liveVM] = VirtualMachine.useGet(vm.getName(), vm.getNamespace());
+  const { actions, isProtected } = useVMActions(liveVM || vm);
+  const visibleActions = actions.filter(a => a.id !== 'migrate' || liveMigrationEnabled);
+
+  return (
+    <>
+      {visibleActions.map(a => (
+        <MenuItem
+          key={a.id}
+          onClick={() => {
+            closeMenu();
+            a.handler();
+          }}
+          disabled={a.disabled}
+        >
+          <ListItemIcon>
+            <Icon icon={a.icon} />
+          </ListItemIcon>
+          <ListItemText>{a.label}</ListItemText>
+        </MenuItem>
+      ))}
+      <MenuItem
+        key="doctor"
+        onClick={() => {
+          closeMenu();
+          onDoctor(vm);
+        }}
+      >
+        <ListItemIcon>
+          <Icon icon="mdi:stethoscope" />
+        </ListItemIcon>
+        <ListItemText>VM Doctor</ListItemText>
+      </MenuItem>
+      <Divider />
+      <MenuItem
+        key="edit"
+        onClick={() => {
+          closeMenu();
+          onEdit(vm);
+        }}
+      >
+        <ListItemIcon>
+          <Icon icon="mdi:pencil" />
+        </ListItemIcon>
+        <ListItemText>Edit</ListItemText>
+      </MenuItem>
+      <MenuItem
+        key="view-yaml"
+        onClick={() => {
+          closeMenu();
+          onViewYaml(vm);
+        }}
+      >
+        <ListItemIcon>
+          <Icon icon="mdi:eye" />
+        </ListItemIcon>
+        <ListItemText>View YAML</ListItemText>
+      </MenuItem>
+      <MenuItem
+        key="delete"
+        onClick={() => {
+          closeMenu();
+          onDelete(vm);
+        }}
+        disabled={isProtected}
+      >
+        <ListItemIcon>
+          <Icon icon="mdi:delete" />
+        </ListItemIcon>
+        <ListItemText>Delete</ListItemText>
+      </MenuItem>
+    </>
+  );
+}
+
 export default function VirtualMachineList() {
   const { enqueueSnackbar } = useSnackbar();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -37,10 +131,6 @@ export default function VirtualMachineList() {
   const [editVM, setEditVM] = useState<VirtualMachine | null>(null);
   const [viewYamlVM, setViewYamlVM] = useState<VirtualMachine | null>(null);
   const location = useLocation();
-
-  const triggerRefresh = useCallback(() => {
-    // Force re-fetch by toggling a key — not needed with useList but kept for protection toggle
-  }, []);
 
   useEffect(() => {
     setCustomLabelColumns(getLabelColumns());
@@ -341,7 +431,9 @@ export default function VirtualMachineList() {
       const [vmiResult, podResult] = await Promise.allSettled([
         ApiProxy.request(`/apis/kubevirt.io/v1/namespaces/${ns}/virtualmachineinstances/${vmName}`),
         ApiProxy.request(
-          `/api/v1/namespaces/${ns}/pods?labelSelector=${encodeURIComponent(`vm.kubevirt.io/name=${vmName}`)}`
+          `/api/v1/namespaces/${ns}/pods?labelSelector=${encodeURIComponent(
+            `vm.kubevirt.io/name=${vmName}`
+          )}`
         ),
       ]);
       if (vmiResult.status === 'fulfilled') vmi = vmiResult.value;
@@ -362,244 +454,19 @@ export default function VirtualMachineList() {
 
   // Row action menu items (per-row three-dot menu)
   const renderRowActionMenuItems = useCallback(
-    ({ row, closeMenu }: { row: { original: VirtualMachine }; closeMenu: () => void }) => {
-      const item = row.original;
-      const status = item.status?.printableStatus || 'Unknown';
-      const isPaused = item.isPaused();
-      const isProtected = item.isDeleteProtected();
-
-      const actions = [
-        <MenuItem
-          key="start"
-          onClick={async () => {
-            closeMenu();
-            try {
-              await item.start();
-              enqueueSnackbar(`Starting VM ${item.getName()}`, { variant: 'success' });
-            } catch (e) {
-              console.error('Failed to start VM:', e);
-              enqueueSnackbar(`Failed to start VM ${item.getName()}.`, { variant: 'error' });
-            }
-          }}
-          disabled={status !== 'Stopped'}
-        >
-          <ListItemIcon>
-            <Icon icon="mdi:play" />
-          </ListItemIcon>
-          <ListItemText>Start</ListItemText>
-        </MenuItem>,
-
-        <MenuItem
-          key="stop"
-          onClick={async () => {
-            closeMenu();
-            try {
-              await item.stop();
-              enqueueSnackbar(`Stopping VM ${item.getName()}`, { variant: 'success' });
-            } catch (e) {
-              console.error('Failed to stop VM:', e);
-              enqueueSnackbar(`Failed to stop VM ${item.getName()}.`, { variant: 'error' });
-            }
-          }}
-          disabled={status === 'Stopped' || status === 'Stopping'}
-        >
-          <ListItemIcon>
-            <Icon icon="mdi:stop" />
-          </ListItemIcon>
-          <ListItemText>Stop</ListItemText>
-        </MenuItem>,
-
-        <MenuItem
-          key="force-stop"
-          onClick={async () => {
-            closeMenu();
-            try {
-              await item.forceStop();
-              enqueueSnackbar(`Force stopping VM ${item.getName()}`, { variant: 'success' });
-            } catch (e) {
-              console.error('Failed to force stop VM:', e);
-              enqueueSnackbar(`Failed to force stop VM ${item.getName()}.`, {
-                variant: 'error',
-              });
-            }
-          }}
-          disabled={status === 'Stopped'}
-        >
-          <ListItemIcon>
-            <Icon icon="mdi:stop-circle" />
-          </ListItemIcon>
-          <ListItemText>Force Stop</ListItemText>
-        </MenuItem>,
-
-        <MenuItem
-          key="restart"
-          onClick={async () => {
-            closeMenu();
-            try {
-              await item.restart();
-              enqueueSnackbar(`Restarting VM ${item.getName()}`, { variant: 'success' });
-            } catch (e) {
-              console.error('Failed to restart VM:', e);
-              enqueueSnackbar(`Failed to restart VM ${item.getName()}.`, {
-                variant: 'error',
-              });
-            }
-          }}
-          disabled={status !== 'Running'}
-        >
-          <ListItemIcon>
-            <Icon icon="mdi:restart" />
-          </ListItemIcon>
-          <ListItemText>Restart</ListItemText>
-        </MenuItem>,
-
-        <MenuItem
-          key="pause"
-          onClick={async () => {
-            closeMenu();
-            try {
-              if (isPaused) {
-                await item.unpause();
-                enqueueSnackbar(`Unpausing VM ${item.getName()}`, { variant: 'success' });
-              } else {
-                await item.pause();
-                enqueueSnackbar(`Pausing VM ${item.getName()}`, { variant: 'success' });
-              }
-            } catch (e) {
-              console.error(`Failed to ${isPaused ? 'unpause' : 'pause'} VM:`, e);
-              enqueueSnackbar(`Failed to ${isPaused ? 'unpause' : 'pause'} VM ${item.getName()}.`, {
-                variant: 'error',
-              });
-            }
-          }}
-          disabled={status !== 'Running'}
-        >
-          <ListItemIcon>
-            <Icon icon={isPaused ? 'mdi:play-pause' : 'mdi:pause'} />
-          </ListItemIcon>
-          <ListItemText>{isPaused ? 'Unpause' : 'Pause'}</ListItemText>
-        </MenuItem>,
-      ];
-
-      if (liveMigrationEnabled) {
-        actions.push(
-          <MenuItem
-            key="migrate"
-            onClick={async () => {
-              closeMenu();
-              try {
-                await item.migrate();
-                enqueueSnackbar(`Migrating VM ${item.getName()}`, { variant: 'success' });
-              } catch (e) {
-                console.error('Failed to migrate VM:', e);
-                enqueueSnackbar(`Failed to migrate VM ${item.getName()}.`, {
-                  variant: 'error',
-                });
-              }
-            }}
-            disabled={status !== 'Running' || !item.isLiveMigratable()}
-          >
-            <ListItemIcon>
-              <Icon icon="mdi:arrow-decision" />
-            </ListItemIcon>
-            <ListItemText>Migrate</ListItemText>
-          </MenuItem>
-        );
-      }
-
-      actions.push(
-        <MenuItem
-          key="protect"
-          onClick={async () => {
-            closeMenu();
-            try {
-              await item.setDeleteProtection(!isProtected);
-              enqueueSnackbar(
-                `VM ${item.getName()} ${isProtected ? 'unprotected' : 'protected'} from deletion`,
-                { variant: 'success' }
-              );
-              triggerRefresh();
-            } catch (e) {
-              enqueueSnackbar(
-                `Failed to ${isProtected ? 'unprotect' : 'protect'} VM ${item.getName()}: ${safeError(e, 'vm-protect')}`,
-                { variant: 'error' }
-              );
-            }
-          }}
-        >
-          <ListItemIcon>
-            <Icon icon={isProtected ? 'mdi:lock-open' : 'mdi:lock'} />
-          </ListItemIcon>
-          <ListItemText>{isProtected ? 'Unprotect' : 'Protect'}</ListItemText>
-        </MenuItem>
-      );
-
-      actions.push(
-        <MenuItem
-          key="doctor"
-          onClick={() => {
-            closeMenu();
-            openDoctor(item);
-          }}
-        >
-          <ListItemIcon>
-            <Icon icon="mdi:stethoscope" />
-          </ListItemIcon>
-          <ListItemText>VM Doctor</ListItemText>
-        </MenuItem>
-      );
-
-      actions.push(<Divider key="divider-edit" />);
-
-      actions.push(
-        <MenuItem
-          key="edit"
-          onClick={() => {
-            closeMenu();
-            setEditVM(item);
-          }}
-        >
-          <ListItemIcon>
-            <Icon icon="mdi:pencil" />
-          </ListItemIcon>
-          <ListItemText>Edit</ListItemText>
-        </MenuItem>
-      );
-
-      actions.push(
-        <MenuItem
-          key="view-yaml"
-          onClick={() => {
-            closeMenu();
-            setViewYamlVM(item);
-          }}
-        >
-          <ListItemIcon>
-            <Icon icon="mdi:eye" />
-          </ListItemIcon>
-          <ListItemText>View YAML</ListItemText>
-        </MenuItem>
-      );
-
-      actions.push(
-        <MenuItem
-          key="delete"
-          onClick={() => {
-            closeMenu();
-            setDeleteVM(item);
-          }}
-          disabled={isProtected}
-        >
-          <ListItemIcon>
-            <Icon icon="mdi:delete" />
-          </ListItemIcon>
-          <ListItemText>Delete</ListItemText>
-        </MenuItem>
-      );
-
-      return actions;
-    },
-    [enqueueSnackbar, liveMigrationEnabled, openDoctor, triggerRefresh]
+    ({ row, closeMenu }: { row: { original: VirtualMachine }; closeMenu: () => void }) => [
+      <VMRowActionMenuItems
+        key="actions"
+        vm={row.original}
+        closeMenu={closeMenu}
+        liveMigrationEnabled={liveMigrationEnabled}
+        onDoctor={openDoctor}
+        onEdit={setEditVM}
+        onViewYaml={setViewYamlVM}
+        onDelete={setDeleteVM}
+      />,
+    ],
+    [liveMigrationEnabled, openDoctor]
   );
 
   return (
@@ -676,7 +543,9 @@ export default function VirtualMachineList() {
             await deleteVM.delete();
             enqueueSnackbar(`Deleted ${name}`, { variant: 'success' });
           } catch (e) {
-            enqueueSnackbar(`Failed to delete ${name}: ${safeError(e, 'vm-delete')}`, { variant: 'error' });
+            enqueueSnackbar(`Failed to delete ${name}: ${safeError(e, 'vm-delete')}`, {
+              variant: 'error',
+            });
           }
         }}
       />

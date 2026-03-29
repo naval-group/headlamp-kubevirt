@@ -25,7 +25,7 @@ import { useSnackbar } from 'notistack';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { RFBPixelFormat } from '../../types';
-import { safeError } from '../../utils/sanitize';
+import useVMActions from '../../hooks/useVMActions';
 import VirtualMachine from '../VirtualMachines/VirtualMachine';
 
 // ── Terminal types ──────────────────────────────────────────────────────
@@ -190,65 +190,12 @@ interface VMConsoleProps extends DialogProps {
 // ── Quick Action Buttons ────────────────────────────────────────────────
 
 function QuickActions({ vm }: { vm?: VirtualMachine }) {
-  const { enqueueSnackbar } = useSnackbar();
+  const { actions } = useVMActions(vm);
   if (!vm) return null;
 
-  const status = vm.status?.printableStatus || 'Unknown';
-
-  const actions = [
-    {
-      icon: 'mdi:play',
-      label: 'Start',
-      disabled: status !== 'Stopped',
-      handler: async () => {
-        try {
-          await vm.start();
-          enqueueSnackbar('VM started', { variant: 'success' });
-        } catch (e) {
-          enqueueSnackbar('Failed to start: ' + safeError(e, 'vm-start'), { variant: 'error' });
-        }
-      },
-    },
-    {
-      icon: 'mdi:stop',
-      label: 'Stop',
-      disabled: status === 'Stopped' || status === 'Stopping',
-      handler: async () => {
-        try {
-          await vm.stop();
-          enqueueSnackbar('VM stopped', { variant: 'success' });
-        } catch (e) {
-          enqueueSnackbar('Failed to stop: ' + safeError(e, 'vm-stop'), { variant: 'error' });
-        }
-      },
-    },
-    {
-      icon: 'mdi:stop-circle',
-      label: 'Force Stop',
-      disabled: status === 'Stopped',
-      handler: async () => {
-        try {
-          await vm.forceStop();
-          enqueueSnackbar('VM force stopped', { variant: 'success' });
-        } catch (e) {
-          enqueueSnackbar('Failed to force stop: ' + safeError(e, 'vm-force-stop'), { variant: 'error' });
-        }
-      },
-    },
-    {
-      icon: 'mdi:restart',
-      label: 'Restart',
-      disabled: status !== 'Running',
-      handler: async () => {
-        try {
-          await vm.restart();
-          enqueueSnackbar('VM restarting', { variant: 'success' });
-        } catch (e) {
-          enqueueSnackbar('Failed to restart: ' + safeError(e, 'vm-restart'), { variant: 'error' });
-        }
-      },
-    },
-  ];
+  // Only show start, stop, force-stop, restart in console view
+  const quickIds = ['start', 'stop', 'force-stop', 'restart'];
+  const quickActions = actions.filter(a => quickIds.includes(a.id));
 
   return (
     <Box display="flex" alignItems="center" gap={0.5} sx={{ ml: 2 }}>
@@ -260,8 +207,8 @@ function QuickActions({ vm }: { vm?: VirtualMachine }) {
           mx: 0.5,
         }}
       />
-      {actions.map(a => (
-        <Tooltip key={a.label} title={a.label}>
+      {quickActions.map(a => (
+        <Tooltip key={a.id} title={a.label}>
           <span>
             <IconButton
               size="small"

@@ -33,7 +33,7 @@ import CopyCodeBlock from '../common/CopyCodeBlock';
 import { SimpleStyledTooltip, TitledTooltip } from '../common/StyledTooltip';
 import VMConsole from '../VMConsole/VMConsole';
 import VMDoctorDialog from '../VMDoctor/VMDoctorDialog';
-import { safeError } from '../../utils/sanitize';
+import useVMActions from '../../hooks/useVMActions';
 import VirtualMachine from './VirtualMachine';
 
 /** Runtime interface info from VMI status (not the spec-level VMInterface) */
@@ -84,6 +84,7 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDoctor, setShowDoctor] = useState(false);
   const [vmItem] = VirtualMachine.useGet(name, namespace);
+  const { actions: vmActions, isPaused: vmIsPaused, isProtected: vmIsProtected } = useVMActions(vmItem);
 
   const [podName, setPodName] = useState<string | null>(null);
   const [vmiData, setVmiData] = useState<any>(null);
@@ -820,254 +821,90 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
             },
           ]
         }
-        actions={item => {
-          const status = item?.status?.printableStatus || 'Unknown';
-          return (
-            item && [
-              {
-                id: 'start',
+        actions={item =>
+          item && [
+            ...vmActions
+              .filter(a => a.id !== 'migrate' || liveMigrationEnabled)
+              .map(a => ({
+                id: a.id,
                 action: (
                   <ActionButton
-                    description={t('Start')}
-                    icon="mdi:play"
-                    onClick={async () => {
-                      try {
-                        await item.start();
-                        enqueueSnackbar('Virtual Machine started', { variant: 'success' });
-                      } catch (e) {
-                        console.error('start failed', e);
-                        enqueueSnackbar('Failed to start Virtual Machine: ' + safeError(e, 'vm-start'), {
-                          variant: 'error',
-                        });
-                      }
-                    }}
-                    iconButtonProps={{ disabled: status !== 'Stopped' }}
+                    description={t(a.label)}
+                    icon={a.icon}
+                    onClick={a.handler}
+                    iconButtonProps={{ disabled: a.disabled }}
                   ></ActionButton>
                 ),
-              },
-              {
-                id: 'stop',
-                action: (
+              })),
+            {
+              id: 'edit-wizard',
+              action: (
+                <ActionButton
+                  description={t('Edit with Wizard')}
+                  icon="mdi:auto-fix"
+                  onClick={() => setShowEditDialog(true)}
+                ></ActionButton>
+              ),
+            },
+            ...(snapshotEnabled
+              ? [
+                  {
+                    id: 'snapshot',
+                    action: (
+                      <ActionButton
+                        description={t('Take Snapshot')}
+                        icon="mdi:camera"
+                        onClick={() => setShowSnapshotDialog(true)}
+                      ></ActionButton>
+                    ),
+                  },
+                ]
+              : []),
+            {
+              id: 'doctor',
+              action: (
+                <ActionButton
+                  description="VM Doctor"
+                  aria-label="vm doctor"
+                  icon="mdi:stethoscope"
+                  onClick={() => setShowDoctor(true)}
+                />
+              ),
+            },
+            {
+              id: 'console',
+              action: (
+                <Resource.AuthVisible item={item} authVerb="get" subresource="exec">
                   <ActionButton
-                    description={t('Stop')}
-                    icon="mdi:stop"
-                    onClick={async () => {
-                      try {
-                        await item.stop();
-                        enqueueSnackbar('Virtual Machine stopped', { variant: 'success' });
-                      } catch (e) {
-                        console.error('stop failed', e);
-                        enqueueSnackbar('Failed to stop Virtual Machine: ' + safeError(e, 'vm-stop'), {
-                          variant: 'error',
-                        });
-                      }
-                    }}
-                    iconButtonProps={{ disabled: status === 'Stopped' || status === 'Stopping' }}
-                  ></ActionButton>
-                ),
-              },
-              {
-                id: 'restart',
-                action: (
-                  <ActionButton
-                    description={t('Restart')}
-                    icon="mdi:restart"
-                    onClick={async () => {
-                      try {
-                        await item.restart();
-                        enqueueSnackbar('Virtual Machine restarting', { variant: 'success' });
-                      } catch (e) {
-                        console.error('restart failed', e);
-                        enqueueSnackbar('Failed to restart Virtual Machine: ' + safeError(e, 'vm-restart'), {
-                          variant: 'error',
-                        });
-                      }
-                    }}
-                    iconButtonProps={{ disabled: status !== 'Running' }}
-                  ></ActionButton>
-                ),
-              },
-              {
-                id: 'pause',
-                action: (
-                  <ActionButton
-                    description={item.isPaused() ? t('Unpause') : t('Pause')}
-                    icon={item.isPaused() ? 'mdi:play-pause' : 'mdi:pause'}
-                    onClick={async () => {
-                      try {
-                        if (item.isPaused()) {
-                          await item.unpause();
-                          enqueueSnackbar('Virtual Machine unpaused', { variant: 'success' });
-                        } else {
-                          await item.pause();
-                          enqueueSnackbar('Virtual Machine paused', { variant: 'success' });
-                        }
-                      } catch (e) {
-                        console.error('pause/unpause failed', e);
-                        enqueueSnackbar(
-                          `Failed to ${
-                            item.isPaused() ? 'unpause' : 'pause'
-                          } Virtual Machine: ${safeError(e, 'vm-action')}`,
-                          { variant: 'error' }
-                        );
-                      }
-                    }}
-                    iconButtonProps={{ disabled: status !== 'Running' }}
-                  ></ActionButton>
-                ),
-              },
-              {
-                id: 'force-stop',
-                action: (
-                  <ActionButton
-                    description={t('Force Stop')}
-                    icon="mdi:stop-circle"
-                    onClick={async () => {
-                      try {
-                        await item.forceStop();
-                        enqueueSnackbar('Virtual Machine force stopped', { variant: 'success' });
-                      } catch (e) {
-                        console.error('force stop failed', e);
-                        enqueueSnackbar('Failed to force stop Virtual Machine: ' + safeError(e, 'vm-force-stop'), {
-                          variant: 'error',
-                        });
-                      }
-                    }}
-                    iconButtonProps={{ disabled: status === 'Stopped' }}
-                  ></ActionButton>
-                ),
-              },
-              ...(liveMigrationEnabled
-                ? [
-                    {
-                      id: 'migrate',
-                      action: (
-                        <ActionButton
-                          description={t('Migrate')}
-                          icon="mdi:arrow-decision"
-                          onClick={async () => {
-                            try {
-                              await item.migrate();
-                              enqueueSnackbar('Virtual Machine migration initiated', {
-                                variant: 'success',
-                              });
-                            } catch (e) {
-                              console.error('migration failed', e);
-                              enqueueSnackbar('Failed to migrate Virtual Machine.', {
-                                variant: 'error',
-                              });
-                            }
-                          }}
-                          iconButtonProps={{
-                            disabled: status !== 'Running' || !item.isLiveMigratable(),
-                          }}
-                        ></ActionButton>
-                      ),
-                    },
-                  ]
-                : []),
-              {
-                id: 'protect',
-                action: (
-                  <ActionButton
-                    description={item.isDeleteProtected() ? t('Unprotect') : t('Protect')}
-                    icon={item.isDeleteProtected() ? 'mdi:lock-open' : 'mdi:lock'}
-                    onClick={async () => {
-                      const isProtected = item.isDeleteProtected();
-
-                      try {
-                        await item.setDeleteProtection(!isProtected);
-                        enqueueSnackbar(
-                          `Virtual Machine ${
-                            isProtected ? 'unprotected' : 'protected'
-                          } from deletion`,
-                          { variant: 'success' }
-                        );
-                      } catch (e) {
-                        console.error('protection toggle failed', e);
-                        enqueueSnackbar(
-                          `Failed to ${
-                            isProtected ? 'unprotect' : 'protect'
-                          } Virtual Machine: ${safeError(e, 'vm-action')}`,
-                          { variant: 'error' }
-                        );
-                      }
-                    }}
-                  ></ActionButton>
-                ),
-              },
-              {
-                id: 'edit-wizard',
-                action: (
-                  <ActionButton
-                    description={t('Edit with Wizard')}
-                    icon="mdi:auto-fix"
-                    onClick={() => setShowEditDialog(true)}
-                  ></ActionButton>
-                ),
-              },
-              ...(snapshotEnabled
-                ? [
-                    {
-                      id: 'snapshot',
-                      action: (
-                        <ActionButton
-                          description={t('Take Snapshot')}
-                          icon="mdi:camera"
-                          onClick={() => setShowSnapshotDialog(true)}
-                        ></ActionButton>
-                      ),
-                    },
-                  ]
-                : []),
-              {
-                id: 'doctor',
-                action: (
-                  <ActionButton
-                    description="VM Doctor"
-                    aria-label="vm doctor"
-                    icon="mdi:stethoscope"
+                    description={t('Terminal / Exec')}
+                    aria-label={t('terminal')}
+                    icon="mdi:console"
                     onClick={() => {
-                      setShowDoctor(true);
+                      setConsoleTab('terminal');
+                      setShowConsole(true);
                     }}
                   />
-                ),
-              },
-              {
-                id: 'console',
-                action: (
-                  <Resource.AuthVisible item={item} authVerb="get" subresource="exec">
-                    <ActionButton
-                      description={t('Terminal / Exec')}
-                      aria-label={t('terminal')}
-                      icon="mdi:console"
-                      onClick={() => {
-                        setConsoleTab('terminal');
-                        setShowConsole(true);
-                      }}
-                    />
-                  </Resource.AuthVisible>
-                ),
-              },
-              {
-                id: 'vnc',
-                action: (
-                  <Resource.AuthVisible item={item} authVerb="get" subresource="vnc">
-                    <ActionButton
-                      description={t('VNC Console')}
-                      aria-label={t('vnc')}
-                      icon="mdi:monitor"
-                      onClick={() => {
-                        setConsoleTab('vnc');
-                        setShowConsole(true);
-                      }}
-                    />
-                  </Resource.AuthVisible>
-                ),
-              },
-            ]
-          );
-        }}
+                </Resource.AuthVisible>
+              ),
+            },
+            {
+              id: 'vnc',
+              action: (
+                <Resource.AuthVisible item={item} authVerb="get" subresource="vnc">
+                  <ActionButton
+                    description={t('VNC Console')}
+                    aria-label={t('vnc')}
+                    icon="mdi:monitor"
+                    onClick={() => {
+                      setConsoleTab('vnc');
+                      setShowConsole(true);
+                    }}
+                  />
+                </Resource.AuthVisible>
+              ),
+            },
+          ]
+        }
       />
       <CreateSnapshotDialog
         open={showSnapshotDialog}
