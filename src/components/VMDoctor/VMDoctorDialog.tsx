@@ -9,15 +9,16 @@ import {
   DialogContent,
   DialogTitle,
   IconButton,
-  Tab,
-  Tabs,
   Tooltip,
   Typography,
 } from '@mui/material';
 import { useSnackbar } from 'notistack';
 import React, { useCallback, useState } from 'react';
+import useVMActions from '../../hooks/useVMActions';
 import { safeError } from '../../utils/sanitize';
+import { getVMIPhaseColor } from '../../utils/statusColors';
 import ConfirmDialog from '../common/ConfirmDialog';
+import { TabContent, TabDef, TabPanelHeader } from '../common/TabPanel';
 import VirtualMachine from '../VirtualMachines/VirtualMachine';
 import ConditionsTab from './ConditionsTab';
 import EventsTab from './EventsTab';
@@ -28,26 +29,7 @@ import PodLogsTab from './PodLogsTab';
 import PrometheusQuerier from './PrometheusQuerier';
 import VirtLauncherExec from './VirtLauncherExec';
 import VMShellTab from './VMShellTab';
-
-function getStatusColor(phase: string): string {
-  switch (phase?.toLowerCase()) {
-    case 'running':
-      return '#3e8635';
-    case 'succeeded':
-      return '#3e8635';
-    case 'paused':
-      return '#f0ab00';
-    case 'scheduling':
-    case 'scheduled':
-    case 'starting':
-      return '#2196f3';
-    case 'failed':
-    case 'crashloopbackoff':
-      return '#c9190b';
-    default:
-      return '#6a6e73';
-  }
-}
+import YAMLEditorTab from './YAMLEditorTab';
 
 interface VMDoctorDialogProps {
   open: boolean;
@@ -68,27 +50,8 @@ const TAB_QUERIER = 4;
 const TAB_LOGS = 5;
 const TAB_VM_SHELL = 6;
 const TAB_POD_SHELL = 7;
-const TAB_MEMDUMP = 8;
-
-interface TabDef {
-  icon: string;
-  label: string;
-  disabled: boolean;
-  reason: string;
-}
-
-function tabLabel(tab: TabDef) {
-  return (
-    <Tooltip title={tab.disabled ? tab.reason : ''} arrow placement="bottom">
-      <Box display="flex" alignItems="center" gap={0.5}>
-        {tab.label}
-        {tab.disabled && (
-          <Icon icon="mdi:information-outline" width={14} style={{ opacity: 0.7 }} />
-        )}
-      </Box>
-    </Tooltip>
-  );
-}
+const TAB_YAML = 8;
+const TAB_MEMDUMP = 9;
 
 export default function VMDoctorDialog({
   open,
@@ -104,6 +67,7 @@ export default function VMDoctorDialog({
   const [showCleanupPrompt, setShowCleanupPrompt] = useState(false);
   const [analysisPods, setAnalysisPods] = useState<string[]>([]);
   const { enqueueSnackbar } = useSnackbar();
+  const { actions: vmActions } = useVMActions(vmItem);
 
   // Intercept close: check for running analysis pods before closing
   const handleClose = useCallback(async () => {
@@ -151,9 +115,10 @@ export default function VMDoctorDialog({
   const isVMShell = activeTab === TAB_VM_SHELL;
   const isPodShell = activeTab === TAB_POD_SHELL;
   const isLogs = activeTab === TAB_LOGS;
+  const isYaml = activeTab === TAB_YAML;
   const isMemDump = activeTab === TAB_MEMDUMP;
   const isShellTab = isVMShell || isPodShell;
-  const isFixedLayout = isShellTab || isLogs || isMemDump;
+  const isFixedLayout = isShellTab || isLogs || isYaml || isMemDump;
 
   const isRunning = vmiPhase === 'Running';
   const hasPod = !!podName;
@@ -213,6 +178,12 @@ export default function VMDoctorDialog({
       reason: 'No virt-launcher pod found. Pod Shell requires a running VM.',
     },
     {
+      icon: 'mdi:code-braces',
+      label: 'YAML',
+      disabled: false,
+      reason: '',
+    },
+    {
       icon: 'mdi:memory',
       label: 'Memory Dump',
       disabled: false,
@@ -259,155 +230,41 @@ export default function VMDoctorDialog({
           label={vmStatus}
           size="small"
           sx={{
-            bgcolor: getStatusColor(vmiPhase),
+            bgcolor: getVMIPhaseColor(vmiPhase),
             color: 'white',
             fontWeight: 600,
           }}
         />
         <Box flexGrow={1} />
-        {vmItem &&
-          (() => {
-            const status = vmItem.status?.printableStatus || 'Unknown';
-            const isStopped = status === 'Stopped';
-            const isStopping = status === 'Stopping';
-            const vmAction = async (
-              action: () => Promise<any>,
-              successMsg: string,
-              failMsg: string
-            ) => {
-              try {
-                await action();
-                enqueueSnackbar(successMsg, { variant: 'success' });
-              } catch (e) {
-                enqueueSnackbar(`${failMsg}: ${safeError(e, 'vmAction')}`, { variant: 'error' });
-              }
-            };
-            return (
-              <Box display="flex" alignItems="center" gap={0.25}>
-                <Tooltip title="Start" arrow>
+        {vmItem && (
+          <Box display="flex" alignItems="center" gap={0.25}>
+            {vmActions
+              .filter(a => a.id !== 'protect')
+              .map(a => (
+                <Tooltip key={a.id} title={a.label} arrow>
                   <span>
-                    <IconButton
-                      size="small"
-                      disabled={!isStopped}
-                      onClick={() =>
-                        vmAction(() => vmItem.start(), `Starting ${vmName}`, 'Failed to start')
-                      }
-                    >
-                      <Icon icon="mdi:play" width={18} />
+                    <IconButton size="small" disabled={a.disabled} onClick={a.handler}>
+                      <Icon icon={a.icon} width={18} />
                     </IconButton>
                   </span>
                 </Tooltip>
-                <Tooltip title="Stop" arrow>
-                  <span>
-                    <IconButton
-                      size="small"
-                      disabled={isStopped || isStopping}
-                      onClick={() =>
-                        vmAction(() => vmItem.stop(), `Stopping ${vmName}`, 'Failed to stop')
-                      }
-                    >
-                      <Icon icon="mdi:stop" width={18} />
-                    </IconButton>
-                  </span>
-                </Tooltip>
-                <Tooltip title="Restart" arrow>
-                  <span>
-                    <IconButton
-                      size="small"
-                      disabled={status !== 'Running'}
-                      onClick={() =>
-                        vmAction(
-                          () => vmItem.restart(),
-                          `Restarting ${vmName}`,
-                          'Failed to restart'
-                        )
-                      }
-                    >
-                      <Icon icon="mdi:restart" width={18} />
-                    </IconButton>
-                  </span>
-                </Tooltip>
-                <Tooltip title={vmItem.isPaused() ? 'Unpause' : 'Pause'} arrow>
-                  <span>
-                    <IconButton
-                      size="small"
-                      disabled={status !== 'Running' && !vmItem.isPaused()}
-                      onClick={() =>
-                        vmAction(
-                          () => (vmItem.isPaused() ? vmItem.unpause() : vmItem.pause()),
-                          vmItem.isPaused() ? `Unpausing ${vmName}` : `Pausing ${vmName}`,
-                          vmItem.isPaused() ? 'Failed to unpause' : 'Failed to pause'
-                        )
-                      }
-                    >
-                      <Icon icon={vmItem.isPaused() ? 'mdi:play-pause' : 'mdi:pause'} width={18} />
-                    </IconButton>
-                  </span>
-                </Tooltip>
-                <Tooltip title="Force Stop" arrow>
-                  <span>
-                    <IconButton
-                      size="small"
-                      disabled={isStopped}
-                      onClick={() =>
-                        vmAction(
-                          () => vmItem.forceStop(),
-                          `Force stopping ${vmName}`,
-                          'Failed to force stop'
-                        )
-                      }
-                    >
-                      <Icon icon="mdi:stop-circle" width={18} />
-                    </IconButton>
-                  </span>
-                </Tooltip>
-                <Tooltip title="Migrate" arrow>
-                  <span>
-                    <IconButton
-                      size="small"
-                      disabled={status !== 'Running' || !vmItem.isLiveMigratable()}
-                      onClick={() =>
-                        vmAction(() => vmItem.migrate(), `Migrating ${vmName}`, 'Failed to migrate')
-                      }
-                    >
-                      <Icon icon="mdi:arrow-decision" width={18} />
-                    </IconButton>
-                  </span>
-                </Tooltip>
-                <Tooltip title="Delete" arrow>
-                  <span>
-                    <IconButton size="small" onClick={() => setShowDeleteConfirm(true)}>
-                      <Icon icon="mdi:delete" width={18} color="#ef5350" />
-                    </IconButton>
-                  </span>
-                </Tooltip>
-              </Box>
-            );
-          })()}
+              ))}
+            <Tooltip title="Delete" arrow>
+              <span>
+                <IconButton size="small" onClick={() => setShowDeleteConfirm(true)}>
+                  <Icon icon="mdi:delete" width={18} color="#ef5350" />
+                </IconButton>
+              </span>
+            </Tooltip>
+          </Box>
+        )}
         <IconButton onClick={handleClose} size="small">
           <Icon icon="mdi:close" width={20} />
         </IconButton>
       </DialogTitle>
 
       <Box sx={{ borderBottom: 1, borderColor: 'divider', px: 3 }}>
-        <Tabs
-          value={activeTab}
-          onChange={(_, v) => {
-            if (!tabs[v].disabled) setActiveTab(v);
-          }}
-          variant="scrollable"
-          scrollButtons="auto"
-        >
-          {tabs.map((tab, i) => (
-            <Tab
-              key={i}
-              icon={<Icon icon={tab.icon} width={18} />}
-              iconPosition="start"
-              label={tabLabel(tab)}
-              sx={tab.disabled ? { opacity: 0.4, cursor: 'default' } : undefined}
-            />
-          ))}
-        </Tabs>
+        <TabPanelHeader tabs={tabs} activeTab={activeTab} onChange={setActiveTab} />
       </Box>
 
       <DialogContent
@@ -420,11 +277,11 @@ export default function VMDoctorDialog({
           minHeight: 0,
         }}
       >
-        {/* Guest Info, Conditions, Events, Metrics: unmount on tab change (no persistent state) */}
-        {activeTab === TAB_GUEST_INFO && (
+        {/* Unmounted on tab change (no persistent state) */}
+        <TabContent activeTab={activeTab} index={TAB_GUEST_INFO}>
           <GuestInfoTab vmName={vmName} namespace={namespace} vmiData={vmiData} vmItem={vmItem} />
-        )}
-        {activeTab === TAB_CONDITIONS && (
+        </TabContent>
+        <TabContent activeTab={activeTab} index={TAB_CONDITIONS}>
           <ConditionsTab
             vmName={vmName}
             namespace={namespace}
@@ -432,68 +289,46 @@ export default function VMDoctorDialog({
             vmItem={vmItem}
             podName={podName}
           />
-        )}
-        {activeTab === TAB_EVENTS && (
+        </TabContent>
+        <TabContent activeTab={activeTab} index={TAB_EVENTS}>
           <EventsTab vmName={vmName} namespace={namespace} />
-        )}
-        {activeTab === TAB_METRICS && (
+        </TabContent>
+        <TabContent activeTab={activeTab} index={TAB_METRICS}>
           <MetricsDashboardTab
             vmName={vmName}
             namespace={namespace}
             vmiData={vmiData}
             vmItem={vmItem}
           />
-        )}
-        <Box
-          sx={{
-            display: activeTab === TAB_QUERIER ? 'flex' : 'none',
-            flexDirection: 'column',
-            flex: 1,
-            minHeight: 0,
-          }}
-        >
+        </TabContent>
+
+        {/* Kept alive (display:none) to preserve session/scroll state */}
+        <TabContent activeTab={activeTab} index={TAB_QUERIER} keepAlive flex>
           <PrometheusQuerier vmName={vmName} namespace={namespace} />
-        </Box>
-        <Box
-          sx={{
-            display: activeTab === TAB_LOGS ? 'flex' : 'none',
-            flexDirection: 'column',
-            flex: 1,
-            minHeight: 0,
-          }}
-        >
+        </TabContent>
+        <TabContent activeTab={activeTab} index={TAB_LOGS} keepAlive flex>
           <PodLogsTab podName={podName} namespace={namespace} />
-        </Box>
-        {activeTab === TAB_VM_SHELL && (
-          <Box
-            sx={{
-              display: 'flex',
-              flexDirection: 'column',
-              flex: 1,
-              minHeight: 0,
-            }}
-          >
-            <VMShellTab vmItem={vmItem} active={open && isVMShell} />
-          </Box>
-        )}
-        <Box
-          sx={{
-            display: activeTab === TAB_POD_SHELL ? 'flex' : 'none',
-            flexDirection: 'column',
-            flex: 1,
-            minHeight: 0,
-          }}
-        >
+        </TabContent>
+
+        {/* VM Shell: unmounted (reconnects on mount) */}
+        <TabContent activeTab={activeTab} index={TAB_VM_SHELL} flex>
+          <VMShellTab vmItem={vmItem} active={open && isVMShell} />
+        </TabContent>
+
+        {/* Pod Shell + Memory Dump: kept alive */}
+        <TabContent activeTab={activeTab} index={TAB_POD_SHELL} keepAlive flex>
           <VirtLauncherExec podName={podName} namespace={namespace} hasAgent={hasAgent} />
-        </Box>
-        <Box
-          sx={{
-            display: activeTab === TAB_MEMDUMP ? 'flex' : 'none',
-            flexDirection: 'column',
-            flex: 1,
-            minHeight: 0,
-          }}
-        >
+        </TabContent>
+        <TabContent activeTab={activeTab} index={TAB_YAML} flex>
+          <YAMLEditorTab
+            vmName={vmName}
+            namespace={namespace}
+            vmItem={vmItem}
+            vmiData={vmiData}
+            podName={podName}
+          />
+        </TabContent>
+        <TabContent activeTab={activeTab} index={TAB_MEMDUMP} keepAlive flex>
           <MemoryDumpTab
             vmName={vmName}
             namespace={namespace}
@@ -501,7 +336,7 @@ export default function VMDoctorDialog({
             vmiData={vmiData}
             hasAgent={hasAgent}
           />
-        </Box>
+        </TabContent>
       </DialogContent>
 
       <ConfirmDialog

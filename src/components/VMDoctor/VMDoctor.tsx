@@ -2,34 +2,16 @@ import { Icon } from '@iconify/react';
 import { ApiProxy } from '@kinvolk/headlamp-plugin/lib';
 import { SectionBox } from '@kinvolk/headlamp-plugin/lib/components/common';
 import { Box, Chip, Tab, Tabs, Typography } from '@mui/material';
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useParams } from 'react-router-dom';
+import usePolling from '../../hooks/usePolling';
 import VirtualMachine from '../VirtualMachines/VirtualMachine';
 import ConsoleLogTab from './ConsoleLogTab';
 import EventsTab from './EventsTab';
 import GuestInfoTab from './GuestInfoTab';
 import MetricsDashboardTab from './MetricsDashboardTab';
+import { getVMIPhaseColor } from '../../utils/statusColors';
 import PodLogsTab from './PodLogsTab';
-
-function getStatusColor(phase: string): string {
-  switch (phase?.toLowerCase()) {
-    case 'running':
-      return '#3e8635';
-    case 'succeeded':
-      return '#3e8635';
-    case 'paused':
-      return '#f0ab00';
-    case 'scheduling':
-    case 'scheduled':
-    case 'starting':
-      return '#2196f3';
-    case 'failed':
-    case 'crashloopbackoff':
-      return '#c9190b';
-    default:
-      return '#6a6e73';
-  }
-}
 
 export default function VMDoctor() {
   const { namespace, name } = useParams<{ namespace: string; name: string }>();
@@ -38,54 +20,40 @@ export default function VMDoctor() {
   const [vmiData, setVmiData] = useState<Record<string, any> | null>(null);
   const [podName, setPodName] = useState<string>('');
 
-  // Fetch VMI data with polling
-  useEffect(() => {
-    if (!name || !namespace) return;
-    let cancelled = false;
-
-    const fetchVMI = async () => {
+  // Poll VMI data
+  usePolling(
+    async cancelled => {
       try {
         const resp = await ApiProxy.request(
           `/apis/kubevirt.io/v1/namespaces/${namespace}/virtualmachineinstances/${name}`
         );
-        if (!cancelled) setVmiData(resp);
+        if (!cancelled()) setVmiData(resp);
       } catch {
-        if (!cancelled) setVmiData(null);
+        if (!cancelled()) setVmiData(null);
       }
-    };
+    },
+    10000,
+    [name, namespace],
+    !!name && !!namespace
+  );
 
-    fetchVMI();
-    const interval = setInterval(fetchVMI, 10000);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [name, namespace]);
-
-  // Find virt-launcher pod
-  useEffect(() => {
-    if (!name || !namespace) return;
-    let cancelled = false;
-
-    const fetchPod = async () => {
+  // Poll virt-launcher pod
+  usePolling(
+    async cancelled => {
       try {
         const resp = await ApiProxy.request(
           `/api/v1/namespaces/${namespace}/pods?labelSelector=${encodeURIComponent(`vm.kubevirt.io/name=${name}`)}`
         );
         const pod = resp?.items?.[0]?.metadata?.name;
-        if (!cancelled && pod) setPodName(pod);
+        if (!cancelled() && pod) setPodName(pod);
       } catch {
         // ignore
       }
-    };
-
-    fetchPod();
-    const interval = setInterval(fetchPod, 15000);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [name, namespace]);
+    },
+    15000,
+    [name, namespace],
+    !!name && !!namespace
+  );
 
   const vmiPhase = vmiData?.status?.phase || 'Stopped';
   const vmStatus = vmItem?.status?.printableStatus || vmiPhase;
@@ -105,7 +73,7 @@ export default function VMDoctor() {
             label={vmStatus}
             size="small"
             sx={{
-              bgcolor: getStatusColor(vmiPhase),
+              bgcolor: getVMIPhaseColor(vmiPhase),
               color: 'white',
               fontWeight: 600,
               ml: 1,

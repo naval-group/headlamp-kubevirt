@@ -22,6 +22,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { isFeatureGateEnabled } from '../../utils/featureGates';
 import { getForensicSettings } from '../../utils/pluginSettings';
 import { isValidK8sName, safeError } from '../../utils/sanitize';
+import { getDumpPhaseColor, getDumpPhaseIcon, getPVCPhaseColor } from '../../utils/statusColors';
 import ConfirmDialog from '../common/ConfirmDialog';
 import VirtualMachine from '../VirtualMachines/VirtualMachine';
 import PodExecTerminal, { PodExecTerminalHandle } from './PodExecTerminal';
@@ -77,49 +78,6 @@ function suggestPVCSize(vmMemory: string): string {
   const total = Math.ceil((memBytes + overhead) * 1.05);
   const giB = Math.ceil(total / 1024 ** 3);
   return `${giB}Gi`;
-}
-
-function phaseColor(phase?: string): string {
-  switch (phase) {
-    case 'Completed':
-      return '#3e8635';
-    case 'InProgress':
-      return '#2196f3';
-    case 'Failed':
-      return '#c9190b';
-    case 'Dissociating':
-      return '#f0ab00';
-    default:
-      return '#6a6e73';
-  }
-}
-
-function phaseIcon(phase?: string): string {
-  switch (phase) {
-    case 'Completed':
-      return 'mdi:check-circle';
-    case 'InProgress':
-      return 'mdi:progress-clock';
-    case 'Failed':
-      return 'mdi:alert-circle';
-    case 'Dissociating':
-      return 'mdi:link-off';
-    default:
-      return 'mdi:help-circle-outline';
-  }
-}
-
-function pvcStatusColor(phase: string): string {
-  switch (phase) {
-    case 'Bound':
-      return '#3e8635';
-    case 'Pending':
-      return '#f0ab00';
-    case 'Lost':
-      return '#c9190b';
-    default:
-      return '#6a6e73';
-  }
 }
 
 function CopyableCommand({ command, label }: { command: string; label?: string }) {
@@ -983,17 +941,17 @@ export default function MemoryDumpTab({
         ? 'Completed'
         : dump.phase;
     const effectiveIcon = dump.isActive && dump.activePhase
-      ? phaseIcon(dump.activePhase)
+      ? getDumpPhaseIcon(dump.activePhase)
       : dump.phase === 'Bound'
         ? 'mdi:check-circle'
         : dump.phase === 'Pending'
           ? 'mdi:clock-outline'
           : 'mdi:help-circle-outline';
     const effectiveColor = dump.isActive && dump.activePhase
-      ? phaseColor(dump.activePhase)
+      ? getDumpPhaseColor(dump.activePhase)
       : dump.phase === 'Bound'
-        ? phaseColor('Completed')
-        : pvcStatusColor(dump.phase);
+        ? getDumpPhaseColor('Completed')
+        : getPVCPhaseColor(dump.phase);
 
     return (
       <Box
@@ -1213,7 +1171,7 @@ export default function MemoryDumpTab({
               <Icon
                 icon={
                   selectedDumpPVC.isActive
-                    ? phaseIcon(selectedDumpPVC.activePhase)
+                    ? getDumpPhaseIcon(selectedDumpPVC.activePhase)
                     : selectedDumpPVC.phase === 'Bound'
                       ? 'mdi:check-circle'
                       : 'mdi:harddisk'
@@ -1221,9 +1179,9 @@ export default function MemoryDumpTab({
                 width={18}
                 color={
                   selectedDumpPVC.isActive
-                    ? phaseColor(selectedDumpPVC.activePhase)
+                    ? getDumpPhaseColor(selectedDumpPVC.activePhase)
                     : selectedDumpPVC.phase === 'Bound'
-                      ? phaseColor('Completed')
+                      ? getDumpPhaseColor('Completed')
                       : undefined
                 }
               />

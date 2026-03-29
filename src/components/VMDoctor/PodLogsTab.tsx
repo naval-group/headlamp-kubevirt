@@ -16,6 +16,7 @@ import {
   Typography,
 } from '@mui/material';
 import React, { useEffect, useRef, useState } from 'react';
+import usePolling from '../../hooks/usePolling';
 import { safeError } from '../../utils/sanitize';
 
 interface PodLogsTabProps {
@@ -61,45 +62,41 @@ export default function PodLogsTab({ podName, namespace }: PodLogsTabProps) {
   }, [podName, namespace]);
 
   // Fetch logs for selected container
+  const hasLogTarget = !!podName && !!namespace && !!selectedContainer;
   useEffect(() => {
-    if (!podName || !namespace || !selectedContainer) {
+    if (!hasLogTarget) {
       setLoading(false);
       setError('No virt-launcher pod found. Is the VM running?');
-      return;
+    } else {
+      setLoading(true);
     }
-    let cancelled = false;
+  }, [hasLogTarget]);
 
-    const fetchLogs = async () => {
+  usePolling(
+    async cancelled => {
       try {
-        // ApiProxy.request with isJSON:false returns a raw Response object
         const resp: any = await ApiProxy.request(
           `/api/v1/namespaces/${namespace}/pods/${podName}/log?container=${selectedContainer}&tailLines=${tailLines}`,
           { isJSON: false }
         );
-        // resp is a Response object — extract text from it
         const text =
           typeof resp === 'string' ? resp : resp?.text ? await resp.text() : String(resp);
-        if (!cancelled) {
+        if (!cancelled()) {
           setLogs(text);
           setError(null);
           setLoading(false);
         }
       } catch (e: any) {
-        if (!cancelled) {
+        if (!cancelled()) {
           setError(`Failed to fetch logs for ${selectedContainer}: ${safeError(e, 'podLogs')}`);
           setLoading(false);
         }
       }
-    };
-
-    setLoading(true);
-    fetchLogs();
-    const interval = setInterval(fetchLogs, 5000);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [podName, namespace, selectedContainer, tailLines]);
+    },
+    5000,
+    [podName, namespace, selectedContainer, tailLines],
+    hasLogTarget
+  );
 
   // Scroll to bottom whenever logs change or element becomes visible
   const scrollToBottom = React.useCallback(() => {
