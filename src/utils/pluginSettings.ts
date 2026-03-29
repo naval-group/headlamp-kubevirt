@@ -34,7 +34,7 @@ const defaultSettings: PluginSettings = {
  * Accepts: registry[:port]/repo[:tag], user/image:tag, or registry.fqdn/repo:tag
  * Must contain a slash (registry/repo or user/image).
  */
-function isValidImageRef(value: string): boolean {
+export function isValidImageRef(value: string): boolean {
   // hostname (with optional dots and port) / path segments, optional tag or digest
   return /^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?)*(:[0-9]{1,5})?\/[a-zA-Z0-9._-]+(\/[a-zA-Z0-9._-]+)*(:[a-zA-Z0-9._-]+)?(@sha256:[a-f0-9]{64})?$/.test(
     value
@@ -44,7 +44,7 @@ function isValidImageRef(value: string): boolean {
 /**
  * Validate a registry FQDN (with optional port).
  */
-function isValidRegistry(value: string): boolean {
+export function isValidRegistry(value: string): boolean {
   return /^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?)*(:[0-9]{1,5})?$/.test(
     value
   );
@@ -53,7 +53,7 @@ function isValidRegistry(value: string): boolean {
 /**
  * Validate a repository name (alphanumeric, dots, dashes, slashes).
  */
-function isValidRepo(value: string): boolean {
+export function isValidRepo(value: string): boolean {
   return /^[a-zA-Z0-9][a-zA-Z0-9._\/-]*$/.test(value) && value.length <= 253;
 }
 

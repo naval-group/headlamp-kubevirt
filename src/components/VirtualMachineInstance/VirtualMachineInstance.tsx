@@ -1,4 +1,4 @@
-import ApiProxy from '@kinvolk/headlamp-plugin/lib/ApiProxy';
+import * as ApiProxy from '@kinvolk/headlamp-plugin/lib/ApiProxy';
 import { StreamArgs, StreamResultsCb } from '@kinvolk/headlamp-plugin/lib/ApiProxy';
 import { KubeObject } from '@kinvolk/headlamp-plugin/lib/K8s/cluster';
 

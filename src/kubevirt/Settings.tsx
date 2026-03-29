@@ -47,6 +47,9 @@ import {
   ForensicSettings,
   getForensicSettings,
   getLabelColumns,
+  isValidImageRef,
+  isValidRegistry,
+  isValidRepo,
   LabelColumn,
   removeLabelColumn,
   saveForensicSettings,
@@ -2129,74 +2132,108 @@ export default function KubeVirtSettings() {
                 </Box>
 
                 {forensicEditing ? (
-                  <Box mt={2}>
-                    <TextField
-                      label="Toolbox Image"
-                      value={localForensic.toolboxImage}
-                      onChange={e =>
-                        setLocalForensic({ ...localForensic, toolboxImage: e.target.value })
-                      }
-                      fullWidth
-                      size="small"
-                      helperText="Container image with vol-qemu and Volatility3 for memory forensic analysis"
-                      sx={{ mb: 2 }}
-                    />
-                    <Typography
-                      variant="caption"
-                      fontWeight={600}
-                      color="text.secondary"
-                      sx={{ display: 'block', mb: 1 }}
-                    >
-                      ISF (Intermediate Symbol Format) Image
-                    </Typography>
-                    <Box display="flex" gap={1} sx={{ mb: 2 }}>
-                      <TextField
-                        label="ISF Registry"
-                        value={localForensic.isfRegistry}
-                        onChange={e =>
-                          setLocalForensic({ ...localForensic, isfRegistry: e.target.value })
-                        }
-                        size="small"
-                        sx={{ flex: 1 }}
-                        helperText="Registry hosting ISF images (e.g., localhost:5000)"
-                      />
-                      <TextField
-                        label="ISF Repo"
-                        value={localForensic.isfRepo}
-                        onChange={e =>
-                          setLocalForensic({ ...localForensic, isfRepo: e.target.value })
-                        }
-                        size="small"
-                        sx={{ flex: 1 }}
-                        helperText="Repository name (e.g., isf). Tag = kernel version"
-                      />
-                    </Box>
-                    <Box display="flex" gap={1} justifyContent="flex-end">
-                      <Button
-                        variant="outlined"
-                        size="small"
-                        onClick={() => {
-                          setLocalForensic(defaultForensicSettings);
-                        }}
-                      >
-                        Reset Defaults
-                      </Button>
-                      <Button
-                        variant="contained"
-                        size="small"
-                        onClick={() => {
-                          saveForensicSettings(localForensic);
-                          setForensicSettings(localForensic);
-                          setForensicEditing(false);
-                          enqueueSnackbar('Forensic toolbox settings saved', {
-                            variant: 'success',
-                          });
-                        }}
-                      >
-                        Save
-                      </Button>
-                    </Box>
-                  </Box>
+                  (() => {
+                    const toolboxErr =
+                      localForensic.toolboxImage && !isValidImageRef(localForensic.toolboxImage)
+                        ? 'Invalid image ref. Expected: registry/repo:tag or user/image:tag'
+                        : '';
+                    const registryErr =
+                      localForensic.isfRegistry && !isValidRegistry(localForensic.isfRegistry)
+                        ? 'Invalid registry. Expected: hostname[:port] (e.g., localhost:5000)'
+                        : '';
+                    const repoErr =
+                      localForensic.isfRepo && !isValidRepo(localForensic.isfRepo)
+                        ? 'Invalid repo name. Use alphanumeric, dots, dashes, slashes.'
+                        : '';
+                    const hasErrors =
+                      !!toolboxErr ||
+                      !!registryErr ||
+                      !!repoErr ||
+                      !localForensic.toolboxImage ||
+                      !localForensic.isfRegistry ||
+                      !localForensic.isfRepo;
+                    return (
+                      <Box mt={2}>
+                        <TextField
+                          label="Toolbox Image"
+                          value={localForensic.toolboxImage}
+                          onChange={e =>
+                            setLocalForensic({ ...localForensic, toolboxImage: e.target.value })
+                          }
+                          fullWidth
+                          size="small"
+                          error={!!toolboxErr}
+                          helperText={
+                            toolboxErr ||
+                            'Container image with vol-qemu and Volatility3 for memory forensic analysis'
+                          }
+                          sx={{ mb: 2 }}
+                        />
+                        <Typography
+                          variant="caption"
+                          fontWeight={600}
+                          color="text.secondary"
+                          sx={{ display: 'block', mb: 1 }}
+                        >
+                          ISF (Intermediate Symbol Format) Image
+                        </Typography>
+                        <Box display="flex" gap={1} sx={{ mb: 2 }}>
+                          <TextField
+                            label="ISF Registry"
+                            value={localForensic.isfRegistry}
+                            onChange={e =>
+                              setLocalForensic({ ...localForensic, isfRegistry: e.target.value })
+                            }
+                            size="small"
+                            sx={{ flex: 1 }}
+                            error={!!registryErr}
+                            helperText={
+                              registryErr || 'Registry hosting ISF images (e.g., localhost:5000)'
+                            }
+                          />
+                          <TextField
+                            label="ISF Repo"
+                            value={localForensic.isfRepo}
+                            onChange={e =>
+                              setLocalForensic({ ...localForensic, isfRepo: e.target.value })
+                            }
+                            size="small"
+                            sx={{ flex: 1 }}
+                            error={!!repoErr}
+                            helperText={
+                              repoErr || 'Repository name (e.g., isf). Tag = kernel version'
+                            }
+                          />
+                        </Box>
+                        <Box display="flex" gap={1} justifyContent="flex-end">
+                          <Button
+                            variant="outlined"
+                            size="small"
+                            onClick={() => {
+                              setLocalForensic(defaultForensicSettings);
+                            }}
+                          >
+                            Reset Defaults
+                          </Button>
+                          <Button
+                            variant="contained"
+                            size="small"
+                            disabled={hasErrors}
+                            onClick={() => {
+                              saveForensicSettings(localForensic);
+                              setForensicSettings(localForensic);
+                              setForensicEditing(false);
+                              enqueueSnackbar('Forensic toolbox settings saved', {
+                                variant: 'success',
+                              });
+                            }}
+                          >
+                            Save
+                          </Button>
+                        </Box>
+                      </Box>
+                    );
+                  })()
                 ) : (
                   <Box mt={1} display="flex" flexDirection="column" gap={0.5}>
                     <Typography
