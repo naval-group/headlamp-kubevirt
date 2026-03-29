@@ -1,4 +1,5 @@
 import { Icon } from '@iconify/react';
+import { ApiProxy } from '@kinvolk/headlamp-plugin/lib';
 import { Link } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
 import {
   SectionBox,
@@ -6,15 +7,20 @@ import {
   Table,
 } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
 import { DateLabel } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
-import { Box, Chip, ListItemIcon, ListItemText, MenuItem, Tooltip } from '@mui/material';
+import { Box, Chip, Divider, ListItemIcon, ListItemText, MenuItem } from '@mui/material';
 import { useSnackbar } from 'notistack';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { isFeatureGateEnabled, subscribeToFeatureGates } from '../../utils/featureGates';
 import { getLabelColumns, LabelColumn } from '../../utils/pluginSettings';
+import { safeError } from '../../utils/sanitize';
+import ConfirmDialog from '../common/ConfirmDialog';
 import CreateButtonWithMode from '../common/CreateButtonWithMode';
 import CreateResourceDialog from '../common/CreateResourceDialog';
+import { SimpleStyledTooltip, TitledTooltip } from '../common/StyledTooltip';
+import ResourceEditorDialog from '../ResourceEditorDialog';
 import VirtualMachineInstance from '../VirtualMachineInstance/VirtualMachineInstance';
+import VMDoctorDialog from '../VMDoctor/VMDoctorDialog';
 import BulkActionToolbar from './BulkActionToolbar';
 import VirtualMachine from './VirtualMachine';
 import VMFormWrapper from './VMFormWrapper';
@@ -24,6 +30,12 @@ export default function VirtualMachineList() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [createInitialTab, setCreateInitialTab] = useState(0);
   const [customLabelColumns, setCustomLabelColumns] = useState<LabelColumn[]>([]);
+  const [doctorVM, setDoctorVM] = useState<VirtualMachine | null>(null);
+  const [doctorVMI, setDoctorVMI] = useState<any>(null);
+  const [doctorPodName, setDoctorPodName] = useState('');
+  const [deleteVM, setDeleteVM] = useState<VirtualMachine | null>(null);
+  const [editVM, setEditVM] = useState<VirtualMachine | null>(null);
+  const [viewYamlVM, setViewYamlVM] = useState<VirtualMachine | null>(null);
   const location = useLocation();
 
   const triggerRefresh = useCallback(() => {
@@ -183,15 +195,9 @@ export default function VirtualMachineList() {
             <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center', flexWrap: 'wrap' }}>
               <Chip label={status} size="small" color={color} icon={icon} />
               {liveMigrationEnabled && !vm.isLiveMigratable() && status === 'Running' && (
-                <Tooltip
-                  title={
-                    <div style={{ fontSize: '0.875rem' }}>
-                      <strong>Not Migratable</strong>
-                      <br />
-                      {vm.getLiveMigratableReason()}
-                    </div>
-                  }
-                  arrow
+                <TitledTooltip
+                  title="Not Migratable"
+                  rows={[{ label: 'Reason', value: vm.getLiveMigratableReason() }]}
                 >
                   <Chip
                     size="small"
@@ -214,19 +220,10 @@ export default function VirtualMachineList() {
                     }
                     label=""
                   />
-                </Tooltip>
+                </TitledTooltip>
               )}
               {vm.isDeleteProtected() && (
-                <Tooltip
-                  title={
-                    <div style={{ fontSize: '0.875rem' }}>
-                      <strong>Protected</strong>
-                      <br />
-                      Delete protection enabled - cannot be deleted until protection is removed
-                    </div>
-                  }
-                  arrow
-                >
+                <SimpleStyledTooltip title="Delete protection enabled — cannot be deleted until protection is removed">
                   <Chip
                     size="small"
                     color="info"
@@ -234,7 +231,7 @@ export default function VirtualMachineList() {
                     icon={<Icon icon="mdi:lock" />}
                     label=""
                   />
-                </Tooltip>
+                </SimpleStyledTooltip>
               )}
             </Box>
           );
@@ -289,15 +286,9 @@ export default function VirtualMachineList() {
           return (
             <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
               <span>{ips[0]}</span>
-              <Tooltip
-                title={
-                  <div style={{ fontSize: '0.875rem' }}>
-                    {ips.slice(1).map((ip: string, idx: number) => (
-                      <div key={idx}>{ip}</div>
-                    ))}
-                  </div>
-                }
-                arrow
+              <TitledTooltip
+                title="Additional IPs"
+                rows={ips.slice(1).map((ip: string) => ({ label: '', value: ip }))}
               >
                 <Chip
                   label={`+${ips.length - 1} more`}
@@ -305,7 +296,7 @@ export default function VirtualMachineList() {
                   variant="outlined"
                   sx={{ cursor: 'help' }}
                 />
-              </Tooltip>
+              </TitledTooltip>
             </Box>
           );
         },
@@ -337,6 +328,37 @@ export default function VirtualMachineList() {
 
     return cols;
   }, [isNamespaceFiltered, liveMigrationEnabled, getVMI, customLabelColumns]);
+
+  const openDoctor = useCallback(async (vm: VirtualMachine) => {
+    const vmName = vm.getName();
+    const ns = vm.getNamespace();
+
+    // Fetch VMI and pod before opening dialog
+    let vmi = null;
+    let podName = '';
+
+    try {
+      const [vmiResult, podResult] = await Promise.allSettled([
+        ApiProxy.request(`/apis/kubevirt.io/v1/namespaces/${ns}/virtualmachineinstances/${vmName}`),
+        ApiProxy.request(
+          `/api/v1/namespaces/${ns}/pods?labelSelector=${encodeURIComponent(`vm.kubevirt.io/name=${vmName}`)}`
+        ),
+      ]);
+      if (vmiResult.status === 'fulfilled') vmi = vmiResult.value;
+      if (podResult.status === 'fulfilled') {
+        const pod = (podResult.value?.items || []).find((p: any) =>
+          p.metadata?.name?.startsWith('virt-launcher-')
+        );
+        if (pod) podName = pod.metadata.name;
+      }
+    } catch {
+      /* ignore */
+    }
+
+    setDoctorVMI(vmi);
+    setDoctorPodName(podName);
+    setDoctorVM(vm);
+  }, []);
 
   // Row action menu items (per-row three-dot menu)
   const renderRowActionMenuItems = useCallback(
@@ -499,7 +521,7 @@ export default function VirtualMachineList() {
               triggerRefresh();
             } catch (e) {
               enqueueSnackbar(
-                `Failed to ${isProtected ? 'unprotect' : 'protect'} VM ${item.getName()}: ${e}`,
+                `Failed to ${isProtected ? 'unprotect' : 'protect'} VM ${item.getName()}: ${safeError(e, 'vm-protect')}`,
                 { variant: 'error' }
               );
             }
@@ -512,9 +534,72 @@ export default function VirtualMachineList() {
         </MenuItem>
       );
 
+      actions.push(
+        <MenuItem
+          key="doctor"
+          onClick={() => {
+            closeMenu();
+            openDoctor(item);
+          }}
+        >
+          <ListItemIcon>
+            <Icon icon="mdi:stethoscope" />
+          </ListItemIcon>
+          <ListItemText>VM Doctor</ListItemText>
+        </MenuItem>
+      );
+
+      actions.push(<Divider key="divider-edit" />);
+
+      actions.push(
+        <MenuItem
+          key="edit"
+          onClick={() => {
+            closeMenu();
+            setEditVM(item);
+          }}
+        >
+          <ListItemIcon>
+            <Icon icon="mdi:pencil" />
+          </ListItemIcon>
+          <ListItemText>Edit</ListItemText>
+        </MenuItem>
+      );
+
+      actions.push(
+        <MenuItem
+          key="view-yaml"
+          onClick={() => {
+            closeMenu();
+            setViewYamlVM(item);
+          }}
+        >
+          <ListItemIcon>
+            <Icon icon="mdi:eye" />
+          </ListItemIcon>
+          <ListItemText>View YAML</ListItemText>
+        </MenuItem>
+      );
+
+      actions.push(
+        <MenuItem
+          key="delete"
+          onClick={() => {
+            closeMenu();
+            setDeleteVM(item);
+          }}
+          disabled={isProtected}
+        >
+          <ListItemIcon>
+            <Icon icon="mdi:delete" />
+          </ListItemIcon>
+          <ListItemText>Delete</ListItemText>
+        </MenuItem>
+      );
+
       return actions;
     },
-    [enqueueSnackbar, liveMigrationEnabled, triggerRefresh]
+    [enqueueSnackbar, liveMigrationEnabled, openDoctor, triggerRefresh]
   );
 
   return (
@@ -566,6 +651,70 @@ export default function VirtualMachineList() {
         formComponent={VMFormWrapper}
         validate={r => !!(r?.metadata?.name && r?.metadata?.namespace)}
       />
+
+      <VMDoctorDialog
+        open={!!doctorVM}
+        onClose={() => setDoctorVM(null)}
+        vmName={doctorVM?.getName() || ''}
+        namespace={doctorVM?.getNamespace() || ''}
+        vmiData={doctorVMI}
+        vmItem={doctorVM}
+        podName={doctorPodName}
+      />
+
+      <ConfirmDialog
+        open={!!deleteVM}
+        title={`Delete ${deleteVM?.getName() || ''}?`}
+        message={`This will permanently delete the Virtual Machine ${deleteVM?.getNamespace()}/${deleteVM?.getName()}. This action cannot be undone.`}
+        confirmLabel="Delete"
+        onCancel={() => setDeleteVM(null)}
+        onConfirm={async () => {
+          if (!deleteVM) return;
+          const name = deleteVM.getName();
+          setDeleteVM(null);
+          try {
+            await deleteVM.delete();
+            enqueueSnackbar(`Deleted ${name}`, { variant: 'success' });
+          } catch (e) {
+            enqueueSnackbar(`Failed to delete ${name}: ${safeError(e, 'vm-delete')}`, { variant: 'error' });
+          }
+        }}
+      />
+
+      {editVM && (
+        <ResourceEditorDialog
+          open={!!editVM}
+          onClose={() => setEditVM(null)}
+          onSave={async updatedResource => {
+            const resource = updatedResource as {
+              kind: string;
+              metadata: { name: string; namespace?: string };
+            };
+            if (!resource.kind || !resource.metadata?.name) {
+              throw new Error('Invalid resource: missing kind or metadata.name');
+            }
+            await editVM.update(
+              updatedResource as import('@kinvolk/headlamp-plugin/lib/lib/k8s/KubeObject').KubeObjectInterface
+            );
+          }}
+          item={editVM.jsonData}
+          title={editVM.getName()}
+          apiVersion="kubevirt.io/v1"
+          kind="VirtualMachine"
+        />
+      )}
+
+      {viewYamlVM && (
+        <ResourceEditorDialog
+          open={!!viewYamlVM}
+          onClose={() => setViewYamlVM(null)}
+          onSave={async () => {}}
+          item={viewYamlVM.jsonData}
+          title={`${viewYamlVM.getName()} (read-only)`}
+          apiVersion="kubevirt.io/v1"
+          kind="VirtualMachine"
+        />
+      )}
     </>
   );
 }

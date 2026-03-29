@@ -22,7 +22,6 @@ import {
   MenuItem,
   Select,
   TextField,
-  Tooltip,
   Typography,
 } from '@mui/material';
 import { useSnackbar } from 'notistack';
@@ -31,7 +30,10 @@ import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import ConfirmDialog from '../common/ConfirmDialog';
 import CopyCodeBlock from '../common/CopyCodeBlock';
+import { SimpleStyledTooltip, TitledTooltip } from '../common/StyledTooltip';
 import VMConsole from '../VMConsole/VMConsole';
+import VMDoctorDialog from '../VMDoctor/VMDoctorDialog';
+import { safeError } from '../../utils/sanitize';
 import VirtualMachine from './VirtualMachine';
 
 /** Runtime interface info from VMI status (not the spec-level VMInterface) */
@@ -80,6 +82,7 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
   const [consoleTab, setConsoleTab] = useState<'vnc' | 'terminal'>('vnc');
   const [showSnapshotDialog, setShowSnapshotDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showDoctor, setShowDoctor] = useState(false);
   const [vmItem] = VirtualMachine.useGet(name, namespace);
 
   const [podName, setPodName] = useState<string | null>(null);
@@ -190,6 +193,7 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
     ...(snapshotEnabled ? [{ id: 'snapshots', label: 'Snapshots', icon: 'mdi:camera' }] : []),
     ...(vmExportEnabled ? [{ id: 'exports', label: 'Exports', icon: 'mdi:export' }] : []),
     { id: 'metrics', label: 'Metrics', icon: 'mdi:chart-line' },
+    { id: 'doctor', label: 'VM Doctor', icon: 'mdi:stethoscope' },
     { id: 'terminal', label: 'Terminal', icon: 'mdi:console' },
     { id: 'vnc', label: 'VNC', icon: 'mdi:monitor' },
   ];
@@ -198,6 +202,7 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
     <>
       <FloatingNav
         sections={navSections}
+        onDoctorClick={() => setShowDoctor(true)}
         onTerminalClick={() => {
           setConsoleTab('terminal');
           setShowConsole(true);
@@ -236,13 +241,7 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                       return null;
                     })}
                   {item.isDeleteProtected() && (
-                    <Tooltip
-                      title={
-                        <div style={{ fontSize: '0.875rem' }}>
-                          Delete protection enabled - cannot be deleted until protection is removed
-                        </div>
-                      }
-                    >
+                    <SimpleStyledTooltip title="Delete protection enabled — cannot be deleted until protection is removed">
                       <Chip
                         key="protected"
                         label="Protected"
@@ -250,7 +249,7 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                         color="info"
                         icon={<Icon icon="mdi:lock" width={14} />}
                       />
-                    </Tooltip>
+                    </SimpleStyledTooltip>
                   )}
                 </Box>
               ),
@@ -265,17 +264,16 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                           const total =
                             (topo.sockets || 1) * (topo.cores || 1) * (topo.threads || 1);
                           return (
-                            <Tooltip
-                              title={
-                                <div style={{ fontSize: '0.875rem' }}>
-                                  <div>{topo.sockets} Socket(s)</div>
-                                  <div>{topo.cores} Core(s)</div>
-                                  <div>{topo.threads} Thread(s)</div>
-                                </div>
-                              }
+                            <TitledTooltip
+                              title="CPU Topology"
+                              rows={[
+                                { label: 'Sockets', value: topo.sockets },
+                                { label: 'Cores', value: topo.cores },
+                                { label: 'Threads', value: topo.threads },
+                              ]}
                             >
                               <span style={{ cursor: 'help' }}>{total} cores</span>
-                            </Tooltip>
+                            </TitledTooltip>
                           );
                         })()
                       : item?.spec?.template?.spec?.domain?.cpu
@@ -313,13 +311,13 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                         <Typography variant="body2" color="text.secondary">
                           Unknown
                         </Typography>
-                        <Tooltip title="Install QEMU Guest Agent in the VM to report OS info" arrow>
+                        <SimpleStyledTooltip title="Install QEMU Guest Agent in the VM to report OS info">
                           <Icon
                             icon="mdi:information-outline"
                             width={16}
                             style={{ cursor: 'help', opacity: 0.6 }}
                           />
-                        </Tooltip>
+                        </SimpleStyledTooltip>
                       </Box>
                     ),
                   },
@@ -330,16 +328,13 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                         <Typography variant="body2" color="text.secondary">
                           Unknown
                         </Typography>
-                        <Tooltip
-                          title="Install QEMU Guest Agent in the VM to report kernel info"
-                          arrow
-                        >
+                        <SimpleStyledTooltip title="Install QEMU Guest Agent in the VM to report kernel info">
                           <Icon
                             icon="mdi:information-outline"
                             width={16}
                             style={{ cursor: 'help', opacity: 0.6 }}
                           />
-                        </Tooltip>
+                        </SimpleStyledTooltip>
                       </Box>
                     ),
                   },
@@ -648,24 +643,20 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                             label: 'Name',
                             getter: (iface: VMIStatusInterface) => {
                               const displayName = iface.name || iface.interfaceName || 'N/A';
-                              const tooltipParts = [
-                                iface.interfaceName ? `Interface: ${iface.interfaceName}` : null,
-                                `State: ${iface.linkState || 'N/A'}`,
-                                iface.queueCount ? `Queues: ${iface.queueCount}` : null,
-                              ].filter(Boolean);
+                              const tooltipRows = [
+                                iface.interfaceName
+                                  ? { label: 'Interface', value: iface.interfaceName }
+                                  : null,
+                                { label: 'State', value: iface.linkState || 'N/A' },
+                                iface.queueCount
+                                  ? { label: 'Queues', value: String(iface.queueCount) }
+                                  : null,
+                              ].filter(Boolean) as { label: string; value: string }[];
 
                               return (
-                                <Tooltip
-                                  title={
-                                    <div style={{ fontSize: '0.875rem' }}>
-                                      {tooltipParts.map((part, idx) => (
-                                        <div key={idx}>{part}</div>
-                                      ))}
-                                    </div>
-                                  }
-                                >
+                                <TitledTooltip title="Network Interface" rows={tooltipRows}>
                                   <span style={{ cursor: 'help' }}>{displayName}</span>
-                                </Tooltip>
+                                </TitledTooltip>
                               );
                             },
                           },
@@ -681,17 +672,14 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                                   ? iface.ipAddresses.join(', ')
                                   : iface.ipAddress || 'N/A';
                               return (
-                                <Tooltip
-                                  title={
-                                    <div style={{ fontSize: '0.875rem' }}>
-                                      {ips.split(', ').map((ip: string, idx: number) => (
-                                        <div key={idx}>{ip}</div>
-                                      ))}
-                                    </div>
-                                  }
+                                <TitledTooltip
+                                  title="IP Addresses"
+                                  rows={ips
+                                    .split(', ')
+                                    .map((ip: string) => ({ label: '', value: ip }))}
                                 >
                                   <span style={{ cursor: 'help' }}>{ips}</span>
-                                </Tooltip>
+                                </TitledTooltip>
                               );
                             },
                           },
@@ -751,15 +739,11 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                                 : 'N/A';
 
                               return (
-                                <Tooltip
-                                  title={
-                                    <div style={{ fontSize: '0.875rem' }}>{pvcInfo.claimName}</div>
-                                  }
-                                >
+                                <SimpleStyledTooltip title={pvcInfo.claimName}>
                                   <span style={{ cursor: 'help' }}>
                                     {pvcInfo.claimName} ({accessMode})
                                   </span>
-                                </Tooltip>
+                                </SimpleStyledTooltip>
                               );
                             },
                           },
@@ -852,7 +836,7 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                         enqueueSnackbar('Virtual Machine started', { variant: 'success' });
                       } catch (e) {
                         console.error('start failed', e);
-                        enqueueSnackbar('Failed to start Virtual Machine: ' + e, {
+                        enqueueSnackbar('Failed to start Virtual Machine: ' + safeError(e, 'vm-start'), {
                           variant: 'error',
                         });
                       }
@@ -873,7 +857,7 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                         enqueueSnackbar('Virtual Machine stopped', { variant: 'success' });
                       } catch (e) {
                         console.error('stop failed', e);
-                        enqueueSnackbar('Failed to stop Virtual Machine: ' + e, {
+                        enqueueSnackbar('Failed to stop Virtual Machine: ' + safeError(e, 'vm-stop'), {
                           variant: 'error',
                         });
                       }
@@ -894,7 +878,7 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                         enqueueSnackbar('Virtual Machine restarting', { variant: 'success' });
                       } catch (e) {
                         console.error('restart failed', e);
-                        enqueueSnackbar('Failed to restart Virtual Machine: ' + e, {
+                        enqueueSnackbar('Failed to restart Virtual Machine: ' + safeError(e, 'vm-restart'), {
                           variant: 'error',
                         });
                       }
@@ -923,7 +907,7 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                         enqueueSnackbar(
                           `Failed to ${
                             item.isPaused() ? 'unpause' : 'pause'
-                          } Virtual Machine: ${e}`,
+                          } Virtual Machine: ${safeError(e, 'vm-action')}`,
                           { variant: 'error' }
                         );
                       }
@@ -944,7 +928,7 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                         enqueueSnackbar('Virtual Machine force stopped', { variant: 'success' });
                       } catch (e) {
                         console.error('force stop failed', e);
-                        enqueueSnackbar('Failed to force stop Virtual Machine: ' + e, {
+                        enqueueSnackbar('Failed to force stop Virtual Machine: ' + safeError(e, 'vm-force-stop'), {
                           variant: 'error',
                         });
                       }
@@ -1004,7 +988,7 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                         enqueueSnackbar(
                           `Failed to ${
                             isProtected ? 'unprotect' : 'protect'
-                          } Virtual Machine: ${e}`,
+                          } Virtual Machine: ${safeError(e, 'vm-action')}`,
                           { variant: 'error' }
                         );
                       }
@@ -1036,6 +1020,19 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                     },
                   ]
                 : []),
+              {
+                id: 'doctor',
+                action: (
+                  <ActionButton
+                    description="VM Doctor"
+                    aria-label="vm doctor"
+                    icon="mdi:stethoscope"
+                    onClick={() => {
+                      setShowDoctor(true);
+                    }}
+                  />
+                ),
+              },
               {
                 id: 'console',
                 action: (
@@ -1090,6 +1087,15 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
           validate={r => !!(r?.metadata?.name && r?.metadata?.namespace)}
         />
       )}
+      <VMDoctorDialog
+        open={showDoctor}
+        onClose={() => setShowDoctor(false)}
+        vmName={name || ''}
+        namespace={namespace || ''}
+        vmiData={vmiData}
+        vmItem={vmItem}
+        podName={podName || ''}
+      />
     </>
   );
 }
@@ -1198,7 +1204,7 @@ function SnapshotsList({ vmName, namespace }: SnapshotsListProps) {
             getter: (snapshot: VirtualMachineSnapshot) => (
               <Box display="flex" gap={0.5}>
                 {vmExportEnabled && snapshot.isReadyToUse() && (
-                  <Tooltip title="Export snapshot">
+                  <SimpleStyledTooltip title="Export snapshot">
                     <IconButton
                       size="small"
                       color="primary"
@@ -1209,13 +1215,13 @@ function SnapshotsList({ vmName, namespace }: SnapshotsListProps) {
                     >
                       <Icon icon="mdi:export" width={18} />
                     </IconButton>
-                  </Tooltip>
+                  </SimpleStyledTooltip>
                 )}
-                <Tooltip title="Delete snapshot">
+                <SimpleStyledTooltip title="Delete snapshot">
                   <IconButton size="small" color="error" onClick={() => setDeleteTarget(snapshot)}>
                     <Icon icon="mdi:delete" width={18} />
                   </IconButton>
-                </Tooltip>
+                </SimpleStyledTooltip>
               </Box>
             ),
           },

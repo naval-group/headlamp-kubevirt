@@ -22,7 +22,7 @@ import {
   registerSidebarEntryFilter,
 } from '@kinvolk/headlamp-plugin/lib';
 import { ApiProxy } from '@kinvolk/headlamp-plugin/lib';
-import { Alert, Box, Button, IconButton, Snackbar } from '@mui/material';
+import { Alert, Box, Button, GlobalStyles, IconButton, Snackbar } from '@mui/material';
 import React, { useEffect, useRef, useState } from 'react';
 import DataVolumeDetails from './components/BootableVolumes/DataVolumeDetails';
 import DataVolumeList from './components/BootableVolumes/DataVolumeList';
@@ -206,6 +206,160 @@ function KubeVirtUpdateWatcher() {
 
 // Register the update watcher in the app bar
 registerAppBarAction(() => <KubeVirtUpdateWatcher />);
+
+// Global tooltip style override + JSON formatter (XSS-safe: uses DOM API, not innerHTML)
+function TooltipEnhancer() {
+  useEffect(() => {
+    const esc = (s: string) => s; // textContent is inherently safe
+
+    const makeEl = (tag: string, styles: Record<string, string>, text?: string): HTMLElement => {
+      const el = document.createElement(tag);
+      Object.assign(el.style, styles);
+      if (text !== undefined) el.textContent = text;
+      return el;
+    };
+
+    const summarize = (val: unknown): string => {
+      if (val === null || val === undefined) return 'null';
+      if (typeof val !== 'object') return String(val);
+      if (Array.isArray(val)) return `[${val.length} items]`;
+      const keys = Object.keys(val);
+      return `{${keys.slice(0, 3).join(', ')}${keys.length > 3 ? ', ...' : ''}}`;
+    };
+
+    const MAX_DEPTH = 2;
+
+    const buildRows = (tbody: HTMLElement, obj: Record<string, unknown>, depth: number) => {
+      for (const [key, val] of Object.entries(obj)) {
+        const tr = document.createElement('tr');
+        const tdKey = makeEl(
+          'td',
+          {
+            padding: `2px 8px 2px ${8 + depth * 12}px`,
+            color: 'rgba(255,255,255,0.5)',
+            whiteSpace: 'nowrap',
+            verticalAlign: 'top',
+            fontSize: '0.75rem',
+          },
+          esc(key)
+        );
+        tr.appendChild(tdKey);
+
+        if (depth < MAX_DEPTH && val && typeof val === 'object' && !Array.isArray(val)) {
+          // Nested object: show key as section header, recurse
+          const tdEmpty = makeEl('td', {});
+          tr.appendChild(tdEmpty);
+          tbody.appendChild(tr);
+          buildRows(tbody, val as Record<string, unknown>, depth + 1);
+        } else {
+          // Leaf or max-depth: show summarized value
+          const tdVal = makeEl(
+            'td',
+            {
+              padding: '2px 8px',
+              color: '#fff',
+              wordBreak: 'break-all',
+              fontSize: '0.75rem',
+            },
+            esc(typeof val === 'object' ? summarize(val) : String(val ?? 'null'))
+          );
+          tr.appendChild(tdVal);
+          tbody.appendChild(tr);
+        }
+      }
+    };
+
+    const formatJsonTooltip = (el: HTMLElement) => {
+      if (el.dataset.formatted) return;
+      const text = el.textContent || '';
+      if (!text.includes('{"') && !text.includes(':{')) return;
+      const jsonStart = text.indexOf('{');
+      if (jsonStart < 0) return;
+      const prefix = text.slice(0, jsonStart).trim().replace(/:$/, '');
+      const jsonStr = text.slice(jsonStart);
+      let parsed: Record<string, unknown>;
+      try {
+        parsed = JSON.parse(jsonStr);
+      } catch {
+        return;
+      }
+      el.dataset.formatted = '1';
+
+      // Clear existing content safely
+      while (el.firstChild) el.removeChild(el.firstChild);
+
+      // Header
+      if (prefix) {
+        el.appendChild(
+          makeEl(
+            'div',
+            {
+              padding: '6px 10px 4px',
+              borderBottom: '1px solid rgba(255,255,255,0.08)',
+              textTransform: 'uppercase',
+              fontSize: '0.65rem',
+              fontWeight: '600',
+              letterSpacing: '0.5px',
+              color: 'rgba(255,255,255,0.5)',
+            },
+            prefix
+          )
+        );
+      }
+
+      // Table
+      const table = makeEl('table', { width: '100%', borderCollapse: 'collapse' });
+      const tbody = document.createElement('tbody');
+      buildRows(tbody, parsed, 0);
+      table.appendChild(tbody);
+      el.appendChild(table);
+    };
+
+    const observer = new MutationObserver(mutations => {
+      for (const m of mutations) {
+        m.addedNodes.forEach(node => {
+          if (!(node instanceof HTMLElement)) return;
+          if (node.classList?.contains('MuiTooltip-tooltip')) {
+            formatJsonTooltip(node);
+          }
+          node
+            .querySelectorAll?.('.MuiTooltip-tooltip')
+            .forEach(t => formatJsonTooltip(t as HTMLElement));
+        });
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <GlobalStyles
+      styles={{
+        '.MuiTooltip-tooltip': {
+          backgroundColor: '#1e1e1e !important',
+          color: '#e0e0e0 !important',
+          border: '1px solid rgba(255,255,255,0.12) !important',
+          borderRadius: '8px !important',
+          fontSize: '0.8rem !important',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.4) !important',
+          padding: '8px 12px !important',
+          maxWidth: '600px !important',
+        },
+        '.MuiTooltip-tooltip[data-formatted]': {
+          padding: '0 !important',
+          maxWidth: '700px !important',
+        },
+        '.MuiTooltip-arrow': {
+          color: '#1e1e1e !important',
+          '&::before': {
+            border: '1px solid rgba(255,255,255,0.12) !important',
+          },
+        },
+      }}
+    />
+  );
+}
+registerAppBarAction(() => <TooltipEnhancer />);
 
 // Filter sidebar entries based on feature gates
 registerSidebarEntryFilter(entry => {
