@@ -1,12 +1,25 @@
 import React from 'react';
+import { initialize, mswLoader } from 'msw-storybook-addon';
+import { baseMocks } from './baseMocks';
+import { SnackbarProvider } from 'notistack';
+import { BrowserRouter } from 'react-router-dom';
 
-export const decorators = [
-  (Story) => (
-    <div style={{ padding: '1rem' }}>
-      <Story />
-    </div>
-  ),
-];
+initialize({
+  onUnhandledRequest: 'warn',
+  waitUntilReady: true,
+});
+
+const withProviders = (Story: any) => (
+  <BrowserRouter>
+    <SnackbarProvider maxSnack={3} autoHideDuration={3000}>
+      <div style={{ padding: '1rem' }}>
+        <Story />
+      </div>
+    </SnackbarProvider>
+  </BrowserRouter>
+);
+
+export const decorators = [withProviders];
 
 export const parameters = {
   backgrounds: {
@@ -15,5 +28,11 @@ export const parameters = {
       { name: 'dark', value: '#1e1e1e' },
     ],
   },
-  actions: { argTypesRegex: '^on[A-Z].*' },
+  msw: {
+    handlers: {
+      base: baseMocks,
+    },
+  },
 };
+
+export const loaders = [mswLoader];
