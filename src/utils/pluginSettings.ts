@@ -35,8 +35,9 @@ const defaultSettings: PluginSettings = {
  * Must contain a slash (registry/repo or user/image).
  */
 export function isValidImageRef(value: string): boolean {
-  // hostname (with optional dots and port) / path segments, optional tag or digest
-  return /^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?)*(:[0-9]{1,5})?\/[a-zA-Z0-9._-]+(\/[a-zA-Z0-9._-]+)*(:[a-zA-Z0-9._-]+)?(@sha256:[a-f0-9]{64})?$/.test(
+  // hostname label: starts/ends with alnum, dashes allowed in middle (no dots — dots are separators)
+  // This avoids ReDoS by ensuring dots cannot appear inside repeated character classes
+  return /^[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?)*(:[0-9]{1,5})?\/[a-zA-Z0-9._-]+(?:\/[a-zA-Z0-9._-]+)*(?::[a-zA-Z0-9._-]+)?(?:@sha256:[a-f0-9]{64})?$/.test(
     value
   );
 }
@@ -45,7 +46,8 @@ export function isValidImageRef(value: string): boolean {
  * Validate a registry FQDN (with optional port).
  */
 export function isValidRegistry(value: string): boolean {
-  return /^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?)*(:[0-9]{1,5})?$/.test(
+  // Same ReDoS-safe hostname pattern: dots only as literal separators between labels
+  return /^[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?)*(:[0-9]{1,5})?$/.test(
     value
   );
 }
