@@ -48,6 +48,12 @@ jobs:
           npx @kinvolk/headlamp-plugin package kubevirt
           for f in kubevirt-*.tar.gz; do mv "$f" "headlamp-${f}"; done
 
+      - name: Generate SBOM
+        uses: anchore/sbom-action@f325610c9f50a54015d37c8d16cb3b0e2c8f4de0 # v0.18.0
+        with:
+          artifact-name: sbom-headlamp-kubevirt.spdx.json
+          output-file: sbom-headlamp-kubevirt.spdx.json
+
       - name: Compute artifact digest
         id: digest
         run: |
@@ -62,6 +68,7 @@ jobs:
             dist/
             headlamp-kubevirt-*.tar.gz
             checksums.txt
+            sbom-headlamp-kubevirt.spdx.json
 
   docker:
     needs: build
@@ -130,5 +137,6 @@ jobs:
           files: |
             headlamp-kubevirt-*.tar.gz
             checksums.txt
+            sbom-headlamp-kubevirt.spdx.json
           generate_release_notes: true
           prerelease: ${{ contains(github.ref, '-rc') }}
