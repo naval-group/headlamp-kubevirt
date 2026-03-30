@@ -1,5 +1,11 @@
 # Headlamp KubeVirt Plugin
 
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/naval-group/headlamp-kubevirt/badge)](https://scorecard.dev/viewer/?uri=github.com/naval-group/headlamp-kubevirt)
+[![ArtifactHub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/headlamp-kubevirt)](https://artifacthub.io/packages/headlamp/headlamp-kubevirt/headlamp_kubevirt)
+[![GHCR](https://img.shields.io/badge/GHCR-naval--group%2Fheadlamp--kubevirt-blue?logo=github)](https://github.com/naval-group/headlamp-kubevirt/pkgs/container/headlamp-kubevirt)
+[![Release](https://img.shields.io/github/v/release/naval-group/headlamp-kubevirt?logo=github)](https://github.com/naval-group/headlamp-kubevirt/releases/latest)
+[![License](https://img.shields.io/github/license/naval-group/headlamp-kubevirt)](https://github.com/naval-group/headlamp-kubevirt/blob/main/LICENSE)
+
 A comprehensive [Headlamp](https://headlamp.dev) plugin for managing [KubeVirt](https://kubevirt.io) virtual machines in Kubernetes.
 
 Originally based on the excellent work from [buttahtoast](https://github.com/buttahtoast/headlamp-plugins/tree/main/kubevirt).
