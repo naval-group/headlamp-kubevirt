@@ -474,30 +474,32 @@ export default function PrometheusQuerier({ vmName, namespace }: PrometheusQueri
       if (executingRef.current.has(key)) return;
       executingRef.current.add(key);
       const id = `panel-${++panelIdRef.current}`;
-      // Find column with fewest panels
-      const colCounts = Array.from(
-        { length: columns },
-        (_, i) => panels.filter(p => p.col === i).length
-      );
-      const minCol = colCounts.indexOf(Math.min(...colCounts));
-      setPanels(prev => [
-        ...prev,
-        {
-          id,
-          col: minCol,
-          preset,
-          chartData: [],
-          seriesKeys: [],
-          seriesCount: 0,
-          loading: true,
-          error: null,
-        },
-      ]);
+      setPanels(prev => {
+        // Find column with fewest panels using current state
+        const colCounts = Array.from(
+          { length: columns },
+          (_, i) => prev.filter(p => p.col === i).length
+        );
+        const minCol = colCounts.indexOf(Math.min(...colCounts));
+        return [
+          ...prev,
+          {
+            id,
+            col: minCol,
+            preset,
+            chartData: [],
+            seriesKeys: [],
+            seriesCount: 0,
+            loading: true,
+            error: null,
+          },
+        ];
+      });
       const result = await fetchPreset(preset, timeRange);
       executingRef.current.delete(key);
       setPanels(prev => prev.map(p => (p.id === id ? { ...p, ...result } : p)));
     },
-    [fetchPreset, timeRange, columns, panels]
+    [fetchPreset, timeRange, columns]
   );
 
   const removePanel = useCallback((id: string) => {
@@ -513,25 +515,29 @@ export default function PrometheusQuerier({ vmName, namespace }: PrometheusQueri
     });
   }, [columns]);
 
-  // Re-fetch all panels when time range changes
+  // Re-fetch all panels when time range or fetchPreset identity changes
   useEffect(() => {
-    if (!promBaseUrl || panels.length === 0) return;
-    const currentPanels = panels;
-    setPanels(prev => prev.map(p => ({ ...p, loading: true })));
-    Promise.all(
-      currentPanels.map(async p => {
-        const result = await fetchPreset(p.preset, timeRange);
-        return { id: p.id, result };
-      })
-    ).then(results => {
-      setPanels(prev =>
-        prev.map(p => {
-          const r = results.find(r => r.id === p.id);
-          return r ? { ...p, ...r.result } : p;
+    if (!promBaseUrl) return;
+    setPanels(prev => {
+      if (prev.length === 0) return prev;
+      // Mark all loading; kick off fetches
+      const toFetch = prev.map(p => ({ id: p.id, preset: p.preset }));
+      Promise.all(
+        toFetch.map(async ({ id, preset }) => {
+          const result = await fetchPreset(preset, timeRange);
+          return { id, result };
         })
-      );
+      ).then(results => {
+        setPanels(cur =>
+          cur.map(p => {
+            const r = results.find(r => r.id === p.id);
+            return r ? { ...p, ...r.result } : p;
+          })
+        );
+      });
+      return prev.map(p => ({ ...p, loading: true }));
     });
-  }, [timeRange, promBaseUrl]);
+  }, [timeRange, promBaseUrl, fetchPreset]);
 
   // --- Drag handlers ---
   const handleDragStart = useCallback((e: React.DragEvent, id: string) => {

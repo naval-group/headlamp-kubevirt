@@ -248,19 +248,19 @@ export function TerminalPanel({
   const xtermRef = useRef<XTerminalConnected | null>(null);
   const [terminalRef, setTerminalRef] = useState<HTMLElement | null>(null);
 
-  const encoder = new TextEncoder();
-  const decoder = new TextDecoder('utf-8');
+  const encoderRef = useRef(new TextEncoder());
+  const decoderRef = useRef(new TextDecoder('utf-8'));
 
   function send(channel: number, data: string) {
     const socket = execRef.current?.getSocket();
     if (!socket || socket.readyState !== 1) return;
-    const encoded = encoder.encode(data);
+    const encoded = encoderRef.current.encode(data);
     socket.send(encoded);
   }
 
   function onData(xtermc: XTerminalConnected, bytes: ArrayBuffer) {
     const xterm = xtermc.xterm;
-    const text = decoder.decode(bytes);
+    const text = decoderRef.current.decode(bytes);
     if (!xtermc.connected) {
       xtermc.connected = true;
       xterm.writeln(t('Connected to terminal…'));
@@ -276,7 +276,7 @@ export function TerminalPanel({
       const resizeData = `{"Width":${size.cols},"Height":${size.rows}}`;
       const socket = execRef.current?.getSocket();
       if (socket && socket.readyState === 1) {
-        const encoded = encoder.encode(resizeData);
+        const encoded = encoderRef.current.encode(resizeData);
         socket.send(encoded);
       }
     });
@@ -330,7 +330,7 @@ export function TerminalPanel({
       execRef.current = await item.exec(items => onData(xtermRef.current!, items), {
         reconnectOnFailure: false,
         failCb: () => {
-          xtermRef.current?.xterm.write(encoder.encode(t('\r\n')));
+          xtermRef.current?.xterm.write(encoderRef.current.encode(t('\r\n')));
         },
         connectCb: () => {
           if (xtermRef.current) xtermRef.current.connected = true;

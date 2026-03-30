@@ -147,8 +147,15 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
   );
 
   // Fetch CDI importer/cloner pods related to this VM's DataVolumes
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [cdiPods, setCdiPods] = useState<any[]>([]);
+  interface K8sPod {
+    metadata: {
+      name: string;
+      labels?: Record<string, string>;
+      ownerReferences?: { name: string }[];
+    };
+    status?: { phase?: string; containerStatuses?: { ready: boolean }[] };
+  }
+  const [cdiPods, setCdiPods] = useState<K8sPod[]>([]);
   useEffect(() => {
     if (!vmDvtNames.length || !namespace) return;
     const fetchCdiPods = async () => {
@@ -156,11 +163,9 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
         const response = await ApiProxy.request(
           `/api/v1/namespaces/${namespace}/pods?labelSelector=app=containerized-data-importer`
         );
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const allPods = (response as any)?.items || [];
+        const allPods: K8sPod[] = (response as { items?: K8sPod[] })?.items || [];
         // Filter pods whose owner or name matches our DV names
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const relatedPods = allPods.filter((pod: any) => {
+        const relatedPods = allPods.filter(pod => {
           const podName = pod.metadata?.name || '';
           return vmDvtNames.some(
             (dvName: string) =>

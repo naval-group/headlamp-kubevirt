@@ -27,6 +27,17 @@ import ConfirmDialog from '../common/ConfirmDialog';
 import VirtualMachine from '../VirtualMachines/VirtualMachine';
 import PodExecTerminal, { PodExecTerminalHandle } from './PodExecTerminal';
 
+/** Minimal K8s PVC shape for API responses */
+interface K8sPVC {
+  metadata: {
+    name: string;
+    annotations?: Record<string, string>;
+    creationTimestamp?: string;
+  };
+  spec: { resources?: { requests?: { storage?: string } } };
+  status?: { phase?: string };
+}
+
 interface MemoryDumpTabProps {
   vmName: string;
   namespace: string;
@@ -328,11 +339,11 @@ export default function MemoryDumpTab({
         const res = await ApiProxy.request(
           `/api/v1/namespaces/${namespace}/persistentvolumeclaims`
         );
-        const items = (res?.items || []) as any[];
+        const items: K8sPVC[] = res?.items || [];
         const prefix = `${vmName}-memdump-`;
         const dumps: DumpPVC[] = items
-          .filter((pvc: any) => pvc.metadata.name.startsWith(prefix))
-          .map((pvc: any) => {
+          .filter(pvc => pvc.metadata.name.startsWith(prefix))
+          .map(pvc => {
             const name = pvc.metadata.name;
             const req = currentDumpStatus || dumpStatus;
             const isActive = req?.claimName === name;
@@ -650,10 +661,11 @@ export default function MemoryDumpTab({
           // Still exists — keep waiting
         } catch {
           clearInterval(interval);
+          clearTimeout(timeout);
           resolve();
         }
       }, 2000);
-      setTimeout(() => {
+      const timeout = setTimeout(() => {
         clearInterval(interval);
         resolve();
       }, timeoutMs);
