@@ -1,6 +1,7 @@
 # Headlamp KubeVirt Plugin
 
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/naval-group/headlamp-kubevirt/badge)](https://scorecard.dev/viewer/?uri=github.com/naval-group/headlamp-kubevirt)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/12240/badge)](https://www.bestpractices.dev/projects/12240)
 [![ArtifactHub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/headlamp-kubevirt)](https://artifacthub.io/packages/headlamp/headlamp-kubevirt/headlamp_kubevirt)
 [![GHCR](https://img.shields.io/badge/GHCR-naval--group%2Fheadlamp--kubevirt-blue?logo=github)](https://github.com/naval-group/headlamp-kubevirt/pkgs/container/headlamp-kubevirt)
 [![Release](https://img.shields.io/github/v/release/naval-group/headlamp-kubevirt?logo=github)](https://github.com/naval-group/headlamp-kubevirt/releases/latest)
