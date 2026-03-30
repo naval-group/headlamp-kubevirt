@@ -44,11 +44,21 @@
   },
   "devDependencies": {
     "@kinvolk/headlamp-plugin": "^0.13.1",
-    "@types/js-yaml": "^4.0.9"
+    "@storybook/addon-webpack5-compiler-swc": "^1.0.6",
+    "@types/js-yaml": "^4.0.9",
+    "msw": "^2.12.14",
+    "msw-storybook-addon": "^2.0.6",
+    "path-browserify": "^1.0.1",
+    "process": "^0.11.10"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
     "js-yaml": "^4.1.0",
     "recharts": "^3.8.0"
+  },
+  "msw": {
+    "workerDirectory": [
+      ".storybook/public"
+    ]
   }
 }

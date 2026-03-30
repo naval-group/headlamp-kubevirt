@@ -7,7 +7,12 @@ import type { DialogProps } from '@mui/material';
 import {
   Alert,
   Box,
+  Divider,
   IconButton,
+  ListItemIcon,
+  ListItemText,
+  Menu,
+  MenuItem,
   ToggleButton,
   ToggleButtonGroup,
   Tooltip,
@@ -16,15 +21,15 @@ import {
 import DialogContent from '@mui/material/DialogContent';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal as XTerminal } from '@xterm/xterm';
-import { useSnackbar } from 'notistack';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import useVMActions from '../../hooks/useVMActions';
 import { RFBPixelFormat } from '../../types';
 import VirtualMachine from '../VirtualMachines/VirtualMachine';
 
 // ── Terminal types ──────────────────────────────────────────────────────
 
-interface ConsoleObject extends KubeObject {
+export interface ConsoleObject extends KubeObject {
   exec(
     onExec: StreamResultsCb,
     options: StreamArgs
@@ -44,39 +49,120 @@ type execReturn = ReturnType<ConsoleObject['exec']>;
 
 // ── VNC keysym mapping ──────────────────────────────────────────────────
 
-function getKeysym(e: React.KeyboardEvent): number | null {
-  const specialKeys: { [key: string]: number } = {
-    Backspace: 0xff08,
-    Tab: 0xff09,
-    Enter: 0xff0d,
-    Escape: 0xff1b,
-    Delete: 0xffff,
-    Home: 0xff50,
-    End: 0xff57,
-    PageUp: 0xff55,
-    PageDown: 0xff56,
-    ArrowLeft: 0xff51,
-    ArrowUp: 0xff52,
-    ArrowRight: 0xff53,
-    ArrowDown: 0xff54,
-    Shift: 0xffe1,
-    Control: 0xffe3,
-    Alt: 0xffe9,
-    Meta: 0xffe7,
-    F1: 0xffbe,
-    F2: 0xffbf,
-    F3: 0xffc0,
-    F4: 0xffc1,
-    F5: 0xffc2,
-    F6: 0xffc3,
-    F7: 0xffc4,
-    F8: 0xffc5,
-    F9: 0xffc6,
-    F10: 0xffc7,
-    F11: 0xffc8,
-    F12: 0xffc9,
-  };
+// Keyboard mode: 'character' sends the character the browser produces (e.key),
+// 'physical' sends the keysym for the physical key position (e.code) — useful
+// when guest OS has its own keyboard layout configured.
+type KeyboardMode = 'character' | 'physical';
+
+const specialKeys: { [key: string]: number } = {
+  Backspace: 0xff08,
+  Tab: 0xff09,
+  Enter: 0xff0d,
+  Escape: 0xff1b,
+  Delete: 0xffff,
+  Home: 0xff50,
+  End: 0xff57,
+  PageUp: 0xff55,
+  PageDown: 0xff56,
+  ArrowLeft: 0xff51,
+  ArrowUp: 0xff52,
+  ArrowRight: 0xff53,
+  ArrowDown: 0xff54,
+  Shift: 0xffe1,
+  Control: 0xffe3,
+  Alt: 0xffe9,
+  Meta: 0xffe7,
+  F1: 0xffbe,
+  F2: 0xffbf,
+  F3: 0xffc0,
+  F4: 0xffc1,
+  F5: 0xffc2,
+  F6: 0xffc3,
+  F7: 0xffc4,
+  F8: 0xffc5,
+  F9: 0xffc6,
+  F10: 0xffc7,
+  F11: 0xffc8,
+  F12: 0xffc9,
+  Insert: 0xff63,
+  CapsLock: 0xffe5,
+  NumLock: 0xff7f,
+  ScrollLock: 0xff14,
+  Pause: 0xff13,
+  PrintScreen: 0xff61,
+};
+
+// Maps physical key codes (e.code) to US-QWERTY keysyms.
+// This lets users with non-US keyboards send the "correct" physical key
+// when the guest OS handles its own layout.
+const codeToKeysym: { [code: string]: [number, number] } = {
+  // [unshifted, shifted] keysyms
+  Backquote: [0x60, 0x7e], // ` ~
+  Digit1: [0x31, 0x21], // 1 !
+  Digit2: [0x32, 0x40], // 2 @
+  Digit3: [0x33, 0x23], // 3 #
+  Digit4: [0x34, 0x24], // 4 $
+  Digit5: [0x35, 0x25], // 5 %
+  Digit6: [0x36, 0x5e], // 6 ^
+  Digit7: [0x37, 0x26], // 7 &
+  Digit8: [0x38, 0x2a], // 8 *
+  Digit9: [0x39, 0x28], // 9 (
+  Digit0: [0x30, 0x29], // 0 )
+  Minus: [0x2d, 0x5f], // - _
+  Equal: [0x3d, 0x2b], // = +
+  KeyQ: [0x71, 0x51], // q Q
+  KeyW: [0x77, 0x57], // w W
+  KeyE: [0x65, 0x45], // e E
+  KeyR: [0x72, 0x52], // r R
+  KeyT: [0x74, 0x54], // t T
+  KeyY: [0x79, 0x59], // y Y
+  KeyU: [0x75, 0x55], // u U
+  KeyI: [0x69, 0x49], // i I
+  KeyO: [0x6f, 0x4f], // o O
+  KeyP: [0x70, 0x50], // p P
+  BracketLeft: [0x5b, 0x7b], // [ {
+  BracketRight: [0x5d, 0x7d], // ] }
+  Backslash: [0x5c, 0x7c], // \ |
+  KeyA: [0x61, 0x41], // a A
+  KeyS: [0x73, 0x53], // s S
+  KeyD: [0x64, 0x44], // d D
+  KeyF: [0x66, 0x46], // f F
+  KeyG: [0x67, 0x47], // g G
+  KeyH: [0x68, 0x48], // h H
+  KeyJ: [0x6a, 0x4a], // j J
+  KeyK: [0x6b, 0x4b], // k K
+  KeyL: [0x6c, 0x4c], // l L
+  Semicolon: [0x3b, 0x3a], // ; :
+  Quote: [0x27, 0x22], // ' "
+  KeyZ: [0x7a, 0x5a], // z Z
+  KeyX: [0x78, 0x58], // x X
+  KeyC: [0x63, 0x43], // c C
+  KeyV: [0x76, 0x56], // v V
+  KeyB: [0x62, 0x42], // b B
+  KeyN: [0x6e, 0x4e], // n N
+  KeyM: [0x6d, 0x4d], // m M
+  Comma: [0x2c, 0x3c], // , <
+  Period: [0x2e, 0x3e], // . >
+  Slash: [0x2f, 0x3f], // / ?
+  Space: [0x20, 0x20], // space
+  IntlBackslash: [0x3c, 0x3e], // < > (ISO key between left shift and Z)
+};
+
+function getKeysym(e: React.KeyboardEvent, mode: KeyboardMode = 'character'): number | null {
+  // Special keys always use e.key
   if (e.key in specialKeys) return specialKeys[e.key];
+
+  if (mode === 'physical' && e.code) {
+    // Physical mode: map e.code to US-QWERTY keysym
+    const mapping = codeToKeysym[e.code];
+    if (mapping) {
+      return e.shiftKey ? mapping[1] : mapping[0];
+    }
+    // Fallback to special keys by code
+    if (e.code in specialKeys) return specialKeys[e.code];
+  }
+
+  // Character mode: use the character the browser produces
   if (e.key === 'Dead') {
     const deadKeyMap: { [code: string]: number } = {
       BracketLeft: 0x5e,
@@ -103,65 +189,12 @@ interface VMConsoleProps extends DialogProps {
 // ── Quick Action Buttons ────────────────────────────────────────────────
 
 function QuickActions({ vm }: { vm?: VirtualMachine }) {
-  const { enqueueSnackbar } = useSnackbar();
+  const { actions } = useVMActions(vm);
   if (!vm) return null;
 
-  const status = vm.status?.printableStatus || 'Unknown';
-
-  const actions = [
-    {
-      icon: 'mdi:play',
-      label: 'Start',
-      disabled: status !== 'Stopped',
-      handler: async () => {
-        try {
-          await vm.start();
-          enqueueSnackbar('VM started', { variant: 'success' });
-        } catch (e) {
-          enqueueSnackbar('Failed to start: ' + e, { variant: 'error' });
-        }
-      },
-    },
-    {
-      icon: 'mdi:stop',
-      label: 'Stop',
-      disabled: status === 'Stopped' || status === 'Stopping',
-      handler: async () => {
-        try {
-          await vm.stop();
-          enqueueSnackbar('VM stopped', { variant: 'success' });
-        } catch (e) {
-          enqueueSnackbar('Failed to stop: ' + e, { variant: 'error' });
-        }
-      },
-    },
-    {
-      icon: 'mdi:stop-circle',
-      label: 'Force Stop',
-      disabled: status === 'Stopped',
-      handler: async () => {
-        try {
-          await vm.forceStop();
-          enqueueSnackbar('VM force stopped', { variant: 'success' });
-        } catch (e) {
-          enqueueSnackbar('Failed to force stop: ' + e, { variant: 'error' });
-        }
-      },
-    },
-    {
-      icon: 'mdi:restart',
-      label: 'Restart',
-      disabled: status !== 'Running',
-      handler: async () => {
-        try {
-          await vm.restart();
-          enqueueSnackbar('VM restarting', { variant: 'success' });
-        } catch (e) {
-          enqueueSnackbar('Failed to restart: ' + e, { variant: 'error' });
-        }
-      },
-    },
-  ];
+  // Only show start, stop, force-stop, restart in console view
+  const quickIds = ['start', 'stop', 'force-stop', 'restart'];
+  const quickActions = actions.filter(a => quickIds.includes(a.id));
 
   return (
     <Box display="flex" alignItems="center" gap={0.5} sx={{ ml: 2 }}>
@@ -173,8 +206,8 @@ function QuickActions({ vm }: { vm?: VirtualMachine }) {
           mx: 0.5,
         }}
       />
-      {actions.map(a => (
-        <Tooltip key={a.label} title={a.label}>
+      {quickActions.map(a => (
+        <Tooltip key={a.id} title={a.label}>
           <span>
             <IconButton
               size="small"
@@ -200,7 +233,7 @@ function QuickActions({ vm }: { vm?: VirtualMachine }) {
 
 // ── Terminal Panel ───────────────────────────────────────────────────────
 
-function TerminalPanel({
+export function TerminalPanel({
   item,
   active,
   onStatusChange,
@@ -215,19 +248,19 @@ function TerminalPanel({
   const xtermRef = useRef<XTerminalConnected | null>(null);
   const [terminalRef, setTerminalRef] = useState<HTMLElement | null>(null);
 
-  const encoder = new TextEncoder();
-  const decoder = new TextDecoder('utf-8');
+  const encoderRef = useRef(new TextEncoder());
+  const decoderRef = useRef(new TextDecoder('utf-8'));
 
   function send(channel: number, data: string) {
     const socket = execRef.current?.getSocket();
     if (!socket || socket.readyState !== 1) return;
-    const encoded = encoder.encode(data);
+    const encoded = encoderRef.current.encode(data);
     socket.send(encoded);
   }
 
   function onData(xtermc: XTerminalConnected, bytes: ArrayBuffer) {
     const xterm = xtermc.xterm;
-    const text = decoder.decode(bytes);
+    const text = decoderRef.current.decode(bytes);
     if (!xtermc.connected) {
       xtermc.connected = true;
       xterm.writeln(t('Connected to terminal…'));
@@ -243,7 +276,7 @@ function TerminalPanel({
       const resizeData = `{"Width":${size.cols},"Height":${size.rows}}`;
       const socket = execRef.current?.getSocket();
       if (socket && socket.readyState === 1) {
-        const encoded = encoder.encode(resizeData);
+        const encoded = encoderRef.current.encode(resizeData);
         socket.send(encoded);
       }
     });
@@ -297,7 +330,7 @@ function TerminalPanel({
       execRef.current = await item.exec(items => onData(xtermRef.current!, items), {
         reconnectOnFailure: false,
         failCb: () => {
-          xtermRef.current?.xterm.write(encoder.encode(t('\r\n')));
+          xtermRef.current?.xterm.write(encoderRef.current.encode(t('\r\n')));
         },
         connectCb: () => {
           if (xtermRef.current) xtermRef.current.connected = true;
@@ -384,7 +417,105 @@ function TerminalPanel({
 
 // ── VNC Panel ───────────────────────────────────────────────────────────
 
-function VNCPanel({
+// F1-F12 keysyms: F1=0xffbe, F2=0xffbf, ... F12=0xffc9
+const FK = (n: number) => 0xffbe + (n - 1);
+
+function VNCKeysMenu({ onSend }: { onSend: (keys: number[]) => void }) {
+  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
+  const open = Boolean(anchorEl);
+
+  const send = (keys: number[]) => {
+    setAnchorEl(null);
+    onSend(keys);
+  };
+
+  const menuItemSx = { fontSize: '0.8rem', py: 0.5, minHeight: 0 };
+  const iconSx = { minWidth: 28 };
+
+  return (
+    <>
+      <Tooltip title="Send Keys" arrow placement="bottom">
+        <IconButton
+          size="small"
+          onClick={e => setAnchorEl(e.currentTarget)}
+          sx={{ color: 'rgba(255,255,255,0.7)', '&:hover': { color: '#fff' }, p: 0.5 }}
+        >
+          <Icon icon="mdi:keyboard-settings" width={16} />
+        </IconButton>
+      </Tooltip>
+      <Menu
+        anchorEl={anchorEl}
+        open={open}
+        onClose={() => setAnchorEl(null)}
+        slotProps={{
+          paper: { sx: { bgcolor: 'rgba(30,30,30,0.95)', color: '#fff', minWidth: 200 } },
+        }}
+      >
+        <MenuItem
+          disabled
+          sx={{
+            ...menuItemSx,
+            opacity: '0.5 !important',
+            fontSize: '0.65rem',
+            textTransform: 'uppercase',
+            letterSpacing: 0.5,
+          }}
+        >
+          Switch TTY
+        </MenuItem>
+        {[1, 2, 3, 4, 5, 6].map(n => (
+          <MenuItem key={`tty${n}`} onClick={() => send([0xffe3, 0xffe9, FK(n)])} sx={menuItemSx}>
+            <ListItemIcon sx={iconSx}>
+              <Icon icon="mdi:console" width={16} color="rgba(255,255,255,0.7)" />
+            </ListItemIcon>
+            <ListItemText primaryTypographyProps={{ fontSize: '0.8rem' }}>
+              Ctrl+Alt+F{n} — tty{n}
+            </ListItemText>
+          </MenuItem>
+        ))}
+        <MenuItem onClick={() => send([0xffe3, 0xffe9, FK(7)])} sx={menuItemSx}>
+          <ListItemIcon sx={iconSx}>
+            <Icon icon="mdi:monitor" width={16} color="rgba(255,255,255,0.7)" />
+          </ListItemIcon>
+          <ListItemText primaryTypographyProps={{ fontSize: '0.8rem' }}>
+            Ctrl+Alt+F7 — GUI
+          </ListItemText>
+        </MenuItem>
+
+        <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)', my: 0.5 }} />
+
+        <MenuItem
+          disabled
+          sx={{
+            ...menuItemSx,
+            opacity: '0.5 !important',
+            fontSize: '0.65rem',
+            textTransform: 'uppercase',
+            letterSpacing: 0.5,
+          }}
+        >
+          System
+        </MenuItem>
+        <MenuItem onClick={() => send([0xffe3, 0xffe9, 0xffff])} sx={menuItemSx}>
+          <ListItemIcon sx={iconSx}>
+            <Icon icon="mdi:restart" width={16} color="rgba(255,255,255,0.7)" />
+          </ListItemIcon>
+          <ListItemText primaryTypographyProps={{ fontSize: '0.8rem' }}>Ctrl+Alt+Del</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={() => send([0xffe3, 0xffe9, 0xff08])} sx={menuItemSx}>
+          <ListItemIcon sx={iconSx}>
+            <Icon icon="mdi:backspace" width={16} color="rgba(255,255,255,0.7)" />
+          </ListItemIcon>
+          <ListItemText primaryTypographyProps={{ fontSize: '0.8rem' }}>
+            Ctrl+Alt+Backspace — Kill X
+          </ListItemText>
+        </MenuItem>
+      </Menu>
+    </>
+  );
+}
+
+export function VNCPanel({
   item,
   active,
   onStatusChange,
@@ -400,8 +531,20 @@ function VNCPanel({
   const [localStatus, setLocalStatus] = useState<'connecting' | 'connected' | 'disconnected'>(
     'connecting'
   );
+  const [keyboardMode, setKeyboardMode] = useState<KeyboardMode>('physical');
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const vncContainerRef = useRef<HTMLDivElement>(null);
   const vncRef = useRef<{ cancel: () => void; getSocket: () => WebSocket } | null>(null);
+
+  // Listen for fullscreen changes (exit via Esc, etc.)
+  useEffect(() => {
+    const handler = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handler);
+    return () => document.removeEventListener('fullscreenchange', handler);
+  }, []);
 
   useEffect(() => {
     if (canvasRef.current && framebufferSize) {
@@ -555,15 +698,22 @@ function VNCPanel({
 
                 const socket = vncRef.current?.getSocket();
                 if (socket && socket.readyState === 1) {
-                  const encodingsMsg = new Uint8Array(8);
-                  encodingsMsg[0] = 2;
+                  // Advertise: Raw (0) + DesktopSize pseudo-encoding (-223)
+                  const encodingsMsg = new Uint8Array(12);
+                  encodingsMsg[0] = 2; // SetEncodings
                   encodingsMsg[1] = 0;
                   encodingsMsg[2] = 0;
-                  encodingsMsg[3] = 1;
+                  encodingsMsg[3] = 2; // 2 encodings
+                  // Raw encoding (0)
                   encodingsMsg[4] = 0;
                   encodingsMsg[5] = 0;
                   encodingsMsg[6] = 0;
                   encodingsMsg[7] = 0;
+                  // DesktopSize pseudo-encoding (-223 = 0xFFFFFF21)
+                  encodingsMsg[8] = 0xff;
+                  encodingsMsg[9] = 0xff;
+                  encodingsMsg[10] = 0xff;
+                  encodingsMsg[11] = 0x21;
                   socket.send(encodingsMsg);
 
                   const updateMsg = new Uint8Array(10);
@@ -595,9 +745,11 @@ function VNCPanel({
                     const encoding = view.getInt32(offset + 8);
                     requiredSize = offset + 12;
                     if (encoding === 0) {
+                      // Raw encoding: has pixel data
                       const bytesPerPixel = pixelFormat.bitsPerPixel / 8;
                       requiredSize += w * h * bytesPerPixel;
                     }
+                    // Pseudo-encodings (negative values like -223) have no pixel data
                     offset = requiredSize;
                   }
 
@@ -617,7 +769,13 @@ function VNCPanel({
                     const encoding = msgView.getInt32(offset + 8);
                     offset += 12;
 
-                    if (encoding === 0 && canvasRef.current) {
+                    if (encoding === -223) {
+                      // DesktopSize pseudo-encoding: w,h = new framebuffer size
+                      fbWidth = w;
+                      fbHeight = h;
+                      setFramebufferSize({ width: w, height: h });
+                      // No pixel data for this rect
+                    } else if (encoding === 0 && canvasRef.current) {
                       const bytesPerPixel = pixelFormat.bitsPerPixel / 8;
                       const ctx = canvasRef.current.getContext('2d');
                       if (ctx) {
@@ -742,6 +900,7 @@ function VNCPanel({
 
       {localStatus === 'connected' && (
         <Box
+          ref={vncContainerRef}
           sx={{
             flex: 1,
             display: 'flex',
@@ -751,8 +910,142 @@ function VNCPanel({
             width: '100%',
             minHeight: 0,
             position: 'relative',
+            bgcolor: '#000',
           }}
         >
+          {/* VNC toolbar — top right */}
+          <Box
+            sx={{
+              position: 'absolute',
+              top: 8,
+              right: 8,
+              zIndex: 10,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 0.75,
+              bgcolor: 'rgba(0,0,0,0.75)',
+              borderRadius: 1,
+              px: 1,
+              py: 0.5,
+            }}
+          >
+            {/* Ctrl+Alt+Del button */}
+            <Tooltip title="Ctrl+Alt+Del" arrow placement="bottom">
+              <IconButton
+                size="small"
+                onClick={() => {
+                  const socket = vncRef.current?.getSocket();
+                  if (!socket || socket.readyState !== 1) return;
+                  const sendKey = (keysym: number, down: boolean) => {
+                    const msg = new Uint8Array(8);
+                    msg[0] = 4;
+                    msg[1] = down ? 1 : 0;
+                    msg[4] = (keysym >> 24) & 0xff;
+                    msg[5] = (keysym >> 16) & 0xff;
+                    msg[6] = (keysym >> 8) & 0xff;
+                    msg[7] = keysym & 0xff;
+                    socket.send(msg);
+                  };
+                  [0xffe3, 0xffe9, 0xffff].forEach(k => sendKey(k, true));
+                  [0xffff, 0xffe9, 0xffe3].forEach(k => sendKey(k, false));
+                  canvasRef.current?.focus();
+                }}
+                sx={{ color: 'rgba(255,255,255,0.7)', '&:hover': { color: '#fff' }, p: 0.5 }}
+              >
+                <Icon icon="mdi:restart" width={16} />
+              </IconButton>
+            </Tooltip>
+
+            {/* Send Keys menu */}
+            <VNCKeysMenu
+              onSend={keys => {
+                const socket = vncRef.current?.getSocket();
+                if (!socket || socket.readyState !== 1) return;
+                const sendKey = (keysym: number, down: boolean) => {
+                  const msg = new Uint8Array(8);
+                  msg[0] = 4;
+                  msg[1] = down ? 1 : 0;
+                  msg[4] = (keysym >> 24) & 0xff;
+                  msg[5] = (keysym >> 16) & 0xff;
+                  msg[6] = (keysym >> 8) & 0xff;
+                  msg[7] = keysym & 0xff;
+                  socket.send(msg);
+                };
+                keys.forEach(k => sendKey(k, true));
+                [...keys].reverse().forEach(k => sendKey(k, false));
+                canvasRef.current?.focus();
+              }}
+            />
+
+            <Box sx={{ width: 1, height: 18, bgcolor: 'rgba(255,255,255,0.2)', mx: 0.25 }} />
+
+            {/* Keyboard mode toggle */}
+            <ToggleButtonGroup
+              value={keyboardMode}
+              exclusive
+              onChange={(_, v) => {
+                if (v) {
+                  setKeyboardMode(v);
+                  canvasRef.current?.focus();
+                }
+              }}
+              size="small"
+              sx={{
+                '& .MuiToggleButton-root': {
+                  color: 'rgba(255,255,255,0.7)',
+                  borderColor: 'rgba(255,255,255,0.3)',
+                  py: 0.25,
+                  px: 1,
+                  fontSize: '0.7rem',
+                  '&.Mui-selected': {
+                    bgcolor: 'rgba(255,255,255,0.15)',
+                    color: '#fff',
+                  },
+                },
+              }}
+            >
+              <Tooltip
+                title="Character mode: sends typed characters (guest has US layout)"
+                arrow
+                placement="bottom"
+              >
+                <ToggleButton value="character">ABC</ToggleButton>
+              </Tooltip>
+              <Tooltip
+                title="Physical mode: sends physical key positions (guest has its own layout)"
+                arrow
+                placement="bottom"
+              >
+                <ToggleButton value="physical">
+                  <Icon icon="mdi:keyboard" width={16} />
+                </ToggleButton>
+              </Tooltip>
+            </ToggleButtonGroup>
+
+            <Box sx={{ width: 1, height: 18, bgcolor: 'rgba(255,255,255,0.2)', mx: 0.25 }} />
+
+            {/* Fullscreen toggle */}
+            <Tooltip
+              title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+              arrow
+              placement="bottom"
+            >
+              <IconButton
+                size="small"
+                onClick={() => {
+                  if (isFullscreen) {
+                    document.exitFullscreen?.();
+                  } else {
+                    vncContainerRef.current?.requestFullscreen?.();
+                  }
+                  canvasRef.current?.focus();
+                }}
+                sx={{ color: 'rgba(255,255,255,0.7)', '&:hover': { color: '#fff' }, p: 0.5 }}
+              >
+                <Icon icon={isFullscreen ? 'mdi:fullscreen-exit' : 'mdi:fullscreen'} width={16} />
+              </IconButton>
+            </Tooltip>
+          </Box>
           <canvas
             ref={canvasRef}
             tabIndex={0}
@@ -840,7 +1133,7 @@ function VNCPanel({
               };
               const isAltGr = e.getModifierState && e.getModifierState('AltGraph');
               if (isAltGr) sendKeyEvent(0xfe03, true);
-              const keysym = getKeysym(e);
+              const keysym = getKeysym(e, keyboardMode);
               if (keysym !== null) sendKeyEvent(keysym, true);
             }}
             onKeyUp={e => {
@@ -859,7 +1152,7 @@ function VNCPanel({
                 msg[7] = keysym & 0xff;
                 socket.send(msg);
               };
-              const keysym = getKeysym(e);
+              const keysym = getKeysym(e, keyboardMode);
               if (keysym !== null) sendKeyEvent(keysym, false);
               const isAltGr = e.getModifierState && e.getModifierState('AltGraph');
               if (isAltGr) sendKeyEvent(0xfe03, false);

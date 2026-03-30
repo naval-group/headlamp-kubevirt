@@ -7,13 +7,57 @@ export interface LabelColumn {
   labelKey: string; // Kubernetes label key (e.g., 'app.kubernetes.io/name')
 }
 
+export interface ForensicSettings {
+  toolboxImage: string; // Forensic toolbox image (vol-qemu + vol3)
+  isfRegistry: string; // ISF image registry (e.g., 'localhost:5000')
+  isfRepo: string; // ISF image repository name (e.g., 'isf')
+}
+
 export interface PluginSettings {
   customLabelColumns: LabelColumn[];
+  forensic: ForensicSettings;
 }
+
+export const defaultForensicSettings: ForensicSettings = {
+  toolboxImage: 'sk4la/volatility3:2.26',
+  isfRegistry: 'localhost:5000',
+  isfRepo: 'isf',
+};
 
 const defaultSettings: PluginSettings = {
   customLabelColumns: [],
+  forensic: { ...defaultForensicSettings },
 };
+
+/**
+ * Validate a container image reference.
+ * Accepts: registry[:port]/repo[:tag], user/image:tag, or registry.fqdn/repo:tag
+ * Must contain a slash (registry/repo or user/image).
+ */
+export function isValidImageRef(value: string): boolean {
+  // hostname label: starts/ends with alnum, dashes allowed in middle (no dots — dots are separators)
+  // This avoids ReDoS by ensuring dots cannot appear inside repeated character classes
+  return /^[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?)*(:[0-9]{1,5})?\/[a-zA-Z0-9._-]+(?:\/[a-zA-Z0-9._-]+)*(?::[a-zA-Z0-9._-]+)?(?:@sha256:[a-f0-9]{64})?$/.test(
+    value
+  );
+}
+
+/**
+ * Validate a registry FQDN (with optional port).
+ */
+export function isValidRegistry(value: string): boolean {
+  // Same ReDoS-safe hostname pattern: dots only as literal separators between labels
+  return /^[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?)*(:[0-9]{1,5})?$/.test(
+    value
+  );
+}
+
+/**
+ * Validate a repository name (alphanumeric, dots, dashes, slashes).
+ */
+export function isValidRepo(value: string): boolean {
+  return /^[a-zA-Z0-9][a-zA-Z0-9._\/-]*$/.test(value) && value.length <= 253;
+}
 
 function isValidLabelColumn(obj: unknown): obj is LabelColumn {
   return (
@@ -34,6 +78,24 @@ function validateSettings(parsed: unknown): PluginSettings {
 
   if (Array.isArray(raw.customLabelColumns)) {
     result.customLabelColumns = raw.customLabelColumns.filter(isValidLabelColumn);
+  }
+
+  if (typeof raw.forensic === 'object' && raw.forensic !== null) {
+    const f = raw.forensic as Record<string, unknown>;
+    result.forensic = {
+      toolboxImage:
+        typeof f.toolboxImage === 'string' && isValidImageRef(f.toolboxImage)
+          ? f.toolboxImage
+          : defaultForensicSettings.toolboxImage,
+      isfRegistry:
+        typeof f.isfRegistry === 'string' && isValidRegistry(f.isfRegistry)
+          ? f.isfRegistry
+          : defaultForensicSettings.isfRegistry,
+      isfRepo:
+        typeof f.isfRepo === 'string' && isValidRepo(f.isfRepo)
+          ? f.isfRepo
+          : defaultForensicSettings.isfRepo,
+    };
   }
 
   return result;
@@ -84,4 +146,14 @@ export function removeLabelColumn(labelKey: string): void {
 
 export function getLabelColumns(): LabelColumn[] {
   return getPluginSettings().customLabelColumns;
+}
+
+export function getForensicSettings(): ForensicSettings {
+  return getPluginSettings().forensic;
+}
+
+export function saveForensicSettings(forensic: ForensicSettings): void {
+  const settings = getPluginSettings();
+  settings.forensic = forensic;
+  savePluginSettings(settings);
 }

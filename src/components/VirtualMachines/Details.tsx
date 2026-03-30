@@ -22,16 +22,18 @@ import {
   MenuItem,
   Select,
   TextField,
-  Tooltip,
   Typography,
 } from '@mui/material';
 import { useSnackbar } from 'notistack';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
+import useVMActions from '../../hooks/useVMActions';
 import ConfirmDialog from '../common/ConfirmDialog';
 import CopyCodeBlock from '../common/CopyCodeBlock';
+import { SimpleStyledTooltip, TitledTooltip } from '../common/StyledTooltip';
 import VMConsole from '../VMConsole/VMConsole';
+import VMDoctorDialog from '../VMDoctor/VMDoctorDialog';
 import VirtualMachine from './VirtualMachine';
 
 /** Runtime interface info from VMI status (not the spec-level VMInterface) */
@@ -75,12 +77,13 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
   const params = useParams<{ namespace: string; name: string }>();
   const { name = params.name, namespace = params.namespace } = props;
   const { t } = useTranslation('glossary');
-  const { enqueueSnackbar } = useSnackbar();
   const [showConsole, setShowConsole] = useState(false);
   const [consoleTab, setConsoleTab] = useState<'vnc' | 'terminal'>('vnc');
   const [showSnapshotDialog, setShowSnapshotDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showDoctor, setShowDoctor] = useState(false);
   const [vmItem] = VirtualMachine.useGet(name, namespace);
+  const { actions: vmActions } = useVMActions(vmItem);
 
   const [podName, setPodName] = useState<string | null>(null);
   const [vmiData, setVmiData] = useState<any>(null);
@@ -144,8 +147,15 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
   );
 
   // Fetch CDI importer/cloner pods related to this VM's DataVolumes
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [cdiPods, setCdiPods] = useState<any[]>([]);
+  interface K8sPod {
+    metadata: {
+      name: string;
+      labels?: Record<string, string>;
+      ownerReferences?: { name: string }[];
+    };
+    status?: { phase?: string; containerStatuses?: { ready: boolean }[] };
+  }
+  const [cdiPods, setCdiPods] = useState<K8sPod[]>([]);
   useEffect(() => {
     if (!vmDvtNames.length || !namespace) return;
     const fetchCdiPods = async () => {
@@ -153,11 +163,9 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
         const response = await ApiProxy.request(
           `/api/v1/namespaces/${namespace}/pods?labelSelector=app=containerized-data-importer`
         );
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const allPods = (response as any)?.items || [];
+        const allPods: K8sPod[] = (response as { items?: K8sPod[] })?.items || [];
         // Filter pods whose owner or name matches our DV names
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const relatedPods = allPods.filter((pod: any) => {
+        const relatedPods = allPods.filter(pod => {
           const podName = pod.metadata?.name || '';
           return vmDvtNames.some(
             (dvName: string) =>
@@ -190,6 +198,7 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
     ...(snapshotEnabled ? [{ id: 'snapshots', label: 'Snapshots', icon: 'mdi:camera' }] : []),
     ...(vmExportEnabled ? [{ id: 'exports', label: 'Exports', icon: 'mdi:export' }] : []),
     { id: 'metrics', label: 'Metrics', icon: 'mdi:chart-line' },
+    { id: 'doctor', label: 'VM Doctor', icon: 'mdi:stethoscope' },
     { id: 'terminal', label: 'Terminal', icon: 'mdi:console' },
     { id: 'vnc', label: 'VNC', icon: 'mdi:monitor' },
   ];
@@ -198,6 +207,7 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
     <>
       <FloatingNav
         sections={navSections}
+        onDoctorClick={() => setShowDoctor(true)}
         onTerminalClick={() => {
           setConsoleTab('terminal');
           setShowConsole(true);
@@ -236,13 +246,7 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                       return null;
                     })}
                   {item.isDeleteProtected() && (
-                    <Tooltip
-                      title={
-                        <div style={{ fontSize: '0.875rem' }}>
-                          Delete protection enabled - cannot be deleted until protection is removed
-                        </div>
-                      }
-                    >
+                    <SimpleStyledTooltip title="Delete protection enabled — cannot be deleted until protection is removed">
                       <Chip
                         key="protected"
                         label="Protected"
@@ -250,7 +254,7 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                         color="info"
                         icon={<Icon icon="mdi:lock" width={14} />}
                       />
-                    </Tooltip>
+                    </SimpleStyledTooltip>
                   )}
                 </Box>
               ),
@@ -265,17 +269,16 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                           const total =
                             (topo.sockets || 1) * (topo.cores || 1) * (topo.threads || 1);
                           return (
-                            <Tooltip
-                              title={
-                                <div style={{ fontSize: '0.875rem' }}>
-                                  <div>{topo.sockets} Socket(s)</div>
-                                  <div>{topo.cores} Core(s)</div>
-                                  <div>{topo.threads} Thread(s)</div>
-                                </div>
-                              }
+                            <TitledTooltip
+                              title="CPU Topology"
+                              rows={[
+                                { label: 'Sockets', value: topo.sockets },
+                                { label: 'Cores', value: topo.cores },
+                                { label: 'Threads', value: topo.threads },
+                              ]}
                             >
                               <span style={{ cursor: 'help' }}>{total} cores</span>
-                            </Tooltip>
+                            </TitledTooltip>
                           );
                         })()
                       : item?.spec?.template?.spec?.domain?.cpu
@@ -313,13 +316,13 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                         <Typography variant="body2" color="text.secondary">
                           Unknown
                         </Typography>
-                        <Tooltip title="Install QEMU Guest Agent in the VM to report OS info" arrow>
+                        <SimpleStyledTooltip title="Install QEMU Guest Agent in the VM to report OS info">
                           <Icon
                             icon="mdi:information-outline"
                             width={16}
                             style={{ cursor: 'help', opacity: 0.6 }}
                           />
-                        </Tooltip>
+                        </SimpleStyledTooltip>
                       </Box>
                     ),
                   },
@@ -330,16 +333,13 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                         <Typography variant="body2" color="text.secondary">
                           Unknown
                         </Typography>
-                        <Tooltip
-                          title="Install QEMU Guest Agent in the VM to report kernel info"
-                          arrow
-                        >
+                        <SimpleStyledTooltip title="Install QEMU Guest Agent in the VM to report kernel info">
                           <Icon
                             icon="mdi:information-outline"
                             width={16}
                             style={{ cursor: 'help', opacity: 0.6 }}
                           />
-                        </Tooltip>
+                        </SimpleStyledTooltip>
                       </Box>
                     ),
                   },
@@ -648,24 +648,20 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                             label: 'Name',
                             getter: (iface: VMIStatusInterface) => {
                               const displayName = iface.name || iface.interfaceName || 'N/A';
-                              const tooltipParts = [
-                                iface.interfaceName ? `Interface: ${iface.interfaceName}` : null,
-                                `State: ${iface.linkState || 'N/A'}`,
-                                iface.queueCount ? `Queues: ${iface.queueCount}` : null,
-                              ].filter(Boolean);
+                              const tooltipRows = [
+                                iface.interfaceName
+                                  ? { label: 'Interface', value: iface.interfaceName }
+                                  : null,
+                                { label: 'State', value: iface.linkState || 'N/A' },
+                                iface.queueCount
+                                  ? { label: 'Queues', value: String(iface.queueCount) }
+                                  : null,
+                              ].filter(Boolean) as { label: string; value: string }[];
 
                               return (
-                                <Tooltip
-                                  title={
-                                    <div style={{ fontSize: '0.875rem' }}>
-                                      {tooltipParts.map((part, idx) => (
-                                        <div key={idx}>{part}</div>
-                                      ))}
-                                    </div>
-                                  }
-                                >
+                                <TitledTooltip title="Network Interface" rows={tooltipRows}>
                                   <span style={{ cursor: 'help' }}>{displayName}</span>
-                                </Tooltip>
+                                </TitledTooltip>
                               );
                             },
                           },
@@ -681,17 +677,14 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                                   ? iface.ipAddresses.join(', ')
                                   : iface.ipAddress || 'N/A';
                               return (
-                                <Tooltip
-                                  title={
-                                    <div style={{ fontSize: '0.875rem' }}>
-                                      {ips.split(', ').map((ip: string, idx: number) => (
-                                        <div key={idx}>{ip}</div>
-                                      ))}
-                                    </div>
-                                  }
+                                <TitledTooltip
+                                  title="IP Addresses"
+                                  rows={ips
+                                    .split(', ')
+                                    .map((ip: string) => ({ label: '', value: ip }))}
                                 >
                                   <span style={{ cursor: 'help' }}>{ips}</span>
-                                </Tooltip>
+                                </TitledTooltip>
                               );
                             },
                           },
@@ -751,15 +744,11 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                                 : 'N/A';
 
                               return (
-                                <Tooltip
-                                  title={
-                                    <div style={{ fontSize: '0.875rem' }}>{pvcInfo.claimName}</div>
-                                  }
-                                >
+                                <SimpleStyledTooltip title={pvcInfo.claimName}>
                                   <span style={{ cursor: 'help' }}>
                                     {pvcInfo.claimName} ({accessMode})
                                   </span>
-                                </Tooltip>
+                                </SimpleStyledTooltip>
                               );
                             },
                           },
@@ -836,241 +825,90 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
             },
           ]
         }
-        actions={item => {
-          const status = item?.status?.printableStatus || 'Unknown';
-          return (
-            item && [
-              {
-                id: 'start',
+        actions={item =>
+          item && [
+            ...vmActions
+              .filter(a => a.id !== 'migrate' || liveMigrationEnabled)
+              .map(a => ({
+                id: a.id,
                 action: (
                   <ActionButton
-                    description={t('Start')}
-                    icon="mdi:play"
-                    onClick={async () => {
-                      try {
-                        await item.start();
-                        enqueueSnackbar('Virtual Machine started', { variant: 'success' });
-                      } catch (e) {
-                        console.error('start failed', e);
-                        enqueueSnackbar('Failed to start Virtual Machine: ' + e, {
-                          variant: 'error',
-                        });
-                      }
+                    description={t(a.label)}
+                    icon={a.icon}
+                    onClick={a.handler}
+                    iconButtonProps={{ disabled: a.disabled }}
+                  ></ActionButton>
+                ),
+              })),
+            {
+              id: 'edit-wizard',
+              action: (
+                <ActionButton
+                  description={t('Edit with Wizard')}
+                  icon="mdi:auto-fix"
+                  onClick={() => setShowEditDialog(true)}
+                ></ActionButton>
+              ),
+            },
+            ...(snapshotEnabled
+              ? [
+                  {
+                    id: 'snapshot',
+                    action: (
+                      <ActionButton
+                        description={t('Take Snapshot')}
+                        icon="mdi:camera"
+                        onClick={() => setShowSnapshotDialog(true)}
+                      ></ActionButton>
+                    ),
+                  },
+                ]
+              : []),
+            {
+              id: 'doctor',
+              action: (
+                <ActionButton
+                  description="VM Doctor"
+                  aria-label="vm doctor"
+                  icon="mdi:stethoscope"
+                  onClick={() => setShowDoctor(true)}
+                />
+              ),
+            },
+            {
+              id: 'console',
+              action: (
+                <Resource.AuthVisible item={item} authVerb="get" subresource="exec">
+                  <ActionButton
+                    description={t('Terminal / Exec')}
+                    aria-label={t('terminal')}
+                    icon="mdi:console"
+                    onClick={() => {
+                      setConsoleTab('terminal');
+                      setShowConsole(true);
                     }}
-                    iconButtonProps={{ disabled: status !== 'Stopped' }}
-                  ></ActionButton>
-                ),
-              },
-              {
-                id: 'stop',
-                action: (
+                  />
+                </Resource.AuthVisible>
+              ),
+            },
+            {
+              id: 'vnc',
+              action: (
+                <Resource.AuthVisible item={item} authVerb="get" subresource="vnc">
                   <ActionButton
-                    description={t('Stop')}
-                    icon="mdi:stop"
-                    onClick={async () => {
-                      try {
-                        await item.stop();
-                        enqueueSnackbar('Virtual Machine stopped', { variant: 'success' });
-                      } catch (e) {
-                        console.error('stop failed', e);
-                        enqueueSnackbar('Failed to stop Virtual Machine: ' + e, {
-                          variant: 'error',
-                        });
-                      }
+                    description={t('VNC Console')}
+                    aria-label={t('vnc')}
+                    icon="mdi:monitor"
+                    onClick={() => {
+                      setConsoleTab('vnc');
+                      setShowConsole(true);
                     }}
-                    iconButtonProps={{ disabled: status === 'Stopped' || status === 'Stopping' }}
-                  ></ActionButton>
-                ),
-              },
-              {
-                id: 'restart',
-                action: (
-                  <ActionButton
-                    description={t('Restart')}
-                    icon="mdi:restart"
-                    onClick={async () => {
-                      try {
-                        await item.restart();
-                        enqueueSnackbar('Virtual Machine restarting', { variant: 'success' });
-                      } catch (e) {
-                        console.error('restart failed', e);
-                        enqueueSnackbar('Failed to restart Virtual Machine: ' + e, {
-                          variant: 'error',
-                        });
-                      }
-                    }}
-                    iconButtonProps={{ disabled: status !== 'Running' }}
-                  ></ActionButton>
-                ),
-              },
-              {
-                id: 'pause',
-                action: (
-                  <ActionButton
-                    description={item.isPaused() ? t('Unpause') : t('Pause')}
-                    icon={item.isPaused() ? 'mdi:play-pause' : 'mdi:pause'}
-                    onClick={async () => {
-                      try {
-                        if (item.isPaused()) {
-                          await item.unpause();
-                          enqueueSnackbar('Virtual Machine unpaused', { variant: 'success' });
-                        } else {
-                          await item.pause();
-                          enqueueSnackbar('Virtual Machine paused', { variant: 'success' });
-                        }
-                      } catch (e) {
-                        console.error('pause/unpause failed', e);
-                        enqueueSnackbar(
-                          `Failed to ${
-                            item.isPaused() ? 'unpause' : 'pause'
-                          } Virtual Machine: ${e}`,
-                          { variant: 'error' }
-                        );
-                      }
-                    }}
-                    iconButtonProps={{ disabled: status !== 'Running' }}
-                  ></ActionButton>
-                ),
-              },
-              {
-                id: 'force-stop',
-                action: (
-                  <ActionButton
-                    description={t('Force Stop')}
-                    icon="mdi:stop-circle"
-                    onClick={async () => {
-                      try {
-                        await item.forceStop();
-                        enqueueSnackbar('Virtual Machine force stopped', { variant: 'success' });
-                      } catch (e) {
-                        console.error('force stop failed', e);
-                        enqueueSnackbar('Failed to force stop Virtual Machine: ' + e, {
-                          variant: 'error',
-                        });
-                      }
-                    }}
-                    iconButtonProps={{ disabled: status === 'Stopped' }}
-                  ></ActionButton>
-                ),
-              },
-              ...(liveMigrationEnabled
-                ? [
-                    {
-                      id: 'migrate',
-                      action: (
-                        <ActionButton
-                          description={t('Migrate')}
-                          icon="mdi:arrow-decision"
-                          onClick={async () => {
-                            try {
-                              await item.migrate();
-                              enqueueSnackbar('Virtual Machine migration initiated', {
-                                variant: 'success',
-                              });
-                            } catch (e) {
-                              console.error('migration failed', e);
-                              enqueueSnackbar('Failed to migrate Virtual Machine.', {
-                                variant: 'error',
-                              });
-                            }
-                          }}
-                          iconButtonProps={{
-                            disabled: status !== 'Running' || !item.isLiveMigratable(),
-                          }}
-                        ></ActionButton>
-                      ),
-                    },
-                  ]
-                : []),
-              {
-                id: 'protect',
-                action: (
-                  <ActionButton
-                    description={item.isDeleteProtected() ? t('Unprotect') : t('Protect')}
-                    icon={item.isDeleteProtected() ? 'mdi:lock-open' : 'mdi:lock'}
-                    onClick={async () => {
-                      const isProtected = item.isDeleteProtected();
-
-                      try {
-                        await item.setDeleteProtection(!isProtected);
-                        enqueueSnackbar(
-                          `Virtual Machine ${
-                            isProtected ? 'unprotected' : 'protected'
-                          } from deletion`,
-                          { variant: 'success' }
-                        );
-                      } catch (e) {
-                        console.error('protection toggle failed', e);
-                        enqueueSnackbar(
-                          `Failed to ${
-                            isProtected ? 'unprotect' : 'protect'
-                          } Virtual Machine: ${e}`,
-                          { variant: 'error' }
-                        );
-                      }
-                    }}
-                  ></ActionButton>
-                ),
-              },
-              {
-                id: 'edit-wizard',
-                action: (
-                  <ActionButton
-                    description={t('Edit with Wizard')}
-                    icon="mdi:auto-fix"
-                    onClick={() => setShowEditDialog(true)}
-                  ></ActionButton>
-                ),
-              },
-              ...(snapshotEnabled
-                ? [
-                    {
-                      id: 'snapshot',
-                      action: (
-                        <ActionButton
-                          description={t('Take Snapshot')}
-                          icon="mdi:camera"
-                          onClick={() => setShowSnapshotDialog(true)}
-                        ></ActionButton>
-                      ),
-                    },
-                  ]
-                : []),
-              {
-                id: 'console',
-                action: (
-                  <Resource.AuthVisible item={item} authVerb="get" subresource="exec">
-                    <ActionButton
-                      description={t('Terminal / Exec')}
-                      aria-label={t('terminal')}
-                      icon="mdi:console"
-                      onClick={() => {
-                        setConsoleTab('terminal');
-                        setShowConsole(true);
-                      }}
-                    />
-                  </Resource.AuthVisible>
-                ),
-              },
-              {
-                id: 'vnc',
-                action: (
-                  <Resource.AuthVisible item={item} authVerb="get" subresource="vnc">
-                    <ActionButton
-                      description={t('VNC Console')}
-                      aria-label={t('vnc')}
-                      icon="mdi:monitor"
-                      onClick={() => {
-                        setConsoleTab('vnc');
-                        setShowConsole(true);
-                      }}
-                    />
-                  </Resource.AuthVisible>
-                ),
-              },
-            ]
-          );
-        }}
+                  />
+                </Resource.AuthVisible>
+              ),
+            },
+          ]
+        }
       />
       <CreateSnapshotDialog
         open={showSnapshotDialog}
@@ -1090,6 +928,15 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
           validate={r => !!(r?.metadata?.name && r?.metadata?.namespace)}
         />
       )}
+      <VMDoctorDialog
+        open={showDoctor}
+        onClose={() => setShowDoctor(false)}
+        vmName={name || ''}
+        namespace={namespace || ''}
+        vmiData={vmiData}
+        vmItem={vmItem}
+        podName={podName || ''}
+      />
     </>
   );
 }
@@ -1198,7 +1045,7 @@ function SnapshotsList({ vmName, namespace }: SnapshotsListProps) {
             getter: (snapshot: VirtualMachineSnapshot) => (
               <Box display="flex" gap={0.5}>
                 {vmExportEnabled && snapshot.isReadyToUse() && (
-                  <Tooltip title="Export snapshot">
+                  <SimpleStyledTooltip title="Export snapshot">
                     <IconButton
                       size="small"
                       color="primary"
@@ -1209,13 +1056,13 @@ function SnapshotsList({ vmName, namespace }: SnapshotsListProps) {
                     >
                       <Icon icon="mdi:export" width={18} />
                     </IconButton>
-                  </Tooltip>
+                  </SimpleStyledTooltip>
                 )}
-                <Tooltip title="Delete snapshot">
+                <SimpleStyledTooltip title="Delete snapshot">
                   <IconButton size="small" color="error" onClick={() => setDeleteTarget(snapshot)}>
                     <Icon icon="mdi:delete" width={18} />
                   </IconButton>
-                </Tooltip>
+                </SimpleStyledTooltip>
               </Box>
             ),
           },
