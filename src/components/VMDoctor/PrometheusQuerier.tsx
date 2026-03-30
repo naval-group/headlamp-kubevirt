@@ -950,8 +950,8 @@ export default function PrometheusQuerier({ vmName, namespace }: PrometheusQueri
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 1, lineHeight: 1.6 }}>
               Query KubeVirt metrics directly from Prometheus. Select pre-built metrics from the
-              dropdown above to visualize CPU, memory, network, storage, and migration activity
-              for this VM in real time.
+              dropdown above to visualize CPU, memory, network, storage, and migration activity for
+              this VM in real time.
             </Typography>
 
             <Box
@@ -964,12 +964,21 @@ export default function PrometheusQuerier({ vmName, namespace }: PrometheusQueri
               }}
             >
               {[
-                { icon: 'mdi:menu-down', text: 'Pick metrics from the dropdown — grouped by category' },
-                { icon: 'mdi:chart-multiple', text: 'Add multiple charts side by side (1–3 columns)' },
+                {
+                  icon: 'mdi:menu-down',
+                  text: 'Pick metrics from the dropdown — grouped by category',
+                },
+                {
+                  icon: 'mdi:chart-multiple',
+                  text: 'Add multiple charts side by side (1–3 columns)',
+                },
                 { icon: 'mdi:drag', text: 'Drag & drop to reorder charts between columns' },
                 { icon: 'mdi:clock-outline', text: 'Adjust time range: 5m to 24h' },
                 { icon: 'mdi:refresh', text: 'Auto-refresh every 30 seconds' },
-                { icon: 'mdi:database-search', text: 'Pre-built PromQL — CPU, memory, network, storage, migration' },
+                {
+                  icon: 'mdi:database-search',
+                  text: 'Pre-built PromQL — CPU, memory, network, storage, migration',
+                },
               ].map((hint, i) => (
                 <Box
                   key={i}
@@ -983,11 +992,7 @@ export default function PrometheusQuerier({ vmName, namespace }: PrometheusQueri
               ))}
             </Box>
 
-            <Typography
-              variant="body2"
-              color="text.secondary"
-              sx={{ display: 'block', mt: 2.5 }}
-            >
+            <Typography variant="body2" color="text.secondary" sx={{ display: 'block', mt: 2.5 }}>
               Select a metric from the dropdown above to get started.
             </Typography>
           </Box>

@@ -32,7 +32,15 @@ interface PodExecTerminalProps {
 
 const PodExecTerminal = React.forwardRef<PodExecTerminalHandle, PodExecTerminalProps>(
   function PodExecTerminal(
-    { podName, namespace, container, connectMessage, toolbarActions, hideToolbar, onStatusChange }: PodExecTerminalProps,
+    {
+      podName,
+      namespace,
+      container,
+      connectMessage,
+      toolbarActions,
+      hideToolbar,
+      onStatusChange,
+    }: PodExecTerminalProps,
     ref
   ) {
     const execRef = useRef<{ cancel: () => void; getSocket: () => WebSocket | null } | null>(null);
@@ -204,11 +212,7 @@ const PodExecTerminal = React.forwardRef<PodExecTerminalHandle, PodExecTerminalP
         </Typography>
         {status === 'disconnected' && (
           <Tooltip title="Reconnect">
-            <IconButton
-              size="small"
-              onClick={() => setReconnectKey(k => k + 1)}
-              sx={{ p: 0.25 }}
-            >
+            <IconButton size="small" onClick={() => setReconnectKey(k => k + 1)} sx={{ p: 0.25 }}>
               <Icon icon="mdi:refresh" width={16} />
             </IconButton>
           </Tooltip>
@@ -272,7 +276,12 @@ const PodExecTerminal = React.forwardRef<PodExecTerminalHandle, PodExecTerminalP
     }
 
     return (
-      <Box display="flex" flexDirection="column" gap={hideToolbar ? 0 : 1} sx={{ flex: 1, minHeight: 0 }}>
+      <Box
+        display="flex"
+        flexDirection="column"
+        gap={hideToolbar ? 0 : 1}
+        sx={{ flex: 1, minHeight: 0 }}
+      >
         {!hideToolbar && toolbar}
         {terminalBox}
       </Box>

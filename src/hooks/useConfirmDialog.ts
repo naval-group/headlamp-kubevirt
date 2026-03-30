@@ -36,12 +36,9 @@ const closed: ConfirmDialogState = {
 export default function useConfirmDialog() {
   const [state, setState] = useState<ConfirmDialogState>(closed);
 
-  const confirm = useCallback(
-    (opts: Omit<ConfirmDialogState, 'open'>) => {
-      setState({ ...opts, open: true });
-    },
-    []
-  );
+  const confirm = useCallback((opts: Omit<ConfirmDialogState, 'open'>) => {
+    setState({ ...opts, open: true });
+  }, []);
 
   const cancel = useCallback(() => setState(closed), []);
 

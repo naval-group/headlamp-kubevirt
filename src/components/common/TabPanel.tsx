@@ -77,9 +77,7 @@ export function TabContent({ activeTab, index, keepAlive, flex, children }: TabC
 
   if (flex) {
     return (
-      <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-        {children}
-      </Box>
+      <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>{children}</Box>
     );
   }
 
