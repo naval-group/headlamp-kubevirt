@@ -1,7 +1,7 @@
 import { useSnackbar } from 'notistack';
 import { useCallback, useMemo } from 'react';
-import { safeError } from '../utils/sanitize';
 import VirtualMachine from '../components/VirtualMachines/VirtualMachine';
+import { safeError } from '../utils/sanitize';
 
 export interface VMAction {
   id: string;
@@ -81,8 +81,7 @@ export default function useVMActions(
         label: 'Force Stop',
         icon: 'mdi:stop-circle',
         disabled: isStopped,
-        handler: () =>
-          exec(() => vm.forceStop(), `Force stopping ${name}`, 'Failed to force stop'),
+        handler: () => exec(() => vm.forceStop(), `Force stopping ${name}`, 'Failed to force stop'),
       },
       {
         id: 'migrate',
@@ -106,7 +105,18 @@ export default function useVMActions(
         },
       },
     ];
-  }, [vm, exec, name, isStopped, isStopping, isRunning, isPaused, isLiveMigratable, isProtected, options]);
+  }, [
+    vm,
+    exec,
+    name,
+    isStopped,
+    isStopping,
+    isRunning,
+    isPaused,
+    isLiveMigratable,
+    isProtected,
+    options,
+  ]);
 
   const byId = useMemo(() => {
     const map = new Map<string, VMAction>();

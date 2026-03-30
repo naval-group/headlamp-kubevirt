@@ -28,12 +28,12 @@ import { useSnackbar } from 'notistack';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
+import useVMActions from '../../hooks/useVMActions';
 import ConfirmDialog from '../common/ConfirmDialog';
 import CopyCodeBlock from '../common/CopyCodeBlock';
 import { SimpleStyledTooltip, TitledTooltip } from '../common/StyledTooltip';
 import VMConsole from '../VMConsole/VMConsole';
 import VMDoctorDialog from '../VMDoctor/VMDoctorDialog';
-import useVMActions from '../../hooks/useVMActions';
 import VirtualMachine from './VirtualMachine';
 
 /** Runtime interface info from VMI status (not the spec-level VMInterface) */
@@ -77,14 +77,13 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
   const params = useParams<{ namespace: string; name: string }>();
   const { name = params.name, namespace = params.namespace } = props;
   const { t } = useTranslation('glossary');
-  const { enqueueSnackbar } = useSnackbar();
   const [showConsole, setShowConsole] = useState(false);
   const [consoleTab, setConsoleTab] = useState<'vnc' | 'terminal'>('vnc');
   const [showSnapshotDialog, setShowSnapshotDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDoctor, setShowDoctor] = useState(false);
   const [vmItem] = VirtualMachine.useGet(name, namespace);
-  const { actions: vmActions, isPaused: vmIsPaused, isProtected: vmIsProtected } = useVMActions(vmItem);
+  const { actions: vmActions } = useVMActions(vmItem);
 
   const [podName, setPodName] = useState<string | null>(null);
   const [vmiData, setVmiData] = useState<any>(null);

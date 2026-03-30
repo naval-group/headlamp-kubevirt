@@ -292,7 +292,9 @@ export default function MemoryDumpTab({
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const deletionPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const deletionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [terminalStatus, setTerminalStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
+  const [terminalStatus, setTerminalStatus] = useState<'disconnected' | 'connecting' | 'connected'>(
+    'disconnected'
+  );
 
   const hotplugEnabled = isFeatureGateEnabled('HotplugVolumes');
   const vmiPhase = vmiData?.status?.phase;
@@ -336,8 +338,7 @@ export default function MemoryDumpTab({
             const isActive = req?.claimName === name;
             return {
               name,
-              displayName:
-                pvc.metadata.annotations?.['kubevirt.io/dump-name'] || undefined,
+              displayName: pvc.metadata.annotations?.['kubevirt.io/dump-name'] || undefined,
               size: pvc.spec.resources?.requests?.storage || '?',
               created: pvc.metadata.creationTimestamp || '',
               phase: pvc.status?.phase || 'Unknown',
@@ -585,18 +586,15 @@ export default function MemoryDumpTab({
       enqueueSnackbar('Memory dump initiated', { variant: 'info' });
       // Save display name as annotation on the PVC
       if (dumpDisplayName.trim()) {
-        ApiProxy.request(
-          `/api/v1/namespaces/${namespace}/persistentvolumeclaims/${pvcName}`,
-          {
-            method: 'PATCH',
-            body: JSON.stringify({
-              metadata: {
-                annotations: { 'kubevirt.io/dump-name': dumpDisplayName.trim() },
-              },
-            }),
-            headers: { 'Content-Type': 'application/merge-patch+json' },
-          }
-        ).catch(() => {}); // best-effort
+        ApiProxy.request(`/api/v1/namespaces/${namespace}/persistentvolumeclaims/${pvcName}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            metadata: {
+              annotations: { 'kubevirt.io/dump-name': dumpDisplayName.trim() },
+            },
+          }),
+          headers: { 'Content-Type': 'application/merge-patch+json' },
+        }).catch(() => {}); // best-effort
       }
       setPolling(true);
       setShowNewDumpForm(false);
@@ -627,18 +625,15 @@ export default function MemoryDumpTab({
 
   const saveDumpName = async (pvc: string, name: string) => {
     try {
-      await ApiProxy.request(
-        `/api/v1/namespaces/${namespace}/persistentvolumeclaims/${pvc}`,
-        {
-          method: 'PATCH',
-          body: JSON.stringify({
-            metadata: {
-              annotations: { 'kubevirt.io/dump-name': name || null },
-            },
-          }),
-          headers: { 'Content-Type': 'application/merge-patch+json' },
-        }
-      );
+      await ApiProxy.request(`/api/v1/namespaces/${namespace}/persistentvolumeclaims/${pvc}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          metadata: {
+            annotations: { 'kubevirt.io/dump-name': name || null },
+          },
+        }),
+        headers: { 'Content-Type': 'application/merge-patch+json' },
+      });
       await fetchDumpPVCs();
       setEditingName(false);
     } catch (e) {
@@ -935,21 +930,24 @@ export default function MemoryDumpTab({
     const isSelected = selectedDump === dump.name;
     const isDeleting = deletingPVC === dump.name;
     // Resolve effective status
-    const effectivePhase = dump.isActive && dump.activePhase
-      ? dump.activePhase
-      : dump.phase === 'Bound'
+    const effectivePhase =
+      dump.isActive && dump.activePhase
+        ? dump.activePhase
+        : dump.phase === 'Bound'
         ? 'Completed'
         : dump.phase;
-    const effectiveIcon = dump.isActive && dump.activePhase
-      ? getDumpPhaseIcon(dump.activePhase)
-      : dump.phase === 'Bound'
+    const effectiveIcon =
+      dump.isActive && dump.activePhase
+        ? getDumpPhaseIcon(dump.activePhase)
+        : dump.phase === 'Bound'
         ? 'mdi:check-circle'
         : dump.phase === 'Pending'
-          ? 'mdi:clock-outline'
-          : 'mdi:help-circle-outline';
-    const effectiveColor = dump.isActive && dump.activePhase
-      ? getDumpPhaseColor(dump.activePhase)
-      : dump.phase === 'Bound'
+        ? 'mdi:clock-outline'
+        : 'mdi:help-circle-outline';
+    const effectiveColor =
+      dump.isActive && dump.activePhase
+        ? getDumpPhaseColor(dump.activePhase)
+        : dump.phase === 'Bound'
         ? getDumpPhaseColor('Completed')
         : getPVCPhaseColor(dump.phase);
 
@@ -1007,8 +1005,7 @@ export default function MemoryDumpTab({
                 whiteSpace: 'nowrap',
               }}
             >
-              {dump.size} &middot;{' '}
-              {dump.created ? new Date(dump.created).toLocaleString() : ''}
+              {dump.size} &middot; {dump.created ? new Date(dump.created).toLocaleString() : ''}
             </Typography>
           </Box>
           {isDeleting ? (
@@ -1032,12 +1029,7 @@ export default function MemoryDumpTab({
 
   // ─── Onboarding CTA: first dump creation ─────────────────────────
   const renderFirstDumpCTA = () => (
-    <Box
-      display="flex"
-      alignItems="center"
-      justifyContent="center"
-      sx={{ flex: 1, minHeight: 0 }}
-    >
+    <Box display="flex" alignItems="center" justifyContent="center" sx={{ flex: 1, minHeight: 0 }}>
       <Box sx={{ maxWidth: 520, textAlign: 'center' }}>
         <Icon icon="mdi:memory" width={56} style={{ opacity: 0.6 }} />
         <Typography variant="h6" sx={{ mt: 1.5, fontWeight: 700, fontSize: '1.1rem' }}>
@@ -1045,11 +1037,7 @@ export default function MemoryDumpTab({
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mt: 1, lineHeight: 1.6 }}>
           Capture a full memory dump of the running VM and analyze it with{' '}
-          <Tooltip
-            title={`Image: ${getForensicSettings().toolboxImage}`}
-            arrow
-            placement="top"
-          >
+          <Tooltip title={`Image: ${getForensicSettings().toolboxImage}`} arrow placement="top">
             <span
               style={{
                 fontWeight: 600,
@@ -1108,8 +1096,7 @@ export default function MemoryDumpTab({
         <Box sx={{ mt: 3 }}>
           {isRunning ? (
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-              Create your first memory dump using{' '}
-              <strong>New Dump</strong> in the sidebar.
+              Create your first memory dump using <strong>New Dump</strong> in the sidebar.
             </Typography>
           ) : (
             <Alert
@@ -1162,8 +1149,8 @@ export default function MemoryDumpTab({
               selectedDumpPVC.isActive && selectedDumpPVC.activePhase
                 ? selectedDumpPVC.activePhase
                 : selectedDumpPVC.phase === 'Bound'
-                  ? 'Completed'
-                  : selectedDumpPVC.phase
+                ? 'Completed'
+                : selectedDumpPVC.phase
             }
             arrow
           >
@@ -1173,16 +1160,16 @@ export default function MemoryDumpTab({
                   selectedDumpPVC.isActive
                     ? getDumpPhaseIcon(selectedDumpPVC.activePhase)
                     : selectedDumpPVC.phase === 'Bound'
-                      ? 'mdi:check-circle'
-                      : 'mdi:harddisk'
+                    ? 'mdi:check-circle'
+                    : 'mdi:harddisk'
                 }
                 width={18}
                 color={
                   selectedDumpPVC.isActive
                     ? getDumpPhaseColor(selectedDumpPVC.activePhase)
                     : selectedDumpPVC.phase === 'Bound'
-                      ? getDumpPhaseColor('Completed')
-                      : undefined
+                    ? getDumpPhaseColor('Completed')
+                    : undefined
                 }
               />
             </Box>
@@ -1197,6 +1184,7 @@ export default function MemoryDumpTab({
                 if (e.key === 'Escape') setEditingName(false);
               }}
               onBlur={() => saveDumpName(selectedDump!, editNameValue)}
+              // eslint-disable-next-line jsx-a11y/no-autofocus
               autoFocus
               placeholder="Display name..."
               InputProps={{ sx: { fontSize: '0.75rem', py: 0 } }}
@@ -1282,7 +1270,11 @@ export default function MemoryDumpTab({
                   <Typography variant="h6" sx={{ mt: 1, fontWeight: 700, fontSize: '1rem' }}>
                     Forensic Analysis Pod
                   </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75, lineHeight: 1.6 }}>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ mt: 0.75, lineHeight: 1.6 }}
+                  >
                     Launch a{' '}
                     <Tooltip title={getForensicSettings().toolboxImage} arrow placement="top">
                       <span style={{ fontWeight: 600, cursor: 'help', borderBottom: '1px dotted' }}>
@@ -1316,7 +1308,13 @@ export default function MemoryDumpTab({
                     />
                     <Typography variant="caption" sx={{ fontSize: '0.8rem' }}>
                       {hasKernelInfo ? (
-                        <>Kernel: <strong>{kernelRelease}</strong> — ISF image: <code style={{ fontSize: '0.7rem' }}>{getForensicSettings().isfRegistry}/{getForensicSettings().isfRepo}:{kernelRelease}</code></>
+                        <>
+                          Kernel: <strong>{kernelRelease}</strong> — ISF image:{' '}
+                          <code style={{ fontSize: '0.7rem' }}>
+                            {getForensicSettings().isfRegistry}/{getForensicSettings().isfRepo}:
+                            {kernelRelease}
+                          </code>
+                        </>
                       ) : (
                         <Tooltip
                           title="QEMU Guest Agent is not connected. Kernel cannot be detected automatically — you will need to provide vmlinux or ISF symbols manually."
@@ -1325,7 +1323,11 @@ export default function MemoryDumpTab({
                         >
                           <span style={{ cursor: 'help' }}>
                             Kernel: <strong>N/A</strong>{' '}
-                            <Icon icon="mdi:information-outline" width={14} style={{ verticalAlign: 'middle', opacity: 0.7 }} />
+                            <Icon
+                              icon="mdi:information-outline"
+                              width={14}
+                              style={{ verticalAlign: 'middle', opacity: 0.7 }}
+                            />
                           </span>
                         </Tooltip>
                       )}
@@ -1344,16 +1346,26 @@ export default function MemoryDumpTab({
                   >
                     {[
                       { icon: 'mdi:console', text: 'Interactive shell with vol-qemu wrapper' },
-                      { icon: 'mdi:book-open-variant', text: 'Command reference sidebar with click-to-run' },
+                      {
+                        icon: 'mdi:book-open-variant',
+                        text: 'Command reference sidebar with click-to-run',
+                      },
                       { icon: 'mdi:rename', text: 'Rename dumps with friendly labels' },
-                      { icon: 'mdi:delete-clock', text: 'Cleanup prompt on close — or keep pod for later' },
+                      {
+                        icon: 'mdi:delete-clock',
+                        text: 'Cleanup prompt on close — or keep pod for later',
+                      },
                     ].map((hint, i) => (
                       <Box
                         key={i}
                         sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 0.75 }}
                       >
                         <Icon icon={hint.icon} width={18} style={{ opacity: 0.6, flexShrink: 0 }} />
-                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.85rem' }}>
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ fontSize: '0.85rem' }}
+                        >
                           {hint.text}
                         </Typography>
                       </Box>
@@ -1507,9 +1519,12 @@ export default function MemoryDumpTab({
                 >
                   {/* Left: kernel info */}
                   <Tooltip
-                    title={hasKernelInfo
-                      ? `ISF: ${getForensicSettings().isfRegistry}/${getForensicSettings().isfRepo}:${kernelRelease}`
-                      : 'QEMU Guest Agent not available — kernel not detected'
+                    title={
+                      hasKernelInfo
+                        ? `ISF: ${getForensicSettings().isfRegistry}/${
+                            getForensicSettings().isfRepo
+                          }:${kernelRelease}`
+                        : 'QEMU Guest Agent not available — kernel not detected'
                     }
                     arrow
                     placement="top"
@@ -1520,7 +1535,10 @@ export default function MemoryDumpTab({
                         width={13}
                         color={hasKernelInfo ? '#3e8635' : '#f0ab00'}
                       />
-                      <Typography variant="caption" sx={{ fontSize: '0.7rem', fontFamily: 'monospace' }}>
+                      <Typography
+                        variant="caption"
+                        sx={{ fontSize: '0.7rem', fontFamily: 'monospace' }}
+                      >
                         {hasKernelInfo ? kernelRelease : 'N/A'}
                       </Typography>
                     </Box>
@@ -1534,7 +1552,12 @@ export default function MemoryDumpTab({
                         width: 8,
                         height: 8,
                         borderRadius: '50%',
-                        bgcolor: terminalStatus === 'connected' ? '#3e8635' : terminalStatus === 'connecting' ? '#f0ab00' : '#c9190b',
+                        bgcolor:
+                          terminalStatus === 'connected'
+                            ? '#3e8635'
+                            : terminalStatus === 'connecting'
+                            ? '#f0ab00'
+                            : '#c9190b',
                         flexShrink: 0,
                       }}
                     />
@@ -1611,97 +1634,100 @@ export default function MemoryDumpTab({
 
                 {/* Terminal + sidebar */}
                 <Box sx={{ flex: 1, minHeight: 0, display: 'flex', gap: 1.5 }}>
-                <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-                  <PodExecTerminal
-                    ref={terminalRef}
-                    podName={analysisPodName!}
-                    namespace={namespace}
-                    container={analysisPodContainer}
-                    connectMessage="Connecting to Volatility3 analysis pod... Dump is at /dump/"
-                    hideToolbar
-                    onStatusChange={setTerminalStatus}
-                  />
-                </Box>
-
-                {/* Command Reference sidebar */}
-                {showCmdRef && (
-                  <Box
-                    sx={{
-                      width: 280,
-                      flexShrink: 0,
-                      bgcolor: 'background.paper',
-                      border: '1px solid',
-                      borderColor: 'divider',
-                      borderRadius: 1,
-                      overflow: 'hidden',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      position: 'relative',
-                      zIndex: 2,
-                    }}
-                  >
-                    <Box sx={{ px: 1.5, py: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
-                      <Box display="flex" alignItems="center" gap={0.5}>
-                        <Icon icon="mdi:flask" width={16} />
-                        <Typography
-                          variant="subtitle2"
-                          fontWeight={700}
-                          sx={{ fontSize: '0.8rem' }}
-                        >
-                          Forensic Commands
-                        </Typography>
-                        <Box flex={1} />
-                        <IconButton
-                          size="small"
-                          onClick={() => setShowCmdRef(false)}
-                          sx={{ p: 0.25 }}
-                        >
-                          <Icon icon="mdi:close" width={16} />
-                        </IconButton>
-                      </Box>
-                      <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        sx={{ fontSize: '0.7rem' }}
-                      >
-                        Click to execute, copy icon to clipboard
-                      </Typography>
-                    </Box>
-                    <Box sx={{ flex: 1, overflow: 'auto', p: 1 }}>
-                      {getForensicCommands().map((group, idx) => (
-                        <Box key={group.category}>
-                          {idx > 0 && <Divider sx={{ my: 0.75 }} />}
-                          <Typography
-                            variant="caption"
-                            fontWeight={700}
-                            color="text.secondary"
-                            sx={{
-                              textTransform: 'uppercase',
-                              fontSize: '0.6rem',
-                              letterSpacing: 0.5,
-                              display: 'block',
-                              mb: 0.5,
-                            }}
-                          >
-                            {group.category}
-                          </Typography>
-                          <Box display="flex" flexDirection="column" gap={0.5}>
-                            {group.commands.map(cmd => (
-                              <ForensicCommandChip
-                                key={cmd.label}
-                                cmd={cmd}
-                                onExec={command => {
-                                  terminalRef.current?.inject(command + '\n');
-                                }}
-                              />
-                            ))}
-                          </Box>
-                        </Box>
-                      ))}
-                    </Box>
+                  <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+                    <PodExecTerminal
+                      ref={terminalRef}
+                      podName={analysisPodName!}
+                      namespace={namespace}
+                      container={analysisPodContainer}
+                      connectMessage="Connecting to Volatility3 analysis pod... Dump is at /dump/"
+                      hideToolbar
+                      onStatusChange={setTerminalStatus}
+                    />
                   </Box>
-                )}
-                </Box>{/* close Terminal + sidebar flex row */}
+
+                  {/* Command Reference sidebar */}
+                  {showCmdRef && (
+                    <Box
+                      sx={{
+                        width: 280,
+                        flexShrink: 0,
+                        bgcolor: 'background.paper',
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        borderRadius: 1,
+                        overflow: 'hidden',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        position: 'relative',
+                        zIndex: 2,
+                      }}
+                    >
+                      <Box
+                        sx={{ px: 1.5, py: 1, borderBottom: '1px solid', borderColor: 'divider' }}
+                      >
+                        <Box display="flex" alignItems="center" gap={0.5}>
+                          <Icon icon="mdi:flask" width={16} />
+                          <Typography
+                            variant="subtitle2"
+                            fontWeight={700}
+                            sx={{ fontSize: '0.8rem' }}
+                          >
+                            Forensic Commands
+                          </Typography>
+                          <Box flex={1} />
+                          <IconButton
+                            size="small"
+                            onClick={() => setShowCmdRef(false)}
+                            sx={{ p: 0.25 }}
+                          >
+                            <Icon icon="mdi:close" width={16} />
+                          </IconButton>
+                        </Box>
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{ fontSize: '0.7rem' }}
+                        >
+                          Click to execute, copy icon to clipboard
+                        </Typography>
+                      </Box>
+                      <Box sx={{ flex: 1, overflow: 'auto', p: 1 }}>
+                        {getForensicCommands().map((group, idx) => (
+                          <Box key={group.category}>
+                            {idx > 0 && <Divider sx={{ my: 0.75 }} />}
+                            <Typography
+                              variant="caption"
+                              fontWeight={700}
+                              color="text.secondary"
+                              sx={{
+                                textTransform: 'uppercase',
+                                fontSize: '0.6rem',
+                                letterSpacing: 0.5,
+                                display: 'block',
+                                mb: 0.5,
+                              }}
+                            >
+                              {group.category}
+                            </Typography>
+                            <Box display="flex" flexDirection="column" gap={0.5}>
+                              {group.commands.map(cmd => (
+                                <ForensicCommandChip
+                                  key={cmd.label}
+                                  cmd={cmd}
+                                  onExec={command => {
+                                    terminalRef.current?.inject(command + '\n');
+                                  }}
+                                />
+                              ))}
+                            </Box>
+                          </Box>
+                        ))}
+                      </Box>
+                    </Box>
+                  )}
+                </Box>
+                {/* close Terminal + sidebar flex row */}
               </Box>
             )}
           </Box>
@@ -1773,15 +1799,8 @@ export default function MemoryDumpTab({
           }}
         >
           <Tooltip title={sidebarOpen ? 'Collapse' : 'Memory Dumps'} arrow placement="left">
-            <IconButton
-              size="small"
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              sx={{ p: 0.25 }}
-            >
-              <Icon
-                icon={sidebarOpen ? 'mdi:chevron-right' : 'mdi:memory'}
-                width={18}
-              />
+            <IconButton size="small" onClick={() => setSidebarOpen(!sidebarOpen)} sx={{ p: 0.25 }}>
+              <Icon icon={sidebarOpen ? 'mdi:chevron-right' : 'mdi:memory'} width={18} />
             </IconButton>
           </Tooltip>
           {sidebarOpen && (
@@ -1951,7 +1970,9 @@ export default function MemoryDumpTab({
       <ConfirmDialog
         open={showDeletePodConfirm}
         title="Delete analysis pod?"
-        message={`This will delete the Volatility3 analysis pod "${analysisPodName || ''}". Any running forensic commands will be terminated.`}
+        message={`This will delete the Volatility3 analysis pod "${
+          analysisPodName || ''
+        }". Any running forensic commands will be terminated.`}
         confirmLabel="Delete Pod"
         onCancel={() => setShowDeletePodConfirm(false)}
         onConfirm={() => {

@@ -5,12 +5,12 @@ import { Box, Chip, Tab, Tabs, Typography } from '@mui/material';
 import React, { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import usePolling from '../../hooks/usePolling';
+import { getVMIPhaseColor } from '../../utils/statusColors';
 import VirtualMachine from '../VirtualMachines/VirtualMachine';
 import ConsoleLogTab from './ConsoleLogTab';
 import EventsTab from './EventsTab';
 import GuestInfoTab from './GuestInfoTab';
 import MetricsDashboardTab from './MetricsDashboardTab';
-import { getVMIPhaseColor } from '../../utils/statusColors';
 import PodLogsTab from './PodLogsTab';
 
 export default function VMDoctor() {
@@ -42,7 +42,9 @@ export default function VMDoctor() {
     async cancelled => {
       try {
         const resp = await ApiProxy.request(
-          `/api/v1/namespaces/${namespace}/pods?labelSelector=${encodeURIComponent(`vm.kubevirt.io/name=${name}`)}`
+          `/api/v1/namespaces/${namespace}/pods?labelSelector=${encodeURIComponent(
+            `vm.kubevirt.io/name=${name}`
+          )}`
         );
         const pod = resp?.items?.[0]?.metadata?.name;
         if (!cancelled() && pod) setPodName(pod);

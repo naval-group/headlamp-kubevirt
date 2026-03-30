@@ -21,11 +21,10 @@ import {
 import DialogContent from '@mui/material/DialogContent';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal as XTerminal } from '@xterm/xterm';
-import { useSnackbar } from 'notistack';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { RFBPixelFormat } from '../../types';
 import useVMActions from '../../hooks/useVMActions';
+import { RFBPixelFormat } from '../../types';
 import VirtualMachine from '../VirtualMachines/VirtualMachine';
 
 // ── Terminal types ──────────────────────────────────────────────────────
@@ -1026,7 +1025,11 @@ export function VNCPanel({
             <Box sx={{ width: 1, height: 18, bgcolor: 'rgba(255,255,255,0.2)', mx: 0.25 }} />
 
             {/* Fullscreen toggle */}
-            <Tooltip title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'} arrow placement="bottom">
+            <Tooltip
+              title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+              arrow
+              placement="bottom"
+            >
               <IconButton
                 size="small"
                 onClick={() => {
