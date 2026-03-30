@@ -3,6 +3,14 @@
  */
 
 /**
+ * Sanitize a feature gate search query.
+ * Only allows alphanumeric characters and dashes.
+ */
+export function sanitizeFeatureGateSearch(value: string): string {
+  return value.replace(/[^a-zA-Z0-9-]/g, '');
+}
+
+/**
  * Sanitize a value before interpolating into a PromQL label matcher.
  * Allowlist: only keep characters safe inside a label value string.
  * Label values are K8s names/namespaces, so alphanumeric + dot/dash/underscore/colon.

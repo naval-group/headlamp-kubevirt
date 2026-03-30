@@ -19,6 +19,7 @@ import {
   FormControlLabel,
   Grid,
   IconButton,
+  InputAdornment,
   InputLabel,
   MenuItem,
   Select,
@@ -54,6 +55,7 @@ import {
   removeLabelColumn,
   saveForensicSettings,
 } from '../utils/pluginSettings';
+import { sanitizeFeatureGateSearch } from '../utils/sanitize';
 import CDI from './CDI';
 import KubeVirt from './KubeVirt';
 
@@ -607,6 +609,13 @@ export default function KubeVirtSettings() {
   const [kubeVirtEditorOpen, setKubeVirtEditorOpen] = useState(false);
   const [cdiEditorOpen, setCdiEditorOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [featureGateSearch, setFeatureGateSearch] = useState('');
+  const [featureGateSearchOpen, setFeatureGateSearchOpen] = useState(false);
+  const [maturityFilter, setMaturityFilter] = useState<Set<FeatureGateState>>(new Set());
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  const debouncedSearch = featureGateSearch;
 
   // Fetch KubeVirt CR - typically in kubevirt namespace
   let kubeVirtItems: InstanceType<typeof KubeVirt>[] | null = null;
@@ -2909,7 +2918,7 @@ export default function KubeVirtSettings() {
       {/* Feature Gates */}
       <Box mt={3}>
         <SectionBox title="Feature Gates">
-          <Alert severity="info" sx={{ mb: 2 }}>
+          <Alert severity="info" sx={{ mb: 3 }}>
             Feature gates enable experimental or optional features. Changes require KubeVirt pods to
             restart.
           </Alert>
@@ -2963,17 +2972,108 @@ export default function KubeVirtSettings() {
 
             {/* Feature gates content */}
             <Box flex={1}>
+              <Box display="flex" alignItems="center" gap={1} mb={2} flexWrap="wrap">
+                {(['GA', 'Beta', 'Alpha'] as FeatureGateState[]).map(level => {
+                  const chipColor =
+                    level === 'GA' ? '#4caf50' : level === 'Beta' ? '#2196f3' : '#ff9800';
+                  const active = maturityFilter.has(level);
+                  return (
+                    <Chip
+                      key={level}
+                      label={level}
+                      size="small"
+                      onClick={() => {
+                        setMaturityFilter(prev => {
+                          const next = new Set(prev);
+                          if (next.has(level)) next.delete(level);
+                          else next.add(level);
+                          return next;
+                        });
+                      }}
+                      sx={{
+                        borderColor: chipColor,
+                        color: active ? '#fff' : chipColor,
+                        backgroundColor: active ? chipColor : 'transparent',
+                        fontWeight: 600,
+                        '&:hover': {
+                          backgroundColor: active ? chipColor : `${chipColor}20`,
+                          color: active ? '#fff' : chipColor,
+                        },
+                      }}
+                      variant="outlined"
+                    />
+                  );
+                })}
+                {featureGateSearchOpen ? (
+                  <TextField
+                    size="small"
+                    placeholder="Search feature gates..."
+                    defaultValue=""
+                    onChange={e => {
+                      const sanitized = sanitizeFeatureGateSearch(e.target.value);
+                      if (e.target.value !== sanitized) e.target.value = sanitized;
+                      clearTimeout(searchTimerRef.current);
+                      searchTimerRef.current = setTimeout(() => setFeatureGateSearch(sanitized), 150);
+                    }}
+                    inputRef={el => {
+                      searchInputRef.current = el;
+                      if (el) el.focus();
+                    }}
+                    sx={{ flex: 1, minWidth: 200 }}
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Icon icon="mdi:magnify" width={20} />
+                        </InputAdornment>
+                      ),
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          <IconButton
+                            size="small"
+                            onClick={() => {
+                              if (searchInputRef.current) searchInputRef.current.value = '';
+                              clearTimeout(searchTimerRef.current);
+                              setFeatureGateSearch('');
+                              setFeatureGateSearchOpen(false);
+                            }}
+                          >
+                            <Icon icon="mdi:close" width={18} />
+                          </IconButton>
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                ) : (
+                  <IconButton
+                    size="small"
+                    onClick={() => setFeatureGateSearchOpen(true)}
+                    sx={{ color: 'text.secondary' }}
+                  >
+                    <Icon icon="mdi:magnify" width={22} />
+                  </IconButton>
+                )}
+              </Box>
               {Object.entries(FEATURE_GATE_CATEGORIES).map(([category, { icon, color, gates }]) => {
                 // Get KubeVirt version for filtering
                 const kvVersion = kubeVirt?.getVersion() || '1.7.0';
 
-                // Filter gates available in this version and sort by state
+                // Filter gates available in this version, apply search, and sort by state
+                const searchLower = debouncedSearch.toLowerCase();
                 const availableGates = gates
                   .filter(gate => isGateAvailableInVersion(gate, kvVersion))
+                  .filter(
+                    gate =>
+                      !debouncedSearch ||
+                      gate.name.toLowerCase().includes(searchLower) ||
+                      gate.description.toLowerCase().includes(searchLower)
+                  )
                   .map(gate => ({
                     ...gate,
                     currentState: getGateStateForVersion(gate, kvVersion) as FeatureGateState,
                   }))
+                  .filter(
+                    gate => maturityFilter.size === 0 || maturityFilter.has(gate.currentState)
+                  )
                   .sort((a, b) => STATE_ORDER[a.currentState] - STATE_ORDER[b.currentState]);
 
                 // Skip category if no gates available
@@ -3560,7 +3660,12 @@ export default function KubeVirtSettings() {
               })}
 
               {/* Show any custom feature gates that aren't in the known list */}
-              {enabledFeatureGates.filter(fg => !ALL_KNOWN_GATES.includes(fg)).length > 0 && (
+              {enabledFeatureGates
+                .filter(fg => !ALL_KNOWN_GATES.includes(fg))
+                .filter(
+                  fg =>
+                    !debouncedSearch || fg.toLowerCase().includes(debouncedSearch.toLowerCase())
+                ).length > 0 && (
                 <Box mb={3}>
                   <Box display="flex" alignItems="center" gap={1} mb={2}>
                     <Icon icon="mdi:puzzle" width={24} style={{ color: '#9e9e9e' }} />
@@ -3568,6 +3673,11 @@ export default function KubeVirtSettings() {
                   </Box>
                   {enabledFeatureGates
                     .filter(fg => !ALL_KNOWN_GATES.includes(fg))
+                    .filter(
+                      fg =>
+                        !debouncedSearch ||
+                        fg.toLowerCase().includes(debouncedSearch.toLowerCase())
+                    )
                     .map(customFG => (
                       <Box key={customFG}>
                         <Box
