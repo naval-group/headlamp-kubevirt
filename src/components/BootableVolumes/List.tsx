@@ -7,6 +7,7 @@ import {
 } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
 import { Box, Chip, Typography } from '@mui/material';
 import { useState } from 'react';
+import useFilteredList from '../../hooks/useFilteredList';
 import { KubeCondition } from '../../types';
 import CreateButtonWithMode from '../common/CreateButtonWithMode';
 import CreateResourceDialog from '../common/CreateResourceDialog';
@@ -14,7 +15,8 @@ import DataSource from './DataSource';
 import DataSourceForm from './DataSourceForm';
 
 export default function DataSourceList() {
-  const { items, errors } = DataSource.useList();
+  const { items: rawItems, errors } = DataSource.useList();
+  const items = useFilteredList(rawItems);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [createInitialTab, setCreateInitialTab] = useState(0);
 

@@ -6,10 +6,12 @@ import {
   Table,
 } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
 import { Chip } from '@mui/material';
+import useFilteredList from '../../hooks/useFilteredList';
 import VirtualMachineInstance from './VirtualMachineInstance';
 
 export default function VirtualMachineInstanceList() {
-  const { items } = VirtualMachineInstance.useList();
+  const { items: rawItems } = VirtualMachineInstance.useList();
+  const items = useFilteredList(rawItems);
 
   return (
     <SectionBox title={<SectionFilterHeader title="Virtual Machine Instances" />}>

@@ -8,12 +8,14 @@ import {
 } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
 import { Button, Chip } from '@mui/material';
 import { useState } from 'react';
+import useFilteredList from '../../hooks/useFilteredList';
 import CreateResourceDialog from '../common/CreateResourceDialog';
 import DataVolume from './DataVolume';
 import ImportVolumeForm from './ImportVolumeForm';
 
 export default function DataVolumeList() {
-  const { items } = DataVolume.useList();
+  const { items: rawItems } = DataVolume.useList();
+  const items = useFilteredList(rawItems);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
 
   // Empty DataVolume for import

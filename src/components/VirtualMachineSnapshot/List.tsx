@@ -20,6 +20,7 @@ import {
 } from '@mui/material';
 import { useSnackbar } from 'notistack';
 import { useEffect, useState } from 'react';
+import useFilteredList from '../../hooks/useFilteredList';
 import { isFeatureGateEnabled, subscribeToFeatureGates } from '../../utils/featureGates';
 import VirtualMachineSnapshot from './VirtualMachineSnapshot';
 
@@ -61,7 +62,9 @@ function CreateExportDialog({
       };
 
       await ApiProxy.request(
-        `/apis/export.kubevirt.io/v1beta1/namespaces/${snapshotNamespace}/virtualmachineexports`,
+        `/apis/export.kubevirt.io/v1beta1/namespaces/${encodeURIComponent(
+          snapshotNamespace
+        )}/virtualmachineexports`,
         {
           method: 'POST',
           body: JSON.stringify(exportResource),
@@ -138,7 +141,8 @@ function CreateExportDialog({
 }
 
 export default function VirtualMachineSnapshotList() {
-  const { items } = VirtualMachineSnapshot.useList();
+  const { items: rawItems } = VirtualMachineSnapshot.useList();
+  const items = useFilteredList(rawItems);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [selectedSnapshot, setSelectedSnapshot] = useState<{
     name: string;
