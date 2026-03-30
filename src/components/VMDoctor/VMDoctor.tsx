@@ -84,7 +84,6 @@ export default function VMDoctor() {
         </Box>
       }
       backLink={`/kubevirt/virtualmachines/${namespace}/${name}`}
-      headerStyle="main"
     >
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
         <Tabs
