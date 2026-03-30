@@ -1537,7 +1537,7 @@ export default function KubeVirtSettings() {
                     <Card variant="outlined">
                       <CardContent>
                         <Box display="flex" alignItems="center" gap={1} mb={1}>
-                          <Icon icon="mdi:alert-network" width={20} color="#f44336" />
+                          <Icon icon="mdi:lan-disconnect" width={20} color="#f44336" />
                           <Typography variant="body2" fontWeight={600}>
                             REST Client Errors by Component
                           </Typography>
