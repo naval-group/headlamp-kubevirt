@@ -53,7 +53,7 @@ const PodExecTerminal = React.forwardRef<PodExecTerminalHandle, PodExecTerminalP
     const [fullscreen, setFullscreen] = useState(false);
     const [reconnectKey, setReconnectKey] = useState(0);
 
-    const decoder = new TextDecoder('utf-8');
+    const decoderRef = useRef(new TextDecoder('utf-8'));
 
     function send(data: string) {
       const socket = execRef.current?.getSocket();
@@ -82,14 +82,14 @@ const PodExecTerminal = React.forwardRef<PodExecTerminalHandle, PodExecTerminalP
       if (view.length === 0) return;
       const channel = view[0];
       if (channel === 1 || channel === 2) {
-        const text = decoder.decode(view.slice(1));
+        const text = decoderRef.current.decode(view.slice(1));
         if (!xtermRef.current.connected) {
           xtermRef.current.connected = true;
           setStatus('connected');
         }
         xtermRef.current.xterm.write(text);
       } else if (channel === 3) {
-        const text = decoder.decode(view.slice(1));
+        const text = decoderRef.current.decode(view.slice(1));
         try {
           const err = JSON.parse(text);
           xtermRef.current.xterm.writeln(`\r\n\x1b[31mError: ${err.message || text}\x1b[0m`);
@@ -212,7 +212,12 @@ const PodExecTerminal = React.forwardRef<PodExecTerminalHandle, PodExecTerminalP
         </Typography>
         {status === 'disconnected' && (
           <Tooltip title="Reconnect">
-            <IconButton size="small" onClick={() => setReconnectKey(k => k + 1)} sx={{ p: 0.25 }}>
+            <IconButton
+              size="small"
+              onClick={() => setReconnectKey(k => k + 1)}
+              sx={{ p: 0.25 }}
+              aria-label="Reconnect"
+            >
               <Icon icon="mdi:refresh" width={16} />
             </IconButton>
           </Tooltip>
@@ -225,7 +230,12 @@ const PodExecTerminal = React.forwardRef<PodExecTerminalHandle, PodExecTerminalP
         />
         <Box flex={1} />
         {toolbarActions}
-        <IconButton size="small" onClick={() => setFullscreen(f => !f)} sx={{ p: 0.5 }}>
+        <IconButton
+          size="small"
+          onClick={() => setFullscreen(f => !f)}
+          sx={{ p: 0.5 }}
+          aria-label="Toggle fullscreen"
+        >
           <Icon icon={fullscreen ? 'mdi:fullscreen-exit' : 'mdi:fullscreen'} width={18} />
         </IconButton>
       </Box>

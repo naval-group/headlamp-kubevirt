@@ -161,7 +161,12 @@ function CommandChip({
           </Box>
         </Tooltip>
       ) : (
-        <IconButton size="small" onClick={handleCopy} sx={{ p: 0.25, flexShrink: 0 }}>
+        <IconButton
+          size="small"
+          onClick={handleCopy}
+          sx={{ p: 0.25, flexShrink: 0 }}
+          aria-label="Copy command"
+        >
           <Icon icon={copied ? 'mdi:check' : 'mdi:content-copy'} width={12} />
         </IconButton>
       )}
@@ -251,7 +256,12 @@ export default function VirtLauncherExec({ podName, namespace, hasAgent }: VirtL
                   Command Reference
                 </Typography>
                 <Box flex={1} />
-                <IconButton size="small" onClick={() => setShowHelp(false)} sx={{ p: 0.25 }}>
+                <IconButton
+                  size="small"
+                  onClick={() => setShowHelp(false)}
+                  sx={{ p: 0.25 }}
+                  aria-label="Close command reference"
+                >
                   <Icon icon="mdi:close" width={16} />
                 </IconButton>
               </Box>

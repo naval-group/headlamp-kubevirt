@@ -60,9 +60,17 @@ interface TabContentProps {
 
 /** Conditionally renders or hides tab content. */
 export function TabContent({ activeTab, index, keepAlive, flex, children }: TabContentProps) {
+  const panelProps = {
+    role: 'tabpanel' as const,
+    'aria-hidden': activeTab !== index,
+    id: `tabpanel-${index}`,
+    'aria-labelledby': `tab-${index}`,
+  };
+
   if (keepAlive) {
     return (
       <Box
+        {...panelProps}
         sx={{
           display: activeTab === index ? (flex ? 'flex' : 'block') : 'none',
           ...(flex && { flexDirection: 'column', flex: 1, minHeight: 0 }),
@@ -77,9 +85,15 @@ export function TabContent({ activeTab, index, keepAlive, flex, children }: TabC
 
   if (flex) {
     return (
-      <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>{children}</Box>
+      <Box {...panelProps} sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+        {children}
+      </Box>
     );
   }
 
-  return <>{children}</>;
+  return (
+    <Box {...panelProps} component="div">
+      {children}
+    </Box>
+  );
 }

@@ -199,7 +199,7 @@ export default function PodLogsTab({ podName, namespace }: PodLogsTabProps) {
                 <Typography variant="caption" sx={{ mr: 0.5 }}>
                   {matchCount} matches
                 </Typography>
-                <IconButton size="small" onClick={() => setSearch('')}>
+                <IconButton size="small" onClick={() => setSearch('')} aria-label="Clear search">
                   <Icon icon="mdi:close" width={16} />
                 </IconButton>
               </InputAdornment>

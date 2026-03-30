@@ -243,7 +243,12 @@ export default function VMDoctorDialog({
               .map(a => (
                 <Tooltip key={a.id} title={a.label} arrow>
                   <span>
-                    <IconButton size="small" disabled={a.disabled} onClick={a.handler}>
+                    <IconButton
+                      size="small"
+                      disabled={a.disabled}
+                      onClick={a.handler}
+                      aria-label={a.label}
+                    >
                       <Icon icon={a.icon} width={18} />
                     </IconButton>
                   </span>
@@ -251,14 +256,18 @@ export default function VMDoctorDialog({
               ))}
             <Tooltip title="Delete" arrow>
               <span>
-                <IconButton size="small" onClick={() => setShowDeleteConfirm(true)}>
+                <IconButton
+                  size="small"
+                  onClick={() => setShowDeleteConfirm(true)}
+                  aria-label="Delete virtual machine"
+                >
                   <Icon icon="mdi:delete" width={18} color="#ef5350" />
                 </IconButton>
               </span>
             </Tooltip>
           </Box>
         )}
-        <IconButton onClick={handleClose} size="small">
+        <IconButton onClick={handleClose} size="small" aria-label="Close VM Doctor">
           <Icon icon="mdi:close" width={20} />
         </IconButton>
       </DialogTitle>

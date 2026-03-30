@@ -119,6 +119,7 @@ function CopyableCommand({ command, label }: { command: string; label?: string }
       </Typography>
       <IconButton
         size="small"
+        aria-label="Copy command"
         onClick={() => {
           navigator.clipboard?.writeText(command).catch(() => {});
           setCopied(true);
@@ -254,7 +255,12 @@ function ForensicCommandChip({
       >
         {cmd.label}
       </Typography>
-      <IconButton size="small" onClick={handleCopy} sx={{ p: 0.25, flexShrink: 0 }}>
+      <IconButton
+        size="small"
+        onClick={handleCopy}
+        sx={{ p: 0.25, flexShrink: 0 }}
+        aria-label="Copy command"
+      >
         <Icon icon={copied ? 'mdi:check' : 'mdi:content-copy'} width={12} />
       </IconButton>
     </Box>
@@ -1025,6 +1031,7 @@ export default function MemoryDumpTab({
           ) : (
             <IconButton
               size="small"
+              aria-label="Delete dump"
               onClick={e => {
                 e.stopPropagation();
                 setDeleteConfirmPVC(dump.name);
@@ -1219,6 +1226,7 @@ export default function MemoryDumpTab({
               <Tooltip title="Rename" arrow>
                 <IconButton
                   size="small"
+                  aria-label="Rename dump"
                   onClick={() => {
                     setEditNameValue(selectedDumpPVC.displayName || '');
                     setEditingName(true);
@@ -1591,6 +1599,7 @@ export default function MemoryDumpTab({
                       <Tooltip title="Reconnect" arrow>
                         <IconButton
                           size="small"
+                          aria-label="Reconnect"
                           onClick={() => terminalRef.current?.reconnect()}
                           sx={{ p: 0.25 }}
                         >
@@ -1614,6 +1623,7 @@ export default function MemoryDumpTab({
                   <Tooltip title="Command Reference" arrow>
                     <IconButton
                       size="small"
+                      aria-label="Toggle command reference"
                       onClick={() => setShowCmdRef(!showCmdRef)}
                       sx={{
                         p: 0.25,
@@ -1627,6 +1637,7 @@ export default function MemoryDumpTab({
                   <Tooltip title="Fullscreen" arrow>
                     <IconButton
                       size="small"
+                      aria-label="Toggle fullscreen"
                       onClick={() => terminalRef.current?.toggleFullscreen()}
                       sx={{ p: 0.25, borderRadius: 0.5 }}
                     >
@@ -1636,6 +1647,7 @@ export default function MemoryDumpTab({
                   <Tooltip title="Close & delete pod" arrow>
                     <IconButton
                       size="small"
+                      aria-label="Close and delete analysis pod"
                       onClick={() => setShowDeletePodConfirm(true)}
                       sx={{ p: 0.25, borderRadius: 0.5, color: 'error.main' }}
                     >
@@ -1690,6 +1702,7 @@ export default function MemoryDumpTab({
                           <Box flex={1} />
                           <IconButton
                             size="small"
+                            aria-label="Close forensic commands"
                             onClick={() => setShowCmdRef(false)}
                             sx={{ p: 0.25 }}
                           >
@@ -1811,7 +1824,12 @@ export default function MemoryDumpTab({
           }}
         >
           <Tooltip title={sidebarOpen ? 'Collapse' : 'Memory Dumps'} arrow placement="left">
-            <IconButton size="small" onClick={() => setSidebarOpen(!sidebarOpen)} sx={{ p: 0.25 }}>
+            <IconButton
+              size="small"
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              sx={{ p: 0.25 }}
+              aria-label="Toggle sidebar"
+            >
               <Icon icon={sidebarOpen ? 'mdi:chevron-right' : 'mdi:memory'} width={18} />
             </IconButton>
           </Tooltip>
@@ -1832,7 +1850,12 @@ export default function MemoryDumpTab({
                 }}
               />
               <Tooltip title="Refresh" arrow>
-                <IconButton size="small" onClick={() => fetchDumpPVCs()} sx={{ p: 0.25 }}>
+                <IconButton
+                  size="small"
+                  onClick={() => fetchDumpPVCs()}
+                  sx={{ p: 0.25 }}
+                  aria-label="Refresh dumps"
+                >
                   <Icon icon="mdi:refresh" width={16} />
                 </IconButton>
               </Tooltip>
@@ -1889,7 +1912,12 @@ export default function MemoryDumpTab({
                   New Memory Dump
                 </Typography>
                 <Box flex={1} />
-                <IconButton size="small" onClick={() => setShowNewDumpForm(false)} sx={{ p: 0.25 }}>
+                <IconButton
+                  size="small"
+                  onClick={() => setShowNewDumpForm(false)}
+                  sx={{ p: 0.25 }}
+                  aria-label="Close new dump form"
+                >
                   <Icon icon="mdi:close" width={14} />
                 </IconButton>
               </Box>

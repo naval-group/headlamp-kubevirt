@@ -715,6 +715,7 @@ export default function PrometheusQuerier({ vmName, namespace }: PrometheusQueri
             <Box flex={1} />
             <IconButton
               size="small"
+              aria-label="Remove chart panel"
               onClick={e => {
                 e.stopPropagation();
                 removePanel(panel.id);

@@ -178,7 +178,7 @@ export default function EventsTab({ vmName, namespace }: EventsTabProps) {
             ),
             endAdornment: search ? (
               <InputAdornment position="end">
-                <IconButton size="small" onClick={() => setSearch('')}>
+                <IconButton size="small" onClick={() => setSearch('')} aria-label="Clear search">
                   <Icon icon="mdi:close" width={16} />
                 </IconButton>
               </InputAdornment>
