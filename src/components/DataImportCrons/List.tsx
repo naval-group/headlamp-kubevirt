@@ -8,13 +8,15 @@ import {
 } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
 import { Box, Chip, Typography } from '@mui/material';
 import React, { useState } from 'react';
+import useFilteredList from '../../hooks/useFilteredList';
 import CreateButtonWithMode from '../common/CreateButtonWithMode';
 import CreateResourceDialog from '../common/CreateResourceDialog';
 import DataImportCron from './DataImportCron';
 import DataImportCronForm from './DataImportCronForm';
 
 export default function DataImportCronList() {
-  const { items, errors } = DataImportCron.useList();
+  const { items: rawItems, errors } = DataImportCron.useList();
+  const items = useFilteredList(rawItems);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [createInitialTab, setCreateInitialTab] = useState(0);
 
@@ -142,9 +144,6 @@ export default function DataImportCronList() {
               id: 'namespace',
               header: 'Namespace',
               accessorFn: (dic: InstanceType<typeof DataImportCron>) => dic.getNamespace(),
-              Cell: ({ row }: { row: { original: InstanceType<typeof DataImportCron> } }) => (
-                <Chip label={row.original.getNamespace()} size="small" variant="outlined" />
-              ),
             },
             {
               id: 'managed-datasource',

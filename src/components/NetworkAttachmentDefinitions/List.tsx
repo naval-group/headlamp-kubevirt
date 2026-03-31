@@ -8,6 +8,7 @@ import {
 } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
 import { Alert, Chip, Typography } from '@mui/material';
 import React, { useEffect, useState } from 'react';
+import useFilteredList from '../../hooks/useFilteredList';
 import CreateButtonWithMode from '../common/CreateButtonWithMode';
 import CreateResourceDialog from '../common/CreateResourceDialog';
 import NADForm from './NADForm';
@@ -49,7 +50,8 @@ const TYPE_COLORS: Record<
 };
 
 export default function NADList() {
-  const { items } = NetworkAttachmentDefinition.useList();
+  const { items: rawItems } = NetworkAttachmentDefinition.useList();
+  const items = useFilteredList(rawItems);
   const [createOpen, setCreateOpen] = useState(false);
   const [createInitialTab, setCreateInitialTab] = useState(0);
   const [multusInstalled, setMultusInstalled] = useState<boolean | null>(null);

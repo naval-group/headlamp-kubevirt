@@ -7,6 +7,7 @@ import {
 } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
 import { Chip, Tooltip } from '@mui/material';
 import { useState } from 'react';
+import useFilteredList from '../../hooks/useFilteredList';
 import CreateButtonWithMode from '../common/CreateButtonWithMode';
 import CreateResourceDialog from '../common/CreateResourceDialog';
 import VirtualMachineExport from './VirtualMachineExport';
@@ -30,7 +31,8 @@ const INITIAL_EXPORT = {
 };
 
 export default function VirtualMachineExportList() {
-  const { items } = VirtualMachineExport.useList();
+  const { items: rawItems } = VirtualMachineExport.useList();
+  const items = useFilteredList(rawItems);
   const [createOpen, setCreateOpen] = useState(false);
   const [createInitialTab, setCreateInitialTab] = useState(0);
 

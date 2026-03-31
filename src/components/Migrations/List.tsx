@@ -6,15 +6,15 @@ import {
   Table,
 } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
 import { Box, Chip, Typography } from '@mui/material';
+import useFilteredList from '../../hooks/useFilteredList';
 import VirtualMachineInstanceMigration from './VirtualMachineInstanceMigration';
 
 export default function MigrationList() {
-  const { items } = VirtualMachineInstanceMigration.useList();
+  const { items: rawItems } = VirtualMachineInstanceMigration.useList();
+  const items = useFilteredList(rawItems);
 
-  // Check if there are no migrations
-  const hasMigrations = items && items.length > 0;
-
-  if (!hasMigrations && items !== null) {
+  // Show empty state only when there are truly no migrations cluster-wide
+  if (rawItems && rawItems.length === 0) {
     return (
       <Box
         sx={{
@@ -51,6 +51,12 @@ export default function MigrationList() {
             header: 'Migration Name',
             accessorFn: (migration: InstanceType<typeof VirtualMachineInstanceMigration>) =>
               migration.getName(),
+          },
+          {
+            id: 'namespace',
+            header: 'Namespace',
+            accessorFn: (migration: InstanceType<typeof VirtualMachineInstanceMigration>) =>
+              migration.getNamespace(),
           },
           {
             id: 'vmi',

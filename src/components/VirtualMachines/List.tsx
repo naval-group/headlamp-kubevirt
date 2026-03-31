@@ -10,7 +10,7 @@ import { DateLabel } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
 import { Box, Chip, Divider, ListItemIcon, ListItemText, MenuItem } from '@mui/material';
 import { useSnackbar } from 'notistack';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import useFilteredList from '../../hooks/useFilteredList';
 import useVMActions from '../../hooks/useVMActions';
 import { isFeatureGateEnabled, subscribeToFeatureGates } from '../../utils/featureGates';
 import { getLabelColumns, LabelColumn } from '../../utils/pluginSettings';
@@ -130,17 +130,9 @@ export default function VirtualMachineList() {
   const [deleteVM, setDeleteVM] = useState<VirtualMachine | null>(null);
   const [editVM, setEditVM] = useState<VirtualMachine | null>(null);
   const [viewYamlVM, setViewYamlVM] = useState<VirtualMachine | null>(null);
-  const location = useLocation();
-
   useEffect(() => {
     setCustomLabelColumns(getLabelColumns());
   }, []);
-
-  const isNamespaceFiltered = useMemo(() => {
-    const params = new URLSearchParams(location.search);
-    const namespace = params.get('namespace');
-    return namespace && namespace !== '';
-  }, [location.search]);
 
   const [liveMigrationEnabled, setLiveMigrationEnabled] = useState(
     isFeatureGateEnabled('LiveMigration')
@@ -189,11 +181,13 @@ export default function VirtualMachineList() {
     },
   };
 
-  // Fetch VMs
-  const { items: vmItems } = VirtualMachine.useList();
+  // Fetch VMs (all namespaces, filtered client-side for smooth switching)
+  const { items: rawVmItems } = VirtualMachine.useList();
+  const vmItems = useFilteredList(rawVmItems);
 
   // Fetch VMIs for node and IP information
-  const { items: vmiItems } = VirtualMachineInstance.useList();
+  const { items: rawVmiItems } = VirtualMachineInstance.useList();
+  const vmiItems = useFilteredList(rawVmiItems);
   const vmiMap = React.useMemo(() => {
     const map = new Map();
     if (vmiItems) {
@@ -232,15 +226,12 @@ export default function VirtualMachineList() {
           </Link>
         ),
       },
-    ];
-
-    if (!isNamespaceFiltered) {
-      cols.push({
+      {
         id: 'namespace',
         header: 'Namespace',
         accessorFn: (vm: VirtualMachine) => vm.getNamespace(),
-      });
-    }
+      },
+    ];
 
     cols.push(
       {
@@ -417,7 +408,7 @@ export default function VirtualMachineList() {
     });
 
     return cols;
-  }, [isNamespaceFiltered, liveMigrationEnabled, getVMI, customLabelColumns]);
+  }, [liveMigrationEnabled, getVMI, customLabelColumns]);
 
   const openDoctor = useCallback(async (vm: VirtualMachine) => {
     const vmName = vm.getName();
@@ -429,9 +420,13 @@ export default function VirtualMachineList() {
 
     try {
       const [vmiResult, podResult] = await Promise.allSettled([
-        ApiProxy.request(`/apis/kubevirt.io/v1/namespaces/${ns}/virtualmachineinstances/${vmName}`),
         ApiProxy.request(
-          `/api/v1/namespaces/${ns}/pods?labelSelector=${encodeURIComponent(
+          `/apis/kubevirt.io/v1/namespaces/${encodeURIComponent(
+            ns
+          )}/virtualmachineinstances/${encodeURIComponent(vmName)}`
+        ),
+        ApiProxy.request(
+          `/api/v1/namespaces/${encodeURIComponent(ns)}/pods?labelSelector=${encodeURIComponent(
             `vm.kubevirt.io/name=${vmName}`
           )}`
         ),

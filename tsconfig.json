@@ -1,6 +1,7 @@
 {
   "extends": "./node_modules/@kinvolk/headlamp-plugin/config/plugins-tsconfig.json",
   "compilerOptions": {
+    "resolveJsonModule": true,
     "types": ["vite/client", "vite-plugin-svgr/client", "vitest/globals", "lodash", "@testing-library/jest-dom/vitest"]
   },
   "include": ["./src/**/*"]
