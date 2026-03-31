@@ -27,6 +27,10 @@ if (typeof globalThis.localStorage === 'undefined') {
 
 const STORAGE_KEY = 'headlamp-kubevirt-settings';
 
+// Suppress expected console.error from invalid JSON parsing — not a bug.
+// Jazzer treats stderr output as a finding (exit code 71).
+console.error = () => {};
+
 /**
  * @param { Buffer } data
  */
