@@ -20,11 +20,12 @@ export default function DataVolumeList() {
   const { items: rawItems } = DataVolume.useList();
   const items = useFilteredList(rawItems);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
-  const { setEditItem, setViewYamlItem, setDeleteItem, ActionDialogs } =
-    useResourceActions<InstanceType<typeof DataVolume>>({
-      apiVersion: 'cdi.kubevirt.io/v1beta1',
-      kind: 'DataVolume',
-    });
+  const { setEditItem, setViewYamlItem, setDeleteItem, ActionDialogs } = useResourceActions<
+    InstanceType<typeof DataVolume>
+  >({
+    apiVersion: 'cdi.kubevirt.io/v1beta1',
+    kind: 'DataVolume',
+  });
 
   // Empty DataVolume for import
   const emptyDataVolume = {

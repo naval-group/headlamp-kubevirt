@@ -38,11 +38,12 @@ export default function VirtualMachineExportList() {
   const items = useFilteredList(rawItems);
   const [createOpen, setCreateOpen] = useState(false);
   const [createInitialTab, setCreateInitialTab] = useState(0);
-  const { setEditItem, setViewYamlItem, setDeleteItem, ActionDialogs } =
-    useResourceActions<InstanceType<typeof VirtualMachineExport>>({
-      apiVersion: 'export.kubevirt.io/v1beta1',
-      kind: 'VirtualMachineExport',
-    });
+  const { setEditItem, setViewYamlItem, setDeleteItem, ActionDialogs } = useResourceActions<
+    InstanceType<typeof VirtualMachineExport>
+  >({
+    apiVersion: 'export.kubevirt.io/v1beta1',
+    kind: 'VirtualMachineExport',
+  });
 
   return (
     <>

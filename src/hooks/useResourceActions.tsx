@@ -44,7 +44,9 @@ export default function useResourceActions<T extends KubeObject>({
       <ConfirmDialog
         open={!!deleteItem}
         title={`Delete ${deleteItem?.getName() || ''}?`}
-        message={`This will permanently delete ${kind} ${deleteItem?.getNamespace() ? deleteItem.getNamespace() + '/' : ''}${deleteItem?.getName() || ''}. This action cannot be undone.`}
+        message={`This will permanently delete ${kind} ${
+          deleteItem?.getNamespace() ? deleteItem.getNamespace() + '/' : ''
+        }${deleteItem?.getName() || ''}. This action cannot be undone.`}
         confirmLabel="Delete"
         onCancel={() => setDeleteItem(null)}
         onConfirm={handleDelete}

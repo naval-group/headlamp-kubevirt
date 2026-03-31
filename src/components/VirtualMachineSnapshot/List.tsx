@@ -157,11 +157,12 @@ export default function VirtualMachineSnapshotList() {
     setVmExportEnabled(isFeatureGateEnabled('VMExport'));
     return subscribeToFeatureGates(() => setVmExportEnabled(isFeatureGateEnabled('VMExport')));
   }, []);
-  const { setEditItem, setViewYamlItem, setDeleteItem, ActionDialogs } =
-    useResourceActions<InstanceType<typeof VirtualMachineSnapshot>>({
-      apiVersion: 'snapshot.kubevirt.io/v1beta1',
-      kind: 'VirtualMachineSnapshot',
-    });
+  const { setEditItem, setViewYamlItem, setDeleteItem, ActionDialogs } = useResourceActions<
+    InstanceType<typeof VirtualMachineSnapshot>
+  >({
+    apiVersion: 'snapshot.kubevirt.io/v1beta1',
+    kind: 'VirtualMachineSnapshot',
+  });
 
   return (
     <>

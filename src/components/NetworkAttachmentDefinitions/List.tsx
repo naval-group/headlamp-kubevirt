@@ -58,11 +58,12 @@ export default function NADList() {
   const [createOpen, setCreateOpen] = useState(false);
   const [createInitialTab, setCreateInitialTab] = useState(0);
   const [multusInstalled, setMultusInstalled] = useState<boolean | null>(null);
-  const { setEditItem, setViewYamlItem, setDeleteItem, ActionDialogs } =
-    useResourceActions<InstanceType<typeof NetworkAttachmentDefinition>>({
-      apiVersion: 'k8s.cni.cncf.io/v1',
-      kind: 'NetworkAttachmentDefinition',
-    });
+  const { setEditItem, setViewYamlItem, setDeleteItem, ActionDialogs } = useResourceActions<
+    InstanceType<typeof NetworkAttachmentDefinition>
+  >({
+    apiVersion: 'k8s.cni.cncf.io/v1',
+    kind: 'NetworkAttachmentDefinition',
+  });
 
   useEffect(() => {
     ApiProxy.request(

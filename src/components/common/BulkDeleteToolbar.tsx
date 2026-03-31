@@ -64,7 +64,9 @@ export default function BulkDeleteToolbar<T extends KubeObject>({
       <ConfirmDialog
         open={confirmOpen}
         title={`Delete ${selected.length} ${kind}${selected.length > 1 ? 's' : ''}?`}
-        message={`This will permanently delete: ${selected.map(i => i.getName()).join(', ')}. This action cannot be undone.`}
+        message={`This will permanently delete: ${selected
+          .map(i => i.getName())
+          .join(', ')}. This action cannot be undone.`}
         confirmLabel="Delete All"
         onCancel={() => setConfirmOpen(false)}
         onConfirm={handleBulkDelete}

@@ -22,11 +22,12 @@ export default function DataSourceList() {
   const items = useFilteredList(rawItems);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [createInitialTab, setCreateInitialTab] = useState(0);
-  const { setEditItem, setViewYamlItem, setDeleteItem, ActionDialogs } =
-    useResourceActions<InstanceType<typeof DataSource>>({
-      apiVersion: 'cdi.kubevirt.io/v1beta1',
-      kind: 'DataSource',
-    });
+  const { setEditItem, setViewYamlItem, setDeleteItem, ActionDialogs } = useResourceActions<
+    InstanceType<typeof DataSource>
+  >({
+    apiVersion: 'cdi.kubevirt.io/v1beta1',
+    kind: 'DataSource',
+  });
 
   const emptyDataSource = {
     apiVersion: 'cdi.kubevirt.io/v1beta1',

@@ -22,11 +22,12 @@ export default function DataImportCronList() {
   const items = useFilteredList(rawItems);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [createInitialTab, setCreateInitialTab] = useState(0);
-  const { setEditItem, setViewYamlItem, setDeleteItem, ActionDialogs } =
-    useResourceActions<InstanceType<typeof DataImportCron>>({
-      apiVersion: 'cdi.kubevirt.io/v1beta1',
-      kind: 'DataImportCron',
-    });
+  const { setEditItem, setViewYamlItem, setDeleteItem, ActionDialogs } = useResourceActions<
+    InstanceType<typeof DataImportCron>
+  >({
+    apiVersion: 'cdi.kubevirt.io/v1beta1',
+    kind: 'DataImportCron',
+  });
 
   const emptyDataImportCron = {
     apiVersion: 'cdi.kubevirt.io/v1beta1',
