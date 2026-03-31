@@ -72,7 +72,7 @@ export default function VMMetrics({ vmName, namespace, vmiData, vmItem }: Metric
 
   // Check if KubeVirt ServiceMonitor is configured
   useEffect(() => {
-    ApiProxy.request('/apis/kubevirt.io/v1/namespaces/kubevirt/kubevirts')
+    ApiProxy.request('/apis/kubevirt.io/v1/kubevirts')
       .then(
         (resp: {
           items?: Array<{ spec?: { monitorNamespace?: string; monitorAccount?: string } }>;
