@@ -19,7 +19,6 @@ import {
   FormControlLabel,
   Grid,
   IconButton,
-  InputAdornment,
   InputLabel,
   MenuItem,
   Select,
@@ -30,16 +29,6 @@ import {
 } from '@mui/material';
 import { useSnackbar } from 'notistack';
 import { useEffect, useRef, useState } from 'react';
-import {
-  CartesianGrid,
-  Legend,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip as RechartsTooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
 import ResourceEditorDialog from '../components/ResourceEditorDialog';
 import { LiveUpdateConfig, MigrationConfig, NetworkConfig, PermittedHostDevices } from '../types';
 import {
@@ -55,9 +44,18 @@ import {
   removeLabelColumn,
   saveForensicSettings,
 } from '../utils/pluginSettings';
-import { sanitizeFeatureGateSearch } from '../utils/sanitize';
+import {
+  isValidColumnName,
+  isValidK8sLabelKey,
+  isValidK8sLabelValue,
+  isValidK8sName,
+  safeError,
+} from '../utils/sanitize';
 import CDI from './CDI';
 import KubeVirt from './KubeVirt';
+import type { MediatedDevice, PciDevice } from './Settings/FeatureGatesSection';
+import FeatureGatesSection from './Settings/FeatureGatesSection';
+import SystemHealthSection from './Settings/SystemHealthSection';
 
 // ValidatingAdmissionPolicy for VM Delete Protection
 const VM_DELETE_PROTECTION_POLICY = {
@@ -100,406 +98,9 @@ const VM_DELETE_PROTECTION_BINDING = {
   },
 };
 
-// Feature gate state types
-type FeatureGateState = 'GA' | 'Beta' | 'Alpha';
-
-interface FeatureGateInfo {
-  name: string;
-  description: string;
-  hasConfig?: boolean;
-  // Version history: { version: state } - gates introduced in version with that state
-  // Special values: 'removed' for deprecated/removed gates
-  versionHistory: Record<string, FeatureGateState | 'removed'>;
-}
-
-// Get feature gate state for a specific version
-function getGateStateForVersion(
-  gate: FeatureGateInfo,
-  version: string
-): FeatureGateState | 'removed' | null {
-  const versionParts = version.split('.').map(Number);
-  const major = versionParts[0] || 1;
-  const minor = versionParts[1] || 0;
-
-  let currentState: FeatureGateState | 'removed' | null = null;
-
-  // Sort versions and find the applicable state
-  const sortedVersions = Object.keys(gate.versionHistory).sort((a, b) => {
-    const [aMaj, aMin] = a.split('.').map(Number);
-    const [bMaj, bMin] = b.split('.').map(Number);
-    return aMaj - bMaj || aMin - bMin;
-  });
-
-  for (const v of sortedVersions) {
-    const [vMaj, vMin] = v.split('.').map(Number);
-    if (major > vMaj || (major === vMaj && minor >= vMin)) {
-      currentState = gate.versionHistory[v];
-    }
-  }
-
-  return currentState;
-}
-
-// Check if gate is available in version
-function isGateAvailableInVersion(gate: FeatureGateInfo, version: string): boolean {
-  const state = getGateStateForVersion(gate, version);
-  return state !== null && state !== 'removed';
-}
-
-// State sort order for sorting gates
-const STATE_ORDER: Record<FeatureGateState, number> = { GA: 0, Beta: 1, Alpha: 2 };
-
-// Grouped feature gates by category with version history
-const FEATURE_GATE_CATEGORIES: Record<
-  string,
-  { icon: string; color: string; gates: FeatureGateInfo[] }
-> = {
-  Storage: {
-    icon: 'mdi:harddisk',
-    color: '#ff9800',
-    gates: [
-      {
-        name: 'Snapshot',
-        description: 'VM snapshot and restore support',
-        versionHistory: { '0.30': 'Alpha', '1.3': 'Beta' },
-      },
-      {
-        name: 'VMExport',
-        description: 'Export VMs to external storage',
-        versionHistory: { '0.55': 'Alpha', '1.3': 'Beta' },
-      },
-      {
-        name: 'HotplugVolumes',
-        description: 'Hot-plug storage disks to running VMs',
-        versionHistory: { '0.39': 'Alpha' },
-      },
-      {
-        name: 'DeclarativeHotplugVolumes',
-        description: 'Declarative volume hotplug via spec editing',
-        versionHistory: { '1.6': 'Alpha' },
-      },
-      {
-        name: 'ExpandDisks',
-        description: 'Auto-expand VM disks when PVC is resized',
-        versionHistory: { '0.51': 'Alpha' },
-      },
-      {
-        name: 'IncrementalBackup',
-        description: 'Incremental VM backups using libvirt',
-        versionHistory: { '1.6': 'Alpha' },
-      },
-      {
-        name: 'HostDisk',
-        description: 'Use host disk as VM storage',
-        versionHistory: { '0.9': 'Alpha' },
-      },
-      {
-        name: 'EnableVirtioFsConfigVolumes',
-        description: 'Mount ConfigMaps/Secrets via VirtioFS',
-        versionHistory: { '1.3': 'Alpha' },
-      },
-      {
-        name: 'EnableVirtioFsStorageVolumes',
-        description: 'Mount PVCs via VirtioFS',
-        versionHistory: { '1.3': 'Alpha' },
-      },
-      {
-        name: 'DataVolumes',
-        description: 'Enable DataVolume support for storage',
-        versionHistory: { '0.17': 'Alpha', '1.0': 'GA' },
-      },
-      {
-        name: 'VolumeMigration',
-        description: 'Storage migration support',
-        versionHistory: { '1.3': 'Alpha', '1.7': 'GA' },
-      },
-      {
-        name: 'VolumesUpdateStrategy',
-        description: 'Volume update strategies',
-        versionHistory: { '1.3': 'Alpha', '1.7': 'GA' },
-      },
-      {
-        name: 'UtilityVolumes',
-        description: 'Hot-plug utility volumes to virt-launcher',
-        versionHistory: { '1.7': 'Alpha' },
-      },
-    ],
-  },
-  Network: {
-    icon: 'mdi:lan',
-    color: '#2196f3',
-    gates: [
-      {
-        name: 'LiveMigration',
-        description: 'Live migration of VMs between nodes',
-        hasConfig: true,
-        versionHistory: { '0.3': 'Alpha', '0.42': 'Beta', '1.0': 'GA' },
-      },
-      {
-        name: 'SRIOVLiveMigration',
-        description: 'SR-IOV device migration support',
-        versionHistory: { '0.42': 'Alpha', '1.0': 'GA' },
-      },
-      {
-        name: 'HotplugNICs',
-        description: 'Hot-plug network interfaces to running VMs',
-        versionHistory: { '1.1': 'Alpha', '1.3': 'Beta', '1.4': 'GA' },
-      },
-      {
-        name: 'NetworkBindingPlugins',
-        description: 'Custom network binding plugins',
-        versionHistory: { '1.1': 'Alpha', '1.4': 'Beta', '1.5': 'GA' },
-      },
-      {
-        name: 'DynamicPodInterfaceNaming',
-        description: 'Dynamic primary pod interface detection',
-        versionHistory: { '1.4': 'Beta', '1.5': 'GA' },
-      },
-      {
-        name: 'PasstIPStackMigration',
-        description: 'Seamless migration with passt network binding',
-        versionHistory: { '1.6': 'Alpha' },
-      },
-    ],
-  },
-  Compute: {
-    icon: 'mdi:cpu-64-bit',
-    color: '#9c27b0',
-    gates: [
-      {
-        name: 'NUMA',
-        description: 'NUMA topology awareness for multi-socket servers',
-        versionHistory: { '0.44': 'Alpha', '1.0': 'GA' },
-      },
-      {
-        name: 'CPUManager',
-        description: 'CPU pinning and dedicated CPU allocation',
-        versionHistory: { '0.35': 'Alpha' },
-      },
-      {
-        name: 'CPUNodeDiscovery',
-        description: 'Automatic CPU feature discovery',
-        versionHistory: { '0.37': 'Alpha', '1.0': 'GA' },
-      },
-      {
-        name: 'VMLiveUpdateFeatures',
-        description: 'Hot-plug CPU sockets to running VMs',
-        versionHistory: { '1.0': 'Alpha', '1.5': 'GA' },
-      },
-      {
-        name: 'AlignCPUs',
-        description: 'Align CPUs for emulator thread even parity',
-        versionHistory: { '1.2': 'Alpha' },
-      },
-      {
-        name: 'DownwardMetrics',
-        description: 'Expose host metrics inside guest',
-        versionHistory: { '0.42': 'Alpha' },
-      },
-      {
-        name: 'AutoResourceLimitsGate',
-        description: 'Auto-set VMI limits from namespace ResourceQuota',
-        versionHistory: { '1.1': 'Alpha', '1.5': 'GA' },
-      },
-    ],
-  },
-  Devices: {
-    icon: 'mdi:expansion-card',
-    color: '#4caf50',
-    gates: [
-      {
-        name: 'HostDevices',
-        description: 'PCI/USB passthrough to VMs',
-        hasConfig: true,
-        versionHistory: { '0.31': 'Alpha' },
-      },
-      {
-        name: 'GPU',
-        description: 'GPU passthrough support',
-        versionHistory: { '0.24': 'Alpha', '1.0': 'GA' },
-      },
-      {
-        name: 'VSOCK',
-        description: 'VM sockets for host-guest communication',
-        versionHistory: { '1.0': 'Alpha' },
-      },
-      {
-        name: 'GPUsWithDRA',
-        description: 'DRA-provisioned GPU allocation',
-        versionHistory: { '1.6': 'Alpha' },
-      },
-      {
-        name: 'HostDevicesWithDRA',
-        description: 'DRA-provisioned host device allocation',
-        versionHistory: { '1.6': 'Alpha' },
-      },
-      {
-        name: 'DisableMDEVConfiguration',
-        description: 'Disable mediated device handling',
-        versionHistory: { '1.0': 'Alpha' },
-      },
-      {
-        name: 'PanicDevices',
-        description: 'Panic device support for crash signaling',
-        versionHistory: { '1.6': 'Alpha', '1.7': 'Beta' },
-      },
-    ],
-  },
-  Security: {
-    icon: 'mdi:shield-lock',
-    color: '#f44336',
-    gates: [
-      {
-        name: 'KubevirtSeccompProfile',
-        description: 'Custom seccomp profile for virt-launcher',
-        versionHistory: { '0.54': 'Alpha', '1.7': 'Beta' },
-      },
-      {
-        name: 'WorkloadEncryptionSEV',
-        description: 'AMD SEV memory encryption',
-        versionHistory: { '0.48': 'Alpha' },
-      },
-      {
-        name: 'WorkloadEncryptionTDX',
-        description: 'Intel TDX memory encryption',
-        versionHistory: { '1.3': 'Alpha' },
-      },
-      {
-        name: 'Root',
-        description: 'Run virt-launcher as root',
-        versionHistory: { '0.45': 'Alpha' },
-      },
-      {
-        name: 'NonRoot',
-        description: 'Run virt-launcher as non-root (security)',
-        versionHistory: { '0.25': 'Alpha', '1.0': 'GA' },
-      },
-      {
-        name: 'PSA',
-        description: 'Pod Security Admission compliance',
-        versionHistory: { '0.58': 'Alpha', '1.0': 'GA' },
-      },
-      {
-        name: 'SecureExecution',
-        description: 'IBM Z secure execution',
-        versionHistory: { '1.6': 'Alpha', '1.7': 'Beta' },
-      },
-      {
-        name: 'DisableCustomSELinuxPolicy',
-        description: 'Disable custom SELinux policy for virt-launcher',
-        versionHistory: { '1.0': 'Alpha', '1.7': 'GA' },
-      },
-    ],
-  },
-  Migration: {
-    icon: 'mdi:airplane',
-    color: '#00bcd4',
-    gates: [
-      {
-        name: 'DecentralizedLiveMigration',
-        description: 'Cross-cluster live migration',
-        versionHistory: { '1.5': 'Alpha' },
-      },
-      {
-        name: 'MigrationPriorityQueue',
-        description: 'Prioritize system migrations over user migrations',
-        versionHistory: { '1.7': 'Alpha' },
-      },
-      {
-        name: 'VMPersistentState',
-        description: 'Persist VM state (vTPM) across migrations',
-        versionHistory: { '1.1': 'Alpha', '1.7': 'GA' },
-      },
-      {
-        name: 'NodeRestriction',
-        description: 'Node restriction for virt-handler (like Kubelet)',
-        versionHistory: { '1.3': 'Alpha', '1.7': 'Beta' },
-      },
-    ],
-  },
-  Display: {
-    icon: 'mdi:monitor',
-    color: '#607d8b',
-    gates: [
-      {
-        name: 'VideoConfig',
-        description: 'Custom video device types (virtio, vga, bochs)',
-        versionHistory: { '1.6': 'Alpha', '1.7': 'Beta' },
-      },
-      {
-        name: 'BochsDisplayForEFIGuests',
-        description: 'Bochs display for EFI guests instead of VGA',
-        versionHistory: { '0.58': 'Alpha', '1.4': 'GA' },
-      },
-    ],
-  },
-  Other: {
-    icon: 'mdi:cog',
-    color: '#795548',
-    gates: [
-      {
-        name: 'Sidecar',
-        description: 'Sidecar container hook support',
-        versionHistory: { '0.23': 'Alpha' },
-      },
-      {
-        name: 'ImageVolume',
-        description: 'Kubernetes native ImageVolume for containerDisks',
-        versionHistory: { '1.6': 'Alpha', '1.7': 'Beta' },
-      },
-      {
-        name: 'ExperimentalIgnitionSupport',
-        description: 'Ignition cloud-init alternative',
-        versionHistory: { '0.14': 'Alpha' },
-      },
-      {
-        name: 'HypervStrictCheck',
-        description: 'Strict Hyper-V feature checking',
-        versionHistory: { '0.40': 'Alpha' },
-      },
-      {
-        name: 'PersistentReservation',
-        description: 'SCSI persistent reservation (pr-helper)',
-        versionHistory: { '1.0': 'Alpha' },
-      },
-      {
-        name: 'ObjectGraph',
-        description: 'VM/VMI object dependency graph subresource',
-        versionHistory: { '1.6': 'Alpha' },
-      },
-      {
-        name: 'CommonInstancetypesDeploymentGate',
-        description: 'Deploy common instance types',
-        versionHistory: { '1.1': 'Alpha', '1.2': 'Beta', '1.4': 'GA' },
-      },
-      {
-        name: 'InstancetypeReferencePolicy',
-        description: 'Instance type reference control',
-        versionHistory: { '1.4': 'Alpha', '1.5': 'Beta', '1.6': 'GA' },
-      },
-      {
-        name: 'ClusterProfiler',
-        description: 'Cluster profiling tools',
-        versionHistory: { '1.0': 'Alpha', '1.7': 'GA' },
-      },
-      {
-        name: 'MultiArchitecture',
-        description: 'Multi-architecture VM scheduling support',
-        versionHistory: { '1.0': 'Alpha' },
-      },
-    ],
-  },
-};
-
-// Get all known feature gate names for filtering
-const ALL_KNOWN_GATES = Object.values(FEATURE_GATE_CATEGORIES).flatMap(category =>
-  category.gates.map(g => g.name)
-);
-
 export default function KubeVirtSettings() {
   const { enqueueSnackbar } = useSnackbar();
   const [updating, setUpdating] = useState(false);
-  const [migrationConfigExpanded, setMigrationConfigExpanded] = useState(false);
   const [pluginFeaturesExpanded, setPluginFeaturesExpanded] = useState(false);
   const [deleteProtectionModalOpen, setDeleteProtectionModalOpen] = useState(false);
   const [deleteProtectionDeployed, setDeleteProtectionDeployed] = useState<boolean | null>(null);
@@ -520,6 +121,13 @@ export default function KubeVirtSettings() {
     const fs = getForensicSettings();
     setForensicSettings(fs);
     setLocalForensic(fs);
+  }, []);
+
+  // Cleanup pending timers on unmount
+  useEffect(() => {
+    return () => {
+      if (monitorTimerRef.current) clearTimeout(monitorTimerRef.current);
+    };
   }, []);
 
   // Check if VM Delete Protection VAP is deployed
@@ -605,17 +213,8 @@ export default function KubeVirtSettings() {
   const [generalConfigExpanded, setGeneralConfigExpanded] = useState(false);
   const [liveUpdateConfigExpanded, setLiveUpdateConfigExpanded] = useState(false);
   const [networkConfigExpanded, setNetworkConfigExpanded] = useState(false);
-  const [hostDevicesConfigExpanded, setHostDevicesConfigExpanded] = useState(false);
   const [kubeVirtEditorOpen, setKubeVirtEditorOpen] = useState(false);
   const [cdiEditorOpen, setCdiEditorOpen] = useState(false);
-  const [activeCategory, setActiveCategory] = useState<string | null>(null);
-  const [featureGateSearch, setFeatureGateSearch] = useState('');
-  const [featureGateSearchOpen, setFeatureGateSearchOpen] = useState(false);
-  const [maturityFilter, setMaturityFilter] = useState<Set<FeatureGateState>>(new Set());
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const searchTimerRef = useRef<ReturnType<typeof setTimeout>>();
-
-  const debouncedSearch = featureGateSearch;
 
   // Fetch KubeVirt CR - typically in kubevirt namespace
   let kubeVirtItems: InstanceType<typeof KubeVirt>[] | null = null;
@@ -645,24 +244,11 @@ export default function KubeVirtSettings() {
   const cdi = cdiItems && cdiItems.length > 0 ? cdiItems[0] : null;
 
   // Get all configs safely (before any conditional returns to satisfy React hooks rules)
-  const migrationConfig = kubeVirt?.getMigrationConfig() || {};
   const liveUpdateConfig = kubeVirt?.getLiveUpdateConfig() || {};
   const networkConfig = kubeVirt?.getNetworkConfig() || {};
   const commonInstancetypesEnabled = kubeVirt?.getCommonInstancetypesEnabled() || false;
   const memoryOvercommit = kubeVirt?.getMemoryOvercommit() || 100;
   const evictionStrategy = kubeVirt?.getEvictionStrategy() || '';
-
-  // Local state for migration config form - MUST be declared before any conditional returns
-  const [localMigrationConfig, setLocalMigrationConfig] = useState({
-    parallelMigrationsPerCluster: migrationConfig.parallelMigrationsPerCluster || '',
-    parallelOutboundMigrationsPerNode: migrationConfig.parallelOutboundMigrationsPerNode || '',
-    bandwidthPerMigration: migrationConfig.bandwidthPerMigration || '',
-    network: migrationConfig.network || '',
-    progressTimeout: migrationConfig.progressTimeout || '',
-    completionTimeoutPerGiB: migrationConfig.completionTimeoutPerGiB || '',
-    allowAutoConverge: migrationConfig.allowAutoConverge || false,
-    allowPostCopy: migrationConfig.allowPostCopy || false,
-  });
 
   // State for general configuration
   const [localCommonInstancetypes, setLocalCommonInstancetypes] = useState(
@@ -682,45 +268,6 @@ export default function KubeVirtSettings() {
   const [monitoringNamespaces, setMonitoringNamespaces] = useState<string[]>([]);
   const [monitoringServiceAccounts, setMonitoringServiceAccounts] = useState<string[]>([]);
 
-  // System Health state
-  const [systemHealthExpanded, setSystemHealthExpanded] = useState(false);
-  const [healthTimeRange, setHealthTimeRange] = useState('1h');
-  const [healthPromAvailable, setHealthPromAvailable] = useState<boolean | null>(null);
-  const [hiddenSeries, setHiddenSeries] = useState<Record<string, Set<string>>>({});
-
-  const toggleSeries = (chartId: string, seriesName: string) => {
-    setHiddenSeries(prev => {
-      const current = new Set(prev[chartId] || []);
-      if (current.has(seriesName)) {
-        current.delete(seriesName);
-      } else {
-        current.add(seriesName);
-      }
-      return { ...prev, [chartId]: current };
-    });
-  };
-
-  const isSeriesHidden = (chartId: string, seriesName: string) =>
-    hiddenSeries[chartId]?.has(seriesName) ?? false;
-  const [healthComponents, setHealthComponents] = useState<
-    Array<{ name: string; up: boolean; restErrors: number }>
-  >([]);
-  const [healthCharts, setHealthCharts] = useState<{
-    restErrors: Array<{ time: string; [key: string]: string | number }>;
-    apiLatency: Array<{ time: string; [key: string]: string | number }>;
-    vmiPhaseTransitions: Array<{ time: string; [key: string]: string | number }>;
-    outdatedVMs: Array<{ time: string; value: number }>;
-    vcpuWait: Array<{ time: string; [key: string]: string | number }>;
-    storagePending: Array<{ time: string; value: number }>;
-  }>({
-    restErrors: [],
-    apiLatency: [],
-    vmiPhaseTransitions: [],
-    outdatedVMs: [],
-    vcpuWait: [],
-    storagePending: [],
-  });
-
   // State for live update configuration
   const [localLiveUpdateConfig, setLocalLiveUpdateConfig] = useState({
     maxCpuSockets: liveUpdateConfig.maxCpuSockets || '',
@@ -734,21 +281,9 @@ export default function KubeVirtSettings() {
     permitSlirpInterface: networkConfig.permitSlirpInterface || false,
   });
 
-  // State for host devices configuration
-  const [localPciDevices, setLocalPciDevices] = useState<
-    Array<{ pciVendorSelector: string; resourceName: string; externalResourceProvider?: boolean }>
-  >(kubeVirt?.getPciHostDevices() || []);
-  const [localMediatedDevices, setLocalMediatedDevices] = useState<
-    Array<{ mdevNameSelector: string; resourceName: string; externalResourceProvider?: boolean }>
-  >(kubeVirt?.getMediatedDevices() || []);
-  const [newPciDevice, setNewPciDevice] = useState({ pciVendorSelector: '', resourceName: '' });
-  const [newMediatedDevice, setNewMediatedDevice] = useState({
-    mdevNameSelector: '',
-    resourceName: '',
-  });
-
   // Track if initial data has been loaded to update local state
   const initialLoadRef = useRef(false);
+  const monitorTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
   // Update local state when KubeVirt data loads
   useEffect(() => {
@@ -757,18 +292,6 @@ export default function KubeVirtSettings() {
       setLocalCommonInstancetypes(kubeVirt.getCommonInstancetypesEnabled());
       setLocalMemoryOvercommit(kubeVirt.getMemoryOvercommit());
       setLocalEvictionStrategy(kubeVirt.getEvictionStrategy());
-
-      const migConfig = kubeVirt.getMigrationConfig();
-      setLocalMigrationConfig({
-        parallelMigrationsPerCluster: migConfig.parallelMigrationsPerCluster || '',
-        parallelOutboundMigrationsPerNode: migConfig.parallelOutboundMigrationsPerNode || '',
-        bandwidthPerMigration: migConfig.bandwidthPerMigration || '',
-        network: migConfig.network || '',
-        progressTimeout: migConfig.progressTimeout || '',
-        completionTimeoutPerGiB: migConfig.completionTimeoutPerGiB || '',
-        allowAutoConverge: migConfig.allowAutoConverge || false,
-        allowPostCopy: migConfig.allowPostCopy || false,
-      });
 
       const liveConfig = kubeVirt.getLiveUpdateConfig();
       setLocalLiveUpdateConfig({
@@ -782,9 +305,6 @@ export default function KubeVirtSettings() {
         permitBridgeInterfaceOnPodNetwork: netConfig.permitBridgeInterfaceOnPodNetwork || false,
         permitSlirpInterface: netConfig.permitSlirpInterface || false,
       });
-
-      setLocalPciDevices(kubeVirt.getPciHostDevices());
-      setLocalMediatedDevices(kubeVirt.getMediatedDevices());
 
       setLocalMonitorNamespace(kubeVirt.getMonitorNamespace());
       setLocalMonitorAccount(kubeVirt.getMonitorAccount());
@@ -819,7 +339,7 @@ export default function KubeVirtSettings() {
   }, []);
 
   useEffect(() => {
-    if (!localMonitorNamespace) {
+    if (!localMonitorNamespace || !isValidK8sName(localMonitorNamespace)) {
       setMonitoringServiceAccounts([]);
       return;
     }
@@ -833,225 +353,13 @@ export default function KubeVirtSettings() {
   }, [localMonitorNamespace]);
 
   // Fetch system health chart data from Prometheus
-  useEffect(() => {
-    if (!systemHealthExpanded) return;
-
-    const getTimeRangeSeconds = (range: string): number => {
-      const value = parseInt(range);
-      const unit = range.slice(-1);
-      const multipliers: Record<string, number> = { m: 60, h: 3600, d: 86400 };
-      return value * (multipliers[unit] || 60);
-    };
-
-    const fetchHealthCharts = async () => {
-      try {
-        // Find Prometheus service
-        const svcResp = (await ApiProxy.request('/api/v1/services').catch(() => null)) as {
-          items?: Array<{
-            metadata: { name: string; namespace: string };
-            spec: { ports: Array<{ port: number }> };
-          }>;
-        } | null;
-        const promSvc = svcResp?.items?.find(svc => {
-          const svcName = svc.metadata?.name || '';
-          const ports = svc.spec?.ports || [];
-          return svcName.includes('prometheus') && ports.some(p => p.port === 9090);
-        });
-
-        if (!promSvc) {
-          setHealthPromAvailable(false);
-          return;
-        }
-
-        const promBase = `/api/v1/namespaces/${promSvc.metadata.namespace}/services/${promSvc.metadata.name}:9090/proxy`;
-
-        const health = await ApiProxy.request(`${promBase}/api/v1/query?query=up`).catch(
-          () => null
-        );
-        if (!health?.data) {
-          setHealthPromAvailable(false);
-          return;
-        }
-        setHealthPromAvailable(true);
-
-        const now = Math.floor(Date.now() / 1000);
-        const rangeSeconds = getTimeRangeSeconds(healthTimeRange);
-        const start = now - rangeSeconds;
-        const step = Math.max(Math.floor(rangeSeconds / 60), 15);
-
-        type RangeResult = {
-          metric: Record<string, string>;
-          values: Array<[number, string]>;
-        };
-
-        const queryRange = async (query: string): Promise<RangeResult[]> => {
-          const resp = await ApiProxy.request(
-            `${promBase}/api/v1/query_range?query=${encodeURIComponent(
-              query
-            )}&start=${start}&end=${now}&step=${step}`
-          ).catch(() => null);
-          return resp?.data?.result || [];
-        };
-
-        const queryInstant = async (query: string) => {
-          const resp = await ApiProxy.request(
-            `${promBase}/api/v1/query?query=${encodeURIComponent(query)}`
-          ).catch(() => null);
-          return resp?.data?.result || [];
-        };
-
-        // Fetch component status (instant queries)
-        const [compUp, compErrors] = await Promise.all([
-          queryInstant(`up{namespace="kubevirt"}`),
-          queryInstant(`sum by (pod) (kubevirt_rest_client_requests_total{code=~"4..|5.."})`),
-        ]);
-
-        const componentNames = ['virt-api', 'virt-controller', 'virt-handler', 'virt-operator'];
-        setHealthComponents(
-          componentNames.map(name => {
-            // Check if at least one pod for this component is up
-            const upEntries = compUp.filter((r: { metric: Record<string, string> }) =>
-              r.metric.pod?.startsWith(name)
-            );
-            const isUp = upEntries.some(
-              (r: { value: [number, string] }) => parseFloat(r.value[1]) === 1
-            );
-            // Sum errors across all pods for this component
-            const errEntries = compErrors.filter((r: { metric: Record<string, string> }) =>
-              r.metric.pod?.startsWith(name)
-            );
-            const totalErrors = errEntries.reduce(
-              (sum: number, r: { value: [number, string] }) => sum + parseFloat(r.value[1]),
-              0
-            );
-            return {
-              name,
-              up: isUp,
-              restErrors: totalErrors,
-            };
-          })
-        );
-
-        // Fetch all charts in parallel
-        const [
-          restErrorsData,
-          apiLatencyData,
-          vmiTransitionsData,
-          outdatedData,
-          vcpuWaitData,
-          storagePendingData,
-        ] = await Promise.all([
-          queryRange(
-            `sum by (container) (increase(kubevirt_rest_client_requests_total{code=~"4..|5.."}[5m]))`
-          ),
-          queryRange(
-            `histogram_quantile(0.99, sum by (le, verb) (rate(kubevirt_rest_client_request_latency_seconds_bucket[5m])))`
-          ),
-          queryRange(
-            `sum by (phase) (rate(kubevirt_vmi_phase_transition_time_from_creation_seconds_count[5m]))`
-          ),
-          queryRange(`kubevirt_vmi_outdated_count or vector(0)`),
-          queryRange(`sum(rate(kubevirt_vmi_vcpu_wait_seconds_total[5m]))`),
-          queryRange(`sum(kubevirt_vmi_migration_data_remaining_bytes) or vector(0)`),
-        ]);
-
-        // Parse REST errors (multi-series by container/component)
-        const restErrors: Array<{ time: string; [key: string]: string | number }> = [];
-        const restTimestamps = new Set<number>();
-        restErrorsData.forEach(series => {
-          series.values.forEach(([ts]) => restTimestamps.add(ts));
-        });
-        Array.from(restTimestamps)
-          .sort()
-          .forEach(ts => {
-            const point: { time: string; [key: string]: string | number } = {
-              time: new Date(ts * 1000).toLocaleTimeString(),
-            };
-            restErrorsData.forEach(series => {
-              const label = series.metric.container || 'unknown';
-              const val = series.values.find(([t]) => t === ts);
-              point[label] = val ? parseFloat(parseFloat(val[1]).toFixed(2)) : 0;
-            });
-            restErrors.push(point);
-          });
-
-        // Parse API latency (multi-series by verb, filter out "none")
-        const filteredLatencyData = apiLatencyData.filter(
-          series => series.metric.verb && series.metric.verb !== 'none'
-        );
-        const apiLatency: Array<{ time: string; [key: string]: string | number }> = [];
-        const latencyTimestamps = new Set<number>();
-        filteredLatencyData.forEach(series => {
-          series.values.forEach(([ts]) => latencyTimestamps.add(ts));
-        });
-        Array.from(latencyTimestamps)
-          .sort()
-          .forEach(ts => {
-            const point: { time: string; [key: string]: string | number } = {
-              time: new Date(ts * 1000).toLocaleTimeString(),
-            };
-            filteredLatencyData.forEach(series => {
-              const label = series.metric.verb || 'unknown';
-              const val = series.values.find(([t]) => t === ts);
-              const v = val ? parseFloat(val[1]) : 0;
-              point[label] = isFinite(v) ? parseFloat((v * 1000).toFixed(2)) : 0; // convert to ms
-            });
-            apiLatency.push(point);
-          });
-
-        // Parse VMI phase transitions (multi-series by phase)
-        const vmiPhaseTransitions: Array<{ time: string; [key: string]: string | number }> = [];
-        const phaseTimestamps = new Set<number>();
-        vmiTransitionsData.forEach(series => {
-          series.values.forEach(([ts]) => phaseTimestamps.add(ts));
-        });
-        Array.from(phaseTimestamps)
-          .sort()
-          .forEach(ts => {
-            const point: { time: string; [key: string]: string | number } = {
-              time: new Date(ts * 1000).toLocaleTimeString(),
-            };
-            vmiTransitionsData.forEach(series => {
-              const label = series.metric.phase || 'unknown';
-              const val = series.values.find(([t]) => t === ts);
-              point[label] = val ? parseFloat(parseFloat(val[1]).toFixed(4)) : 0;
-            });
-            vmiPhaseTransitions.push(point);
-          });
-
-        // Parse simple single-series
-        const parseSingle = (data: RangeResult[]) =>
-          (data[0]?.values || []).map(([ts, val]: [number, string]) => ({
-            time: new Date(ts * 1000).toLocaleTimeString(),
-            value: parseFloat(parseFloat(val).toFixed(4)),
-          }));
-
-        setHealthCharts({
-          restErrors,
-          apiLatency,
-          vmiPhaseTransitions,
-          outdatedVMs: parseSingle(outdatedData),
-          vcpuWait: parseSingle(vcpuWaitData),
-          storagePending: parseSingle(storagePendingData),
-        });
-      } catch (err) {
-        console.error('Failed to fetch health charts:', err);
-        setHealthPromAvailable(false);
-      }
-    };
-
-    fetchHealthCharts();
-    const interval = setInterval(fetchHealthCharts, 30000);
-    return () => clearInterval(interval);
-  }, [systemHealthExpanded, healthTimeRange]);
 
   // Now we can safely return early if there are errors
   if (kvError) {
     return (
       <Box p={3}>
         <Alert severity="error">
-          Failed to load KubeVirt configuration:{' '}
-          {(kvError as Error)?.message || String(kvError) || 'Unknown error'}
+          Failed to load KubeVirt configuration: {safeError(kvError, 'kubevirt-load')}
         </Alert>
         <Typography variant="body2" color="text.secondary" mt={2}>
           Make sure KubeVirt is installed in the 'kubevirt' namespace.
@@ -1109,34 +417,10 @@ export default function KubeVirtSettings() {
     }
   };
 
-  const handleMigrationConfigUpdate = async () => {
+  const handleMigrationConfigUpdate = async (config: Record<string, unknown>) => {
     setUpdating(true);
     try {
-      // Build the migration config object, excluding empty values
-      const newMigrationConfig: MigrationConfig = {};
-      if (localMigrationConfig.parallelMigrationsPerCluster)
-        newMigrationConfig.parallelMigrationsPerCluster = parseInt(
-          localMigrationConfig.parallelMigrationsPerCluster as string
-        );
-      if (localMigrationConfig.parallelOutboundMigrationsPerNode)
-        newMigrationConfig.parallelOutboundMigrationsPerNode = parseInt(
-          localMigrationConfig.parallelOutboundMigrationsPerNode as string
-        );
-      if (localMigrationConfig.bandwidthPerMigration)
-        newMigrationConfig.bandwidthPerMigration = localMigrationConfig.bandwidthPerMigration;
-      if (localMigrationConfig.network) newMigrationConfig.network = localMigrationConfig.network;
-      if (localMigrationConfig.progressTimeout)
-        newMigrationConfig.progressTimeout = parseInt(
-          localMigrationConfig.progressTimeout as string
-        );
-      if (localMigrationConfig.completionTimeoutPerGiB)
-        newMigrationConfig.completionTimeoutPerGiB = parseInt(
-          localMigrationConfig.completionTimeoutPerGiB as string
-        );
-      newMigrationConfig.allowAutoConverge = localMigrationConfig.allowAutoConverge;
-      newMigrationConfig.allowPostCopy = localMigrationConfig.allowPostCopy;
-
-      await kubeVirt.updateMigrationConfig(newMigrationConfig);
+      await kubeVirt.updateMigrationConfig(config as MigrationConfig);
       enqueueSnackbar('Migration configuration updated successfully', { variant: 'success' });
     } catch (error: unknown) {
       console.error('Failed to update migration configuration', error);
@@ -1197,6 +481,20 @@ export default function KubeVirtSettings() {
   };
 
   const handleMonitoringConfigUpdate = async () => {
+    if (localMonitorNamespace && !isValidK8sName(localMonitorNamespace)) {
+      enqueueSnackbar('Invalid namespace name.', { variant: 'error' });
+      return;
+    }
+    if (localMonitorAccount && !isValidK8sName(localMonitorAccount)) {
+      enqueueSnackbar('Invalid service account name.', { variant: 'error' });
+      return;
+    }
+    if (localHelmRelease && !isValidK8sLabelValue(localHelmRelease)) {
+      enqueueSnackbar('Invalid Helm release label (must be ≤63 chars, alphanumeric start/end).', {
+        variant: 'error',
+      });
+      return;
+    }
     setUpdating(true);
     try {
       await kubeVirt.updateMonitoringConfig(localMonitorNamespace, localMonitorAccount);
@@ -1204,7 +502,7 @@ export default function KubeVirtSettings() {
       // If a Helm release name is provided, patch the ServiceMonitor with the release label
       // after a short delay to let the KubeVirt operator create it
       if (localHelmRelease && localMonitorNamespace) {
-        setTimeout(async () => {
+        monitorTimerRef.current = setTimeout(async () => {
           try {
             const smResp = (await ApiProxy.request(
               `/apis/monitoring.coreos.com/v1/namespaces/${localMonitorNamespace}/servicemonitors`
@@ -1297,15 +595,15 @@ export default function KubeVirtSettings() {
     }
   };
 
-  const handleHostDevicesConfigUpdate = async () => {
+  const handleHostDevicesConfigUpdate = async (pci: PciDevice[], mediated: MediatedDevice[]) => {
     setUpdating(true);
     try {
       const permittedHostDevices: PermittedHostDevices = {};
-      if (localPciDevices.length > 0) {
-        permittedHostDevices.pciHostDevices = localPciDevices;
+      if (pci.length > 0) {
+        permittedHostDevices.pciHostDevices = pci;
       }
-      if (localMediatedDevices.length > 0) {
-        permittedHostDevices.mediatedDevices = localMediatedDevices;
+      if (mediated.length > 0) {
+        permittedHostDevices.mediatedDevices = mediated;
       }
 
       await kubeVirt.updatePermittedHostDevices(
@@ -1320,28 +618,6 @@ export default function KubeVirtSettings() {
     } finally {
       setUpdating(false);
     }
-  };
-
-  const addPciDevice = () => {
-    if (newPciDevice.pciVendorSelector && newPciDevice.resourceName) {
-      setLocalPciDevices([...localPciDevices, { ...newPciDevice }]);
-      setNewPciDevice({ pciVendorSelector: '', resourceName: '' });
-    }
-  };
-
-  const removePciDevice = (index: number) => {
-    setLocalPciDevices(localPciDevices.filter((_, i) => i !== index));
-  };
-
-  const addMediatedDevice = () => {
-    if (newMediatedDevice.mdevNameSelector && newMediatedDevice.resourceName) {
-      setLocalMediatedDevices([...localMediatedDevices, { ...newMediatedDevice }]);
-      setNewMediatedDevice({ mdevNameSelector: '', resourceName: '' });
-    }
-  };
-
-  const removeMediatedDevice = (index: number) => {
-    setLocalMediatedDevices(localMediatedDevices.filter((_, i) => i !== index));
   };
 
   return (
@@ -1441,562 +717,7 @@ export default function KubeVirtSettings() {
         </Box>
       </SectionBox>
 
-      {/* System Health */}
-      <Box
-        mt={3}
-        sx={{
-          backgroundColor: 'rgba(76, 175, 80, 0.05)',
-          borderRadius: '4px',
-          border: '1px solid rgba(76, 175, 80, 0.2)',
-        }}
-      >
-        <Box
-          display="flex"
-          alignItems="center"
-          gap={1}
-          p={2}
-          sx={{ cursor: 'pointer' }}
-          onClick={() => setSystemHealthExpanded(!systemHealthExpanded)}
-        >
-          <Icon
-            icon="mdi:heart-pulse"
-            width={28}
-            height={28}
-            style={{ color: systemHealthExpanded ? '#4caf50' : '#9e9e9e' }}
-          />
-          <Typography variant="h6" flex={1}>
-            System Health
-          </Typography>
-          <Chip label="Requires Prometheus" size="small" variant="outlined" />
-          <Icon icon={systemHealthExpanded ? 'mdi:chevron-up' : 'mdi:chevron-down'} width={24} />
-        </Box>
-        <Collapse in={systemHealthExpanded}>
-          <Box p={2} pt={0}>
-            {healthPromAvailable === null ? (
-              <Box display="flex" justifyContent="center" py={3}>
-                <Typography variant="body2" color="text.secondary">
-                  Checking Prometheus availability...
-                </Typography>
-              </Box>
-            ) : !healthPromAvailable ? (
-              <Alert severity="info" sx={{ mb: 2 }}>
-                <Typography variant="body2">
-                  Prometheus is not available. Configure monitoring in{' '}
-                  <strong>General Configuration → Prometheus Monitoring</strong> to enable system
-                  health metrics.
-                </Typography>
-              </Alert>
-            ) : (
-              <>
-                {/* Component Status */}
-                {healthComponents.length > 0 && (
-                  <Grid container spacing={1.5} mb={2}>
-                    {healthComponents.map(comp => (
-                      <Grid item xs={6} sm={3} key={comp.name}>
-                        <Box
-                          sx={{
-                            p: 1.5,
-                            borderRadius: 1,
-                            bgcolor: comp.up
-                              ? 'rgba(76, 175, 80, 0.08)'
-                              : 'rgba(244, 67, 54, 0.08)',
-                            border: 1,
-                            borderColor: comp.up
-                              ? 'rgba(76, 175, 80, 0.3)'
-                              : 'rgba(244, 67, 54, 0.3)',
-                          }}
-                        >
-                          <Box display="flex" alignItems="center" gap={1}>
-                            <Icon
-                              icon={comp.up ? 'mdi:check-circle' : 'mdi:close-circle'}
-                              width={18}
-                              height={18}
-                              color={comp.up ? '#4caf50' : '#f44336'}
-                            />
-                            <Typography variant="body2" fontWeight={600}>
-                              {comp.name}
-                            </Typography>
-                          </Box>
-                        </Box>
-                      </Grid>
-                    ))}
-                  </Grid>
-                )}
-
-                {/* Time range selector */}
-                <Box display="flex" justifyContent="flex-end" mb={2}>
-                  <FormControl size="small" sx={{ minWidth: 150 }}>
-                    <Select
-                      value={healthTimeRange}
-                      onChange={e => setHealthTimeRange(e.target.value)}
-                    >
-                      <MenuItem value="30m">Last 30 minutes</MenuItem>
-                      <MenuItem value="1h">Last hour</MenuItem>
-                      <MenuItem value="6h">Last 6 hours</MenuItem>
-                      <MenuItem value="12h">Last 12 hours</MenuItem>
-                      <MenuItem value="1d">Last day</MenuItem>
-                      <MenuItem value="7d">Last 7 days</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Box>
-
-                <Grid container spacing={2}>
-                  {/* REST Client Errors */}
-                  <Grid item xs={12} md={6}>
-                    <Card variant="outlined">
-                      <CardContent>
-                        <Box display="flex" alignItems="center" gap={1} mb={1}>
-                          <Icon icon="mdi:lan-disconnect" width={20} color="#f44336" />
-                          <Typography variant="body2" fontWeight={600}>
-                            REST Client Errors by Component
-                          </Typography>
-                        </Box>
-                        <Typography variant="caption" color="text.secondary" display="block" mb={1}>
-                          4xx/5xx HTTP responses per 5-min window, by KubeVirt component. Spikes
-                          indicate API issues — check pod logs for details.
-                        </Typography>
-                        {healthCharts.restErrors.length > 0 ? (
-                          <ResponsiveContainer width="100%" height={200}>
-                            <LineChart data={healthCharts.restErrors}>
-                              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                              <XAxis dataKey="time" tick={{ fontSize: 10 }} />
-                              <YAxis tick={{ fontSize: 10 }} />
-                              <RechartsTooltip
-                                contentStyle={{
-                                  backgroundColor: '#1e1e1e',
-                                  border: '1px solid #444',
-                                  fontSize: '0.75rem',
-                                }}
-                                formatter={(value: number, name: string) => [
-                                  `${value.toFixed(1)} errors`,
-                                  name,
-                                ]}
-                              />
-                              <Legend
-                                onClick={e => toggleSeries('restErrors', e.dataKey as string)}
-                                formatter={(value: string) => (
-                                  <span
-                                    style={{
-                                      color: isSeriesHidden('restErrors', value)
-                                        ? '#666'
-                                        : undefined,
-                                      textDecoration: isSeriesHidden('restErrors', value)
-                                        ? 'line-through'
-                                        : undefined,
-                                      cursor: 'pointer',
-                                    }}
-                                  >
-                                    {value}
-                                  </span>
-                                )}
-                              />
-                              {Object.keys(healthCharts.restErrors[0] || {})
-                                .filter(k => k !== 'time')
-                                .map((key, i) => {
-                                  const compColors: Record<string, string> = {
-                                    'virt-api': '#2196f3',
-                                    'virt-controller': '#ff9800',
-                                    'virt-handler': '#4caf50',
-                                    'virt-operator': '#9c27b0',
-                                  };
-                                  return (
-                                    <Line
-                                      key={key}
-                                      type="monotone"
-                                      dataKey={key}
-                                      stroke={
-                                        compColors[key] ||
-                                        ['#f44336', '#ff9800', '#2196f3', '#4caf50'][i % 4]
-                                      }
-                                      dot={false}
-                                      strokeWidth={2}
-                                      hide={isSeriesHidden('restErrors', key)}
-                                    />
-                                  );
-                                })}
-                            </LineChart>
-                          </ResponsiveContainer>
-                        ) : (
-                          <Box
-                            height={200}
-                            display="flex"
-                            alignItems="center"
-                            justifyContent="center"
-                          >
-                            <Typography variant="body2" color="text.secondary">
-                              No error data — all clear
-                            </Typography>
-                          </Box>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </Grid>
-
-                  {/* API Latency p99 */}
-                  <Grid item xs={12} md={6}>
-                    <Card variant="outlined">
-                      <CardContent>
-                        <Box display="flex" alignItems="center" gap={1} mb={1}>
-                          <Icon icon="mdi:timer-outline" width={20} color="#ff9800" />
-                          <Typography variant="body2" fontWeight={600}>
-                            API Latency p99 (ms)
-                          </Typography>
-                        </Box>
-                        <Typography variant="caption" color="text.secondary" display="block" mb={1}>
-                          99th percentile REST client request latency by verb. High values indicate
-                          API server performance degradation.
-                        </Typography>
-                        {healthCharts.apiLatency.length > 0 ? (
-                          <ResponsiveContainer width="100%" height={200}>
-                            <LineChart data={healthCharts.apiLatency}>
-                              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                              <XAxis dataKey="time" tick={{ fontSize: 10 }} />
-                              <YAxis tick={{ fontSize: 10 }} unit="ms" />
-                              <RechartsTooltip
-                                contentStyle={{
-                                  backgroundColor: '#1e1e1e',
-                                  border: '1px solid #444',
-                                  fontSize: '0.75rem',
-                                }}
-                                formatter={(value: number, name: string) => [`${value} ms`, name]}
-                              />
-                              <Legend
-                                onClick={e => toggleSeries('apiLatency', e.dataKey as string)}
-                                formatter={(value: string) => (
-                                  <span
-                                    style={{
-                                      color: isSeriesHidden('apiLatency', value)
-                                        ? '#666'
-                                        : undefined,
-                                      textDecoration: isSeriesHidden('apiLatency', value)
-                                        ? 'line-through'
-                                        : undefined,
-                                      cursor: 'pointer',
-                                    }}
-                                  >
-                                    {value}
-                                  </span>
-                                )}
-                              />
-                              {Object.keys(healthCharts.apiLatency[0] || {})
-                                .filter(k => k !== 'time')
-                                .map((key, i) => {
-                                  const verbColors: Record<string, string> = {
-                                    GET: '#4caf50',
-                                    LIST: '#2196f3',
-                                    CREATE: '#ff9800',
-                                    UPDATE: '#e040fb',
-                                    PATCH: '#f44336',
-                                    DELETE: '#00bcd4',
-                                    WATCH: '#ffeb3b',
-                                  };
-                                  return (
-                                    <Line
-                                      key={key}
-                                      type="monotone"
-                                      dataKey={key}
-                                      stroke={
-                                        verbColors[key] ||
-                                        [
-                                          '#ff9800',
-                                          '#2196f3',
-                                          '#4caf50',
-                                          '#9c27b0',
-                                          '#f44336',
-                                          '#00bcd4',
-                                          '#e040fb',
-                                        ][i % 7]
-                                      }
-                                      dot={false}
-                                      strokeWidth={2}
-                                      hide={isSeriesHidden('apiLatency', key)}
-                                    />
-                                  );
-                                })}
-                            </LineChart>
-                          </ResponsiveContainer>
-                        ) : (
-                          <Box
-                            height={200}
-                            display="flex"
-                            alignItems="center"
-                            justifyContent="center"
-                          >
-                            <Typography variant="body2" color="text.secondary">
-                              No latency data available
-                            </Typography>
-                          </Box>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </Grid>
-
-                  {/* VMI Phase Transitions */}
-                  <Grid item xs={12} md={6}>
-                    <Card variant="outlined">
-                      <CardContent>
-                        <Box display="flex" alignItems="center" gap={1} mb={1}>
-                          <Icon icon="mdi:swap-horizontal" width={20} color="#2196f3" />
-                          <Typography variant="body2" fontWeight={600}>
-                            VMI Phase Transition Rate
-                          </Typography>
-                        </Box>
-                        <Typography variant="caption" color="text.secondary" display="block" mb={1}>
-                          Rate of VMI phase transitions by target phase. Helps track scheduling and
-                          lifecycle activity.
-                        </Typography>
-                        {healthCharts.vmiPhaseTransitions.length > 0 ? (
-                          <ResponsiveContainer width="100%" height={200}>
-                            <LineChart data={healthCharts.vmiPhaseTransitions}>
-                              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                              <XAxis dataKey="time" tick={{ fontSize: 10 }} />
-                              <YAxis tick={{ fontSize: 10 }} />
-                              <RechartsTooltip
-                                contentStyle={{
-                                  backgroundColor: '#1e1e1e',
-                                  border: '1px solid #444',
-                                  fontSize: '0.75rem',
-                                }}
-                              />
-                              <Legend
-                                onClick={e =>
-                                  toggleSeries('vmiPhaseTransitions', e.dataKey as string)
-                                }
-                                formatter={(value: string) => (
-                                  <span
-                                    style={{
-                                      color: isSeriesHidden('vmiPhaseTransitions', value)
-                                        ? '#666'
-                                        : undefined,
-                                      textDecoration: isSeriesHidden('vmiPhaseTransitions', value)
-                                        ? 'line-through'
-                                        : undefined,
-                                      cursor: 'pointer',
-                                    }}
-                                  >
-                                    {value}
-                                  </span>
-                                )}
-                              />
-                              {Object.keys(healthCharts.vmiPhaseTransitions[0] || {})
-                                .filter(k => k !== 'time')
-                                .map((key, i) => (
-                                  <Line
-                                    key={key}
-                                    type="monotone"
-                                    dataKey={key}
-                                    stroke={
-                                      ['#4caf50', '#2196f3', '#ff9800', '#f44336', '#9c27b0'][i % 5]
-                                    }
-                                    dot={false}
-                                    strokeWidth={2}
-                                    hide={isSeriesHidden('vmiPhaseTransitions', key)}
-                                  />
-                                ))}
-                            </LineChart>
-                          </ResponsiveContainer>
-                        ) : (
-                          <Box
-                            height={200}
-                            display="flex"
-                            alignItems="center"
-                            justifyContent="center"
-                          >
-                            <Typography variant="body2" color="text.secondary">
-                              No transition data
-                            </Typography>
-                          </Box>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </Grid>
-
-                  {/* vCPU Wait Time */}
-                  <Grid item xs={12} md={6}>
-                    <Card variant="outlined">
-                      <CardContent>
-                        <Box display="flex" alignItems="center" gap={1} mb={1}>
-                          <Icon icon="mdi:timer-sand" width={20} color="#9c27b0" />
-                          <Typography variant="body2" fontWeight={600}>
-                            vCPU Wait Time (rate)
-                          </Typography>
-                        </Box>
-                        <Typography variant="caption" color="text.secondary" display="block" mb={1}>
-                          Rate of time vCPUs spend waiting. High values indicate host CPU contention
-                          or overcommitment.
-                        </Typography>
-                        {healthCharts.vcpuWait.length > 0 ? (
-                          <ResponsiveContainer width="100%" height={200}>
-                            <LineChart data={healthCharts.vcpuWait}>
-                              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                              <XAxis dataKey="time" tick={{ fontSize: 10 }} />
-                              <YAxis tick={{ fontSize: 10 }} unit="s" />
-                              <RechartsTooltip
-                                contentStyle={{
-                                  backgroundColor: '#1e1e1e',
-                                  border: '1px solid #444',
-                                  fontSize: '0.75rem',
-                                }}
-                                formatter={(value: number, name: string) => [`${value} s`, name]}
-                              />
-                              <Line
-                                type="monotone"
-                                dataKey="value"
-                                stroke="#9c27b0"
-                                dot={false}
-                                strokeWidth={2}
-                                name="vCPU wait"
-                              />
-                            </LineChart>
-                          </ResponsiveContainer>
-                        ) : (
-                          <Box
-                            height={200}
-                            display="flex"
-                            alignItems="center"
-                            justifyContent="center"
-                          >
-                            <Typography variant="body2" color="text.secondary">
-                              No vCPU wait data
-                            </Typography>
-                          </Box>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </Grid>
-
-                  {/* Outdated VMs */}
-                  <Grid item xs={12} md={6}>
-                    <Card variant="outlined">
-                      <CardContent>
-                        <Box display="flex" alignItems="center" gap={1} mb={1}>
-                          <Icon icon="mdi:update" width={20} color="#ff5722" />
-                          <Typography variant="body2" fontWeight={600}>
-                            Outdated VMIs
-                          </Typography>
-                        </Box>
-                        <Typography variant="caption" color="text.secondary" display="block" mb={1}>
-                          Number of VMIs running with an outdated virt-launcher. These need a
-                          restart to pick up the latest KubeVirt version.
-                        </Typography>
-                        {healthCharts.outdatedVMs.length > 0 ? (
-                          <ResponsiveContainer width="100%" height={200}>
-                            <LineChart data={healthCharts.outdatedVMs}>
-                              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                              <XAxis dataKey="time" tick={{ fontSize: 10 }} />
-                              <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
-                              <RechartsTooltip
-                                contentStyle={{
-                                  backgroundColor: '#1e1e1e',
-                                  border: '1px solid #444',
-                                  fontSize: '0.75rem',
-                                }}
-                              />
-                              <Line
-                                type="monotone"
-                                dataKey="value"
-                                stroke="#ff5722"
-                                dot={false}
-                                strokeWidth={2}
-                                name="Outdated VMIs"
-                              />
-                            </LineChart>
-                          </ResponsiveContainer>
-                        ) : (
-                          <Box
-                            height={200}
-                            display="flex"
-                            alignItems="center"
-                            justifyContent="center"
-                          >
-                            <Typography variant="body2" color="text.secondary">
-                              No outdated VM data
-                            </Typography>
-                          </Box>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </Grid>
-
-                  {/* Migration Data Remaining */}
-                  <Grid item xs={12} md={6}>
-                    <Card variant="outlined">
-                      <CardContent>
-                        <Box display="flex" alignItems="center" gap={1} mb={1}>
-                          <Icon icon="mdi:transfer" width={20} color="#00bcd4" />
-                          <Typography variant="body2" fontWeight={600}>
-                            Migration Data Remaining
-                          </Typography>
-                        </Box>
-                        <Typography variant="caption" color="text.secondary" display="block" mb={1}>
-                          Bytes remaining to transfer for active migrations. Persistently high
-                          values may indicate bandwidth or convergence issues.
-                        </Typography>
-                        {healthCharts.storagePending.length > 0 ? (
-                          <ResponsiveContainer width="100%" height={200}>
-                            <LineChart data={healthCharts.storagePending}>
-                              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                              <XAxis dataKey="time" tick={{ fontSize: 10 }} />
-                              <YAxis
-                                tick={{ fontSize: 10 }}
-                                tickFormatter={v =>
-                                  v >= 1073741824
-                                    ? `${(v / 1073741824).toFixed(1)}G`
-                                    : v >= 1048576
-                                    ? `${(v / 1048576).toFixed(1)}M`
-                                    : v >= 1024
-                                    ? `${(v / 1024).toFixed(1)}K`
-                                    : `${v}B`
-                                }
-                              />
-                              <RechartsTooltip
-                                contentStyle={{
-                                  backgroundColor: '#1e1e1e',
-                                  border: '1px solid #444',
-                                  fontSize: '0.75rem',
-                                }}
-                                formatter={(v: number) => [
-                                  v >= 1073741824
-                                    ? `${(v / 1073741824).toFixed(1)} GiB`
-                                    : v >= 1048576
-                                    ? `${(v / 1048576).toFixed(1)} MiB`
-                                    : v >= 1024
-                                    ? `${(v / 1024).toFixed(1)} KiB`
-                                    : `${v} B`,
-                                ]}
-                              />
-                              <Line
-                                type="monotone"
-                                dataKey="value"
-                                stroke="#00bcd4"
-                                dot={false}
-                                strokeWidth={2}
-                                name="Remaining bytes"
-                              />
-                            </LineChart>
-                          </ResponsiveContainer>
-                        ) : (
-                          <Box
-                            height={200}
-                            display="flex"
-                            alignItems="center"
-                            justifyContent="center"
-                          >
-                            <Typography variant="body2" color="text.secondary">
-                              No active migrations
-                            </Typography>
-                          </Box>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                </Grid>
-              </>
-            )}
-          </Box>
-        </Collapse>
-      </Box>
-
+      <SystemHealthSection />
       {/* Plugin Features */}
       <Box
         mt={3}
@@ -2351,7 +1072,12 @@ export default function KubeVirtSettings() {
                       fullWidth
                       variant="contained"
                       size="small"
-                      disabled={!newLabelName || !newLabelKey}
+                      disabled={
+                        !newLabelName ||
+                        !newLabelKey ||
+                        !isValidColumnName(newLabelName) ||
+                        !isValidK8sLabelKey(newLabelKey)
+                      }
                       onClick={() => {
                         addLabelColumn({ label: newLabelName, labelKey: newLabelKey });
                         setLabelColumns(getLabelColumns());
@@ -2547,7 +1273,10 @@ export default function KubeVirtSettings() {
                           });
                         } catch (error: unknown) {
                           enqueueSnackbar(
-                            `Failed to remove monitoring config: ${(error as Error).message}`,
+                            `Failed to remove monitoring config: ${safeError(
+                              error,
+                              'monitoring-remove'
+                            )}`,
                             { variant: 'error' }
                           );
                         } finally {
@@ -2915,827 +1644,15 @@ export default function KubeVirtSettings() {
           </Box>
         </Collapse>
       </Box>
-      {/* Feature Gates */}
-      <Box mt={3}>
-        <SectionBox title="Feature Gates">
-          <Alert severity="info" sx={{ mb: 3 }}>
-            Feature gates enable experimental or optional features. Changes require KubeVirt pods to
-            restart.
-          </Alert>
-
-          <Box display="flex" gap={3}>
-            {/* Floating sidebar navigation */}
-            <Box
-              sx={{
-                position: 'sticky',
-                top: 16,
-                alignSelf: 'flex-start',
-                minWidth: 180,
-                display: { xs: 'none', md: 'block' },
-              }}
-            >
-              <Typography variant="subtitle2" color="text.secondary" mb={1} px={1}>
-                Categories
-              </Typography>
-              {Object.entries(FEATURE_GATE_CATEGORIES).map(([category, { icon, color }]) => (
-                <Box
-                  key={category}
-                  onClick={() => {
-                    setActiveCategory(activeCategory === category ? null : category);
-                    document
-                      .getElementById(`fg-category-${category}`)
-                      ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                  }}
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 1,
-                    px: 1.5,
-                    py: 1,
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    backgroundColor: activeCategory === category ? `${color}15` : 'transparent',
-                    borderLeft:
-                      activeCategory === category ? `3px solid ${color}` : '3px solid transparent',
-                    '&:hover': {
-                      backgroundColor: `${color}10`,
-                    },
-                  }}
-                >
-                  <Icon icon={icon} width={18} style={{ color }} />
-                  <Typography variant="body2" fontWeight={activeCategory === category ? 600 : 400}>
-                    {category}
-                  </Typography>
-                </Box>
-              ))}
-            </Box>
-
-            {/* Feature gates content */}
-            <Box flex={1}>
-              <Box display="flex" alignItems="center" gap={1} mb={2} flexWrap="wrap">
-                {(['GA', 'Beta', 'Alpha'] as FeatureGateState[]).map(level => {
-                  const chipColor =
-                    level === 'GA' ? '#4caf50' : level === 'Beta' ? '#2196f3' : '#ff9800';
-                  const active = maturityFilter.has(level);
-                  return (
-                    <Chip
-                      key={level}
-                      label={level}
-                      size="small"
-                      onClick={() => {
-                        setMaturityFilter(prev => {
-                          const next = new Set(prev);
-                          if (next.has(level)) next.delete(level);
-                          else next.add(level);
-                          return next;
-                        });
-                      }}
-                      sx={{
-                        borderColor: chipColor,
-                        color: active ? '#fff' : chipColor,
-                        backgroundColor: active ? chipColor : 'transparent',
-                        fontWeight: 600,
-                        '&:hover': {
-                          backgroundColor: active ? chipColor : `${chipColor}20`,
-                          color: active ? '#fff' : chipColor,
-                        },
-                      }}
-                      variant="outlined"
-                    />
-                  );
-                })}
-                {featureGateSearchOpen ? (
-                  <TextField
-                    size="small"
-                    placeholder="Search feature gates..."
-                    defaultValue=""
-                    onChange={e => {
-                      const sanitized = sanitizeFeatureGateSearch(e.target.value);
-                      if (e.target.value !== sanitized) e.target.value = sanitized;
-                      clearTimeout(searchTimerRef.current);
-                      searchTimerRef.current = setTimeout(() => setFeatureGateSearch(sanitized), 150);
-                    }}
-                    inputRef={el => {
-                      searchInputRef.current = el;
-                      if (el) el.focus();
-                    }}
-                    sx={{ flex: 1, minWidth: 200 }}
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <Icon icon="mdi:magnify" width={20} />
-                        </InputAdornment>
-                      ),
-                      endAdornment: (
-                        <InputAdornment position="end">
-                          <IconButton
-                            size="small"
-                            onClick={() => {
-                              if (searchInputRef.current) searchInputRef.current.value = '';
-                              clearTimeout(searchTimerRef.current);
-                              setFeatureGateSearch('');
-                              setFeatureGateSearchOpen(false);
-                            }}
-                          >
-                            <Icon icon="mdi:close" width={18} />
-                          </IconButton>
-                        </InputAdornment>
-                      ),
-                    }}
-                  />
-                ) : (
-                  <IconButton
-                    size="small"
-                    onClick={() => setFeatureGateSearchOpen(true)}
-                    sx={{ color: 'text.secondary' }}
-                  >
-                    <Icon icon="mdi:magnify" width={22} />
-                  </IconButton>
-                )}
-              </Box>
-              {Object.entries(FEATURE_GATE_CATEGORIES).map(([category, { icon, color, gates }]) => {
-                // Get KubeVirt version for filtering
-                const kvVersion = kubeVirt?.getVersion() || '1.7.0';
-
-                // Filter gates available in this version, apply search, and sort by state
-                const searchLower = debouncedSearch.toLowerCase();
-                const availableGates = gates
-                  .filter(gate => isGateAvailableInVersion(gate, kvVersion))
-                  .filter(
-                    gate =>
-                      !debouncedSearch ||
-                      gate.name.toLowerCase().includes(searchLower) ||
-                      gate.description.toLowerCase().includes(searchLower)
-                  )
-                  .map(gate => ({
-                    ...gate,
-                    currentState: getGateStateForVersion(gate, kvVersion) as FeatureGateState,
-                  }))
-                  .filter(
-                    gate => maturityFilter.size === 0 || maturityFilter.has(gate.currentState)
-                  )
-                  .sort((a, b) => STATE_ORDER[a.currentState] - STATE_ORDER[b.currentState]);
-
-                // Skip category if no gates available
-                if (availableGates.length === 0) return null;
-
-                return (
-                  <Box key={category} id={`fg-category-${category}`} mb={3}>
-                    <Box display="flex" alignItems="center" gap={1} mb={2}>
-                      <Icon icon={icon} width={24} style={{ color }} />
-                      <Typography variant="h6">{category}</Typography>
-                    </Box>
-
-                    {availableGates.map(({ name, description, currentState }) => {
-                      const isEnabled = enabledFeatureGates.includes(name);
-                      const isLiveMigration = name === 'LiveMigration';
-                      const isHostDevices = name === 'HostDevices';
-
-                      return (
-                        <Box key={name}>
-                          <Box
-                            display="flex"
-                            justifyContent="space-between"
-                            alignItems="center"
-                            py={1.5}
-                          >
-                            <Box flex={1}>
-                              <Box display="flex" alignItems="center" gap={1}>
-                                <Typography variant="body1" fontWeight={500}>
-                                  {name}
-                                </Typography>
-                                <Chip
-                                  label={currentState}
-                                  size="small"
-                                  sx={{
-                                    height: 20,
-                                    fontSize: '0.7rem',
-                                    fontWeight: 600,
-                                    backgroundColor:
-                                      currentState === 'GA'
-                                        ? '#4caf50'
-                                        : currentState === 'Beta'
-                                        ? '#2196f3'
-                                        : '#ff9800',
-                                    color: 'white',
-                                  }}
-                                />
-                              </Box>
-                              <Typography variant="body2" color="text.secondary">
-                                {description}
-                              </Typography>
-                            </Box>
-                            {isLiveMigration && isEnabled && (
-                              <IconButton
-                                size="small"
-                                onClick={() => setMigrationConfigExpanded(!migrationConfigExpanded)}
-                                sx={{ color: migrationConfigExpanded ? '#4caf50' : '#9e9e9e' }}
-                              >
-                                <Icon icon="mdi:cog" width={24} />
-                              </IconButton>
-                            )}
-                            {isHostDevices && isEnabled && (
-                              <IconButton
-                                size="small"
-                                onClick={() =>
-                                  setHostDevicesConfigExpanded(!hostDevicesConfigExpanded)
-                                }
-                                sx={{ color: hostDevicesConfigExpanded ? '#4caf50' : '#9e9e9e' }}
-                              >
-                                <Icon icon="mdi:cog" width={24} />
-                              </IconButton>
-                            )}
-                            <FormControlLabel
-                              control={
-                                <Switch
-                                  checked={isEnabled}
-                                  onChange={e => handleFeatureGateToggle(name, e.target.checked)}
-                                  disabled={updating}
-                                  sx={{
-                                    '& .MuiSwitch-switchBase.Mui-checked': {
-                                      color: '#4caf50',
-                                    },
-                                    '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                                      backgroundColor: '#4caf50',
-                                    },
-                                    '& .MuiSwitch-track': {
-                                      backgroundColor: isEnabled ? '#4caf50' : '#9e9e9e',
-                                    },
-                                  }}
-                                />
-                              }
-                              label={
-                                <Typography
-                                  variant="body2"
-                                  sx={{
-                                    color: isEnabled ? '#4caf50' : '#f44336',
-                                    fontWeight: isEnabled ? 600 : 400,
-                                    minWidth: 70,
-                                  }}
-                                >
-                                  {isEnabled ? 'Enabled' : 'Disabled'}
-                                </Typography>
-                              }
-                            />
-                          </Box>
-
-                          {/* Inline info for sidebar-affecting features */}
-                          {sidebarReloadWarnings.includes(name) && (
-                            <Alert
-                              severity="info"
-                              sx={{ mb: 2, ml: 2 }}
-                              icon={<Icon icon="mdi:information" width={22} />}
-                            >
-                              You will be notified when KubeVirt is updated and console can be
-                              reloaded
-                            </Alert>
-                          )}
-
-                          {/* Migration Configuration - shown when LiveMigration is enabled */}
-                          {isLiveMigration && isEnabled && (
-                            <Collapse in={migrationConfigExpanded}>
-                              <Box
-                                sx={{
-                                  ml: 4,
-                                  mb: 2,
-                                  p: 2,
-                                  backgroundColor: 'rgba(76, 175, 80, 0.05)',
-                                  borderRadius: '4px',
-                                  border: '1px solid rgba(76, 175, 80, 0.2)',
-                                }}
-                              >
-                                <Typography variant="subtitle2" fontWeight={600} mb={2}>
-                                  Migration Configuration
-                                </Typography>
-                                <Grid container spacing={2}>
-                                  <Grid item xs={12} sm={6}>
-                                    <TextField
-                                      fullWidth
-                                      label="Max Migrations per Cluster"
-                                      type="number"
-                                      size="small"
-                                      placeholder="5"
-                                      value={localMigrationConfig.parallelMigrationsPerCluster}
-                                      onChange={e =>
-                                        setLocalMigrationConfig({
-                                          ...localMigrationConfig,
-                                          parallelMigrationsPerCluster: e.target.value,
-                                        })
-                                      }
-                                      helperText="Maximum concurrent migrations in cluster (default: 5)"
-                                    />
-                                  </Grid>
-                                  <Grid item xs={12} sm={6}>
-                                    <TextField
-                                      fullWidth
-                                      label="Max Migrations per Node"
-                                      type="number"
-                                      size="small"
-                                      placeholder="2"
-                                      value={localMigrationConfig.parallelOutboundMigrationsPerNode}
-                                      onChange={e =>
-                                        setLocalMigrationConfig({
-                                          ...localMigrationConfig,
-                                          parallelOutboundMigrationsPerNode: e.target.value,
-                                        })
-                                      }
-                                      helperText="Maximum outbound migrations per node (default: 2)"
-                                    />
-                                  </Grid>
-                                  <Grid item xs={12} sm={6}>
-                                    <TextField
-                                      fullWidth
-                                      label="Bandwidth per Migration"
-                                      size="small"
-                                      placeholder="0 (unlimited)"
-                                      value={localMigrationConfig.bandwidthPerMigration}
-                                      onChange={e =>
-                                        setLocalMigrationConfig({
-                                          ...localMigrationConfig,
-                                          bandwidthPerMigration: e.target.value,
-                                        })
-                                      }
-                                      helperText="e.g., 64Mi, 1Gi (default: 0 = unlimited)"
-                                    />
-                                  </Grid>
-                                  <Grid item xs={12} sm={6}>
-                                    <TextField
-                                      fullWidth
-                                      label="Migration Network"
-                                      size="small"
-                                      placeholder="Leave empty for pod network"
-                                      value={localMigrationConfig.network}
-                                      onChange={e =>
-                                        setLocalMigrationConfig({
-                                          ...localMigrationConfig,
-                                          network: e.target.value,
-                                        })
-                                      }
-                                      helperText="NetworkAttachmentDefinition name for dedicated migration network"
-                                    />
-                                  </Grid>
-                                  <Grid item xs={12} sm={6}>
-                                    <TextField
-                                      fullWidth
-                                      label="Progress Timeout (seconds)"
-                                      type="number"
-                                      size="small"
-                                      placeholder="150"
-                                      value={localMigrationConfig.progressTimeout}
-                                      onChange={e =>
-                                        setLocalMigrationConfig({
-                                          ...localMigrationConfig,
-                                          progressTimeout: e.target.value,
-                                        })
-                                      }
-                                      helperText="Timeout for stuck migrations (default: 150s)"
-                                    />
-                                  </Grid>
-                                  <Grid item xs={12} sm={6}>
-                                    <TextField
-                                      fullWidth
-                                      label="Completion Timeout per GiB (seconds)"
-                                      type="number"
-                                      size="small"
-                                      placeholder="150"
-                                      value={localMigrationConfig.completionTimeoutPerGiB}
-                                      onChange={e =>
-                                        setLocalMigrationConfig({
-                                          ...localMigrationConfig,
-                                          completionTimeoutPerGiB: e.target.value,
-                                        })
-                                      }
-                                      helperText="Timeout per GiB of memory (default: 150s)"
-                                    />
-                                  </Grid>
-                                  <Grid item xs={12} sm={6}>
-                                    <FormControlLabel
-                                      control={
-                                        <Switch
-                                          checked={localMigrationConfig.allowAutoConverge}
-                                          onChange={e =>
-                                            setLocalMigrationConfig({
-                                              ...localMigrationConfig,
-                                              allowAutoConverge: e.target.checked,
-                                            })
-                                          }
-                                          color="success"
-                                        />
-                                      }
-                                      label="Allow Auto-Converge"
-                                    />
-                                    <Typography
-                                      variant="caption"
-                                      display="block"
-                                      color="text.secondary"
-                                    >
-                                      Throttle CPU for stuck migrations
-                                    </Typography>
-                                  </Grid>
-                                  <Grid item xs={12} sm={6}>
-                                    <FormControlLabel
-                                      control={
-                                        <Switch
-                                          checked={localMigrationConfig.allowPostCopy}
-                                          onChange={e =>
-                                            setLocalMigrationConfig({
-                                              ...localMigrationConfig,
-                                              allowPostCopy: e.target.checked,
-                                            })
-                                          }
-                                          color="success"
-                                        />
-                                      }
-                                      label="Allow Post-Copy"
-                                    />
-                                    <Typography
-                                      variant="caption"
-                                      display="block"
-                                      color="text.secondary"
-                                    >
-                                      Allow post-copy migration strategy
-                                    </Typography>
-                                  </Grid>
-                                  <Grid item xs={12}>
-                                    <Box display="flex" justifyContent="flex-end" mt={1} gap={1}>
-                                      <Button
-                                        variant="outlined"
-                                        size="small"
-                                        onClick={() => setMigrationConfigExpanded(false)}
-                                      >
-                                        Cancel
-                                      </Button>
-                                      <Button
-                                        variant="contained"
-                                        size="small"
-                                        onClick={handleMigrationConfigUpdate}
-                                        disabled={updating}
-                                        sx={{
-                                          backgroundColor: '#4caf50',
-                                          '&:hover': {
-                                            backgroundColor: '#45a049',
-                                          },
-                                        }}
-                                      >
-                                        Apply Configuration
-                                      </Button>
-                                    </Box>
-                                  </Grid>
-                                </Grid>
-                              </Box>
-                            </Collapse>
-                          )}
-
-                          {/* Host Devices Configuration - shown when HostDevices is enabled */}
-                          {isHostDevices && isEnabled && (
-                            <Collapse in={hostDevicesConfigExpanded}>
-                              <Box
-                                sx={{
-                                  ml: 4,
-                                  mb: 2,
-                                  p: 2,
-                                  backgroundColor: 'rgba(76, 175, 80, 0.05)',
-                                  borderRadius: '4px',
-                                  border: '1px solid rgba(76, 175, 80, 0.2)',
-                                }}
-                              >
-                                <Typography variant="subtitle2" fontWeight={600} mb={2}>
-                                  Permitted Host Devices Configuration
-                                </Typography>
-
-                                {/* PCI Host Devices */}
-                                <Box mb={3}>
-                                  <Typography variant="body2" fontWeight={500} mb={1}>
-                                    PCI Host Devices
-                                  </Typography>
-                                  <Typography
-                                    variant="caption"
-                                    color="text.secondary"
-                                    display="block"
-                                    mb={2}
-                                  >
-                                    Configure PCI devices (GPUs, NICs, etc.) that can be passed
-                                    through to VMs
-                                  </Typography>
-
-                                  {/* Add new PCI device form */}
-                                  <Grid container spacing={1} alignItems="flex-end" mb={2}>
-                                    <Grid item xs={12} sm={5}>
-                                      <TextField
-                                        fullWidth
-                                        size="small"
-                                        label="PCI Vendor Selector"
-                                        placeholder="e.g., 10DE:1DB6"
-                                        value={newPciDevice.pciVendorSelector}
-                                        onChange={e =>
-                                          setNewPciDevice({
-                                            ...newPciDevice,
-                                            pciVendorSelector: e.target.value,
-                                          })
-                                        }
-                                        helperText="Vendor:Device ID"
-                                      />
-                                    </Grid>
-                                    <Grid item xs={12} sm={5}>
-                                      <TextField
-                                        fullWidth
-                                        size="small"
-                                        label="Resource Name"
-                                        placeholder="e.g., nvidia.com/GP102GL"
-                                        value={newPciDevice.resourceName}
-                                        onChange={e =>
-                                          setNewPciDevice({
-                                            ...newPciDevice,
-                                            resourceName: e.target.value,
-                                          })
-                                        }
-                                        helperText="Kubernetes resource name"
-                                      />
-                                    </Grid>
-                                    <Grid item xs={12} sm={2}>
-                                      <Button
-                                        fullWidth
-                                        variant="outlined"
-                                        size="small"
-                                        onClick={addPciDevice}
-                                        disabled={
-                                          !newPciDevice.pciVendorSelector ||
-                                          !newPciDevice.resourceName
-                                        }
-                                        startIcon={<Icon icon="mdi:plus" />}
-                                      >
-                                        Add
-                                      </Button>
-                                    </Grid>
-                                  </Grid>
-
-                                  {/* List of PCI devices */}
-                                  {localPciDevices.length > 0 ? (
-                                    <Box display="flex" flexDirection="column" gap={1}>
-                                      {localPciDevices.map((device, index) => (
-                                        <Box
-                                          key={index}
-                                          display="flex"
-                                          alignItems="center"
-                                          justifyContent="space-between"
-                                          p={1}
-                                          sx={{
-                                            backgroundColor: 'rgba(0, 0, 0, 0.02)',
-                                            borderRadius: '4px',
-                                          }}
-                                        >
-                                          <Box>
-                                            <Typography variant="body2" fontWeight={500}>
-                                              {device.pciVendorSelector}
-                                            </Typography>
-                                            <Typography variant="caption" color="text.secondary">
-                                              {device.resourceName}
-                                            </Typography>
-                                          </Box>
-                                          <IconButton
-                                            size="small"
-                                            color="error"
-                                            onClick={() => removePciDevice(index)}
-                                          >
-                                            <Icon icon="mdi:delete" width={18} />
-                                          </IconButton>
-                                        </Box>
-                                      ))}
-                                    </Box>
-                                  ) : (
-                                    <Typography
-                                      variant="body2"
-                                      color="text.secondary"
-                                      fontStyle="italic"
-                                    >
-                                      No PCI devices configured
-                                    </Typography>
-                                  )}
-                                </Box>
-
-                                <Divider sx={{ my: 2 }} />
-
-                                {/* Mediated Devices */}
-                                <Box mb={2}>
-                                  <Typography variant="body2" fontWeight={500} mb={1}>
-                                    Mediated Devices (vGPU)
-                                  </Typography>
-                                  <Typography
-                                    variant="caption"
-                                    color="text.secondary"
-                                    display="block"
-                                    mb={2}
-                                  >
-                                    Configure mediated devices (vGPUs) that can be assigned to VMs
-                                  </Typography>
-
-                                  {/* Add new mediated device form */}
-                                  <Grid container spacing={1} alignItems="flex-end" mb={2}>
-                                    <Grid item xs={12} sm={5}>
-                                      <TextField
-                                        fullWidth
-                                        size="small"
-                                        label="MDEV Name Selector"
-                                        placeholder="e.g., GRID T4-1Q"
-                                        value={newMediatedDevice.mdevNameSelector}
-                                        onChange={e =>
-                                          setNewMediatedDevice({
-                                            ...newMediatedDevice,
-                                            mdevNameSelector: e.target.value,
-                                          })
-                                        }
-                                        helperText="Mediated device type name"
-                                      />
-                                    </Grid>
-                                    <Grid item xs={12} sm={5}>
-                                      <TextField
-                                        fullWidth
-                                        size="small"
-                                        label="Resource Name"
-                                        placeholder="e.g., nvidia.com/GRID_T4-1Q"
-                                        value={newMediatedDevice.resourceName}
-                                        onChange={e =>
-                                          setNewMediatedDevice({
-                                            ...newMediatedDevice,
-                                            resourceName: e.target.value,
-                                          })
-                                        }
-                                        helperText="Kubernetes resource name"
-                                      />
-                                    </Grid>
-                                    <Grid item xs={12} sm={2}>
-                                      <Button
-                                        fullWidth
-                                        variant="outlined"
-                                        size="small"
-                                        onClick={addMediatedDevice}
-                                        disabled={
-                                          !newMediatedDevice.mdevNameSelector ||
-                                          !newMediatedDevice.resourceName
-                                        }
-                                        startIcon={<Icon icon="mdi:plus" />}
-                                      >
-                                        Add
-                                      </Button>
-                                    </Grid>
-                                  </Grid>
-
-                                  {/* List of mediated devices */}
-                                  {localMediatedDevices.length > 0 ? (
-                                    <Box display="flex" flexDirection="column" gap={1}>
-                                      {localMediatedDevices.map((device, index) => (
-                                        <Box
-                                          key={index}
-                                          display="flex"
-                                          alignItems="center"
-                                          justifyContent="space-between"
-                                          p={1}
-                                          sx={{
-                                            backgroundColor: 'rgba(0, 0, 0, 0.02)',
-                                            borderRadius: '4px',
-                                          }}
-                                        >
-                                          <Box>
-                                            <Typography variant="body2" fontWeight={500}>
-                                              {device.mdevNameSelector}
-                                            </Typography>
-                                            <Typography variant="caption" color="text.secondary">
-                                              {device.resourceName}
-                                            </Typography>
-                                          </Box>
-                                          <IconButton
-                                            size="small"
-                                            color="error"
-                                            onClick={() => removeMediatedDevice(index)}
-                                          >
-                                            <Icon icon="mdi:delete" width={18} />
-                                          </IconButton>
-                                        </Box>
-                                      ))}
-                                    </Box>
-                                  ) : (
-                                    <Typography
-                                      variant="body2"
-                                      color="text.secondary"
-                                      fontStyle="italic"
-                                    >
-                                      No mediated devices configured
-                                    </Typography>
-                                  )}
-                                </Box>
-
-                                <Box display="flex" justifyContent="flex-end" mt={2} gap={1}>
-                                  <Button
-                                    variant="outlined"
-                                    size="small"
-                                    onClick={() => setHostDevicesConfigExpanded(false)}
-                                  >
-                                    Cancel
-                                  </Button>
-                                  <Button
-                                    variant="contained"
-                                    size="small"
-                                    onClick={handleHostDevicesConfigUpdate}
-                                    disabled={updating}
-                                    sx={{
-                                      backgroundColor: '#4caf50',
-                                      '&:hover': {
-                                        backgroundColor: '#45a049',
-                                      },
-                                    }}
-                                  >
-                                    Apply Configuration
-                                  </Button>
-                                </Box>
-                              </Box>
-                            </Collapse>
-                          )}
-
-                          <Divider />
-                        </Box>
-                      );
-                    })}
-                  </Box>
-                );
-              })}
-
-              {/* Show any custom feature gates that aren't in the known list */}
-              {enabledFeatureGates
-                .filter(fg => !ALL_KNOWN_GATES.includes(fg))
-                .filter(
-                  fg =>
-                    !debouncedSearch || fg.toLowerCase().includes(debouncedSearch.toLowerCase())
-                ).length > 0 && (
-                <Box mb={3}>
-                  <Box display="flex" alignItems="center" gap={1} mb={2}>
-                    <Icon icon="mdi:puzzle" width={24} style={{ color: '#9e9e9e' }} />
-                    <Typography variant="h6">Custom</Typography>
-                  </Box>
-                  {enabledFeatureGates
-                    .filter(fg => !ALL_KNOWN_GATES.includes(fg))
-                    .filter(
-                      fg =>
-                        !debouncedSearch ||
-                        fg.toLowerCase().includes(debouncedSearch.toLowerCase())
-                    )
-                    .map(customFG => (
-                      <Box key={customFG}>
-                        <Box
-                          display="flex"
-                          justifyContent="space-between"
-                          alignItems="center"
-                          py={1.5}
-                        >
-                          <Box flex={1}>
-                            <Typography variant="body1" fontWeight={500}>
-                              {customFG}
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary">
-                              Custom feature gate
-                            </Typography>
-                          </Box>
-                          <FormControlLabel
-                            control={
-                              <Switch
-                                checked
-                                onChange={e => handleFeatureGateToggle(customFG, e.target.checked)}
-                                disabled={updating}
-                                sx={{
-                                  '& .MuiSwitch-switchBase.Mui-checked': {
-                                    color: '#4caf50',
-                                  },
-                                  '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                                    backgroundColor: '#4caf50',
-                                  },
-                                  '& .MuiSwitch-track': {
-                                    backgroundColor: '#4caf50',
-                                  },
-                                }}
-                              />
-                            }
-                            label={
-                              <Typography
-                                variant="body2"
-                                sx={{
-                                  color: '#4caf50',
-                                  fontWeight: 600,
-                                  minWidth: 70,
-                                }}
-                              >
-                                Enabled
-                              </Typography>
-                            }
-                          />
-                        </Box>
-                        <Divider />
-                      </Box>
-                    ))}
-                </Box>
-              )}
-            </Box>
-          </Box>
-        </SectionBox>
-      </Box>
+      <FeatureGatesSection
+        kubeVirt={kubeVirt}
+        enabledFeatureGates={enabledFeatureGates}
+        sidebarReloadWarnings={sidebarReloadWarnings}
+        updating={updating}
+        onToggleFeatureGate={handleFeatureGateToggle}
+        onUpdateMigrationConfig={handleMigrationConfigUpdate}
+        onUpdateHostDevices={handleHostDevicesConfigUpdate}
+      />
 
       {/* CDI Feature Gates */}
       {cdi && cdi.getFeatureGates().length > 0 && (

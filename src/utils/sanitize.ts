@@ -38,6 +38,60 @@ export function isValidK8sName(value: string): boolean {
 }
 
 /**
+ * Validate a Kubernetes label value (RFC 1123).
+ * Must be ≤63 chars, start/end with alphanumeric, middle can include [-_.].
+ * Empty string is valid per K8s spec.
+ */
+export function isValidK8sLabelValue(value: string): boolean {
+  if (value === '') return true;
+  return /^[a-zA-Z0-9]([a-zA-Z0-9._-]{0,61}[a-zA-Z0-9])?$/.test(value);
+}
+
+/**
+ * Validate a PCI vendor selector (e.g., "10DE:1DB6").
+ * Format: 4 hex digits, colon, 4 hex digits.
+ */
+export function isValidPciSelector(value: string): boolean {
+  return /^[0-9A-Fa-f]{4}:[0-9A-Fa-f]{4}$/.test(value);
+}
+
+/**
+ * Validate a Kubernetes extended resource name (e.g., "nvidia.com/GP102GL").
+ * Format: optional DNS domain prefix + "/" + name segment.
+ */
+export function isValidResourceName(value: string): boolean {
+  return /^([a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?\/)?[a-zA-Z0-9]([a-zA-Z0-9._-]{0,61}[a-zA-Z0-9])?$/.test(
+    value
+  );
+}
+
+/**
+ * Validate a Kubernetes label key (e.g., "app.kubernetes.io/name").
+ * Format: optional DNS prefix + "/" + name, name ≤63 chars.
+ */
+export function isValidK8sLabelKey(value: string): boolean {
+  return /^([a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?\/)?[a-zA-Z]([a-zA-Z0-9._-]{0,61}[a-zA-Z0-9])?$/.test(
+    value
+  );
+}
+
+/**
+ * Validate a display column name — safe printable characters only.
+ * Allows letters, digits, spaces, dashes, underscores. Max 64 chars.
+ */
+export function isValidColumnName(value: string): boolean {
+  return /^[a-zA-Z0-9 _-]{1,64}$/.test(value);
+}
+
+/**
+ * Validate a mediated device name selector (e.g., "GRID T4-2A").
+ * Allows alphanumeric, spaces, dashes, underscores, dots. Max 128 chars.
+ */
+export function isValidMdevSelector(value: string): boolean {
+  return /^[a-zA-Z0-9 ._-]{1,128}$/.test(value);
+}
+
+/**
  * Extract a safe, user-friendly message from an error.
  * Logs the full error to console, returns a short summary for the UI.
  */

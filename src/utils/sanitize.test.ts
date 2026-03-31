@@ -3,13 +3,15 @@ import {
   sanitizePromQL,
   assertK8sName,
   isValidK8sName,
+  isValidK8sLabelValue,
+  isValidPciSelector,
+  isValidResourceName,
+  isValidK8sLabelKey,
+  isValidColumnName,
+  isValidMdevSelector,
   safeError,
 } from './sanitize';
-import {
-  isValidImageRef,
-  isValidRegistry,
-  isValidRepo,
-} from './pluginSettings';
+import { isValidImageRef, isValidRegistry, isValidRepo } from './pluginSettings';
 
 // --- Helpers for property-based / fuzz testing ---
 
@@ -142,6 +144,180 @@ describe('assertK8sName', () => {
   });
 });
 
+// --- isValidK8sLabelValue ---
+
+describe('isValidK8sLabelValue', () => {
+  it('accepts valid label values', () => {
+    expect(isValidK8sLabelValue('')).toBe(true);
+    expect(isValidK8sLabelValue('prometheus')).toBe(true);
+    expect(isValidK8sLabelValue('my-release.v1')).toBe(true);
+    expect(isValidK8sLabelValue('A')).toBe(true);
+    expect(isValidK8sLabelValue('a1')).toBe(true);
+  });
+
+  it('rejects invalid label values', () => {
+    expect(isValidK8sLabelValue('-start')).toBe(false);
+    expect(isValidK8sLabelValue('end-')).toBe(false);
+    expect(isValidK8sLabelValue('.dot')).toBe(false);
+    expect(isValidK8sLabelValue('a'.repeat(64))).toBe(false);
+    expect(isValidK8sLabelValue('has space')).toBe(false);
+    expect(isValidK8sLabelValue('<script>')).toBe(false);
+  });
+
+  it('fuzz: never throws', () => {
+    for (let i = 0; i < FUZZ_ITERATIONS; i++) {
+      const input = randomString(100);
+      expect(() => isValidK8sLabelValue(input)).not.toThrow();
+    }
+  });
+
+  it('fuzz: ReDoS resilience', () => {
+    const payloads = ['a'.repeat(63) + '!', 'a-'.repeat(31) + 'a!', '.'.repeat(63) + '!'];
+    for (const payload of payloads) {
+      const start = performance.now();
+      isValidK8sLabelValue(payload);
+      expect(performance.now() - start).toBeLessThan(100);
+    }
+  });
+});
+
+// --- isValidPciSelector ---
+
+describe('isValidPciSelector', () => {
+  it('accepts valid PCI selectors', () => {
+    expect(isValidPciSelector('10DE:1DB6')).toBe(true);
+    expect(isValidPciSelector('8086:1521')).toBe(true);
+    expect(isValidPciSelector('abcd:ef01')).toBe(true);
+  });
+
+  it('rejects invalid PCI selectors', () => {
+    expect(isValidPciSelector('')).toBe(false);
+    expect(isValidPciSelector('10DE')).toBe(false);
+    expect(isValidPciSelector('10DE:1DB6:extra')).toBe(false);
+    expect(isValidPciSelector('ZZZZ:0000')).toBe(false);
+    expect(isValidPciSelector('<script>')).toBe(false);
+  });
+
+  it('fuzz: never throws', () => {
+    for (let i = 0; i < FUZZ_ITERATIONS; i++) {
+      const input = randomString(50);
+      expect(() => isValidPciSelector(input)).not.toThrow();
+    }
+  });
+});
+
+// --- isValidResourceName ---
+
+describe('isValidResourceName', () => {
+  it('accepts valid resource names', () => {
+    expect(isValidResourceName('nvidia.com/GP102GL')).toBe(true);
+    expect(isValidResourceName('intel.com/sriov')).toBe(true);
+    expect(isValidResourceName('mydevice')).toBe(true);
+  });
+
+  it('rejects invalid resource names', () => {
+    expect(isValidResourceName('')).toBe(false);
+    expect(isValidResourceName('-start/name')).toBe(false);
+    expect(isValidResourceName('<script>')).toBe(false);
+  });
+
+  it('fuzz: never throws', () => {
+    for (let i = 0; i < FUZZ_ITERATIONS; i++) {
+      const input = randomString(100);
+      expect(() => isValidResourceName(input)).not.toThrow();
+    }
+  });
+
+  it('fuzz: ReDoS resilience', () => {
+    const payloads = ['a.'.repeat(125) + '!', 'a'.repeat(253) + '/a!'];
+    for (const payload of payloads) {
+      const start = performance.now();
+      isValidResourceName(payload);
+      expect(performance.now() - start).toBeLessThan(100);
+    }
+  });
+});
+
+// --- isValidK8sLabelKey ---
+
+describe('isValidK8sLabelKey', () => {
+  it('accepts valid label keys', () => {
+    expect(isValidK8sLabelKey('app')).toBe(true);
+    expect(isValidK8sLabelKey('app.kubernetes.io/name')).toBe(true);
+    expect(isValidK8sLabelKey('version')).toBe(true);
+  });
+
+  it('rejects invalid label keys', () => {
+    expect(isValidK8sLabelKey('')).toBe(false);
+    expect(isValidK8sLabelKey('123')).toBe(false);
+    expect(isValidK8sLabelKey('<script>')).toBe(false);
+  });
+
+  it('fuzz: never throws', () => {
+    for (let i = 0; i < FUZZ_ITERATIONS; i++) {
+      const input = randomString(100);
+      expect(() => isValidK8sLabelKey(input)).not.toThrow();
+    }
+  });
+
+  it('fuzz: ReDoS resilience', () => {
+    const payloads = ['a.'.repeat(125) + '!', 'a'.repeat(63) + '!'];
+    for (const payload of payloads) {
+      const start = performance.now();
+      isValidK8sLabelKey(payload);
+      expect(performance.now() - start).toBeLessThan(100);
+    }
+  });
+});
+
+// --- isValidColumnName ---
+
+describe('isValidColumnName', () => {
+  it('accepts valid column names', () => {
+    expect(isValidColumnName('App')).toBe(true);
+    expect(isValidColumnName('My Column')).toBe(true);
+    expect(isValidColumnName('pod-name')).toBe(true);
+    expect(isValidColumnName('col_1')).toBe(true);
+  });
+
+  it('rejects invalid column names', () => {
+    expect(isValidColumnName('')).toBe(false);
+    expect(isValidColumnName('a'.repeat(65))).toBe(false);
+    expect(isValidColumnName('<script>alert(1)</script>')).toBe(false);
+    expect(isValidColumnName('col;DROP')).toBe(false);
+  });
+
+  it('fuzz: never throws', () => {
+    for (let i = 0; i < FUZZ_ITERATIONS; i++) {
+      const input = randomString(100);
+      expect(() => isValidColumnName(input)).not.toThrow();
+    }
+  });
+});
+
+// --- isValidMdevSelector ---
+
+describe('isValidMdevSelector', () => {
+  it('accepts valid mdev selectors', () => {
+    expect(isValidMdevSelector('GRID T4-2A')).toBe(true);
+    expect(isValidMdevSelector('nvidia-468')).toBe(true);
+    expect(isValidMdevSelector('simple')).toBe(true);
+  });
+
+  it('rejects invalid mdev selectors', () => {
+    expect(isValidMdevSelector('')).toBe(false);
+    expect(isValidMdevSelector('a'.repeat(129))).toBe(false);
+    expect(isValidMdevSelector('<script>')).toBe(false);
+  });
+
+  it('fuzz: never throws', () => {
+    for (let i = 0; i < FUZZ_ITERATIONS; i++) {
+      const input = randomString(200);
+      expect(() => isValidMdevSelector(input)).not.toThrow();
+    }
+  });
+});
+
 // --- safeError ---
 
 describe('safeError', () => {
@@ -197,7 +373,7 @@ describe('isValidImageRef', () => {
   it('fuzz: ReDoS resilience (completes in <100ms per call)', () => {
     // Known ReDoS payloads for nested quantifiers over dot-separated patterns
     const payloads = [
-      'a'.repeat(50) + '!' ,
+      'a'.repeat(50) + '!',
       '.'.repeat(50) + '!',
       'a.'.repeat(25) + '!',
       'a-'.repeat(50) + '!',
@@ -230,11 +406,7 @@ describe('isValidRegistry', () => {
   });
 
   it('fuzz: ReDoS resilience', () => {
-    const payloads = [
-      'a'.repeat(50) + '!',
-      '.'.repeat(50) + '!',
-      'a.'.repeat(25) + '!',
-    ];
+    const payloads = ['a'.repeat(50) + '!', '.'.repeat(50) + '!', 'a.'.repeat(25) + '!'];
     for (const payload of payloads) {
       const start = performance.now();
       isValidRegistry(payload);
