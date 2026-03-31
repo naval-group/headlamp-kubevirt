@@ -1,17 +1,17 @@
+import { isValidImageRef, isValidRegistry, isValidRepo } from './pluginSettings';
 import {
-  sanitizeFeatureGateSearch,
-  sanitizePromQL,
   assertK8sName,
-  isValidK8sName,
+  isValidColumnName,
+  isValidK8sLabelKey,
   isValidK8sLabelValue,
+  isValidK8sName,
+  isValidMdevSelector,
   isValidPciSelector,
   isValidResourceName,
-  isValidK8sLabelKey,
-  isValidColumnName,
-  isValidMdevSelector,
   safeError,
+  sanitizeFeatureGateSearch,
+  sanitizePromQL,
 } from './sanitize';
-import { isValidImageRef, isValidRegistry, isValidRepo } from './pluginSettings';
 
 // --- Helpers for property-based / fuzz testing ---
 

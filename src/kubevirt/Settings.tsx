@@ -216,11 +216,11 @@ export default function KubeVirtSettings() {
   const [kubeVirtEditorOpen, setKubeVirtEditorOpen] = useState(false);
   const [cdiEditorOpen, setCdiEditorOpen] = useState(false);
 
-  // Fetch KubeVirt CR - typically in kubevirt namespace
+  // Fetch KubeVirt CR (cluster-wide discovery)
   let kubeVirtItems: InstanceType<typeof KubeVirt>[] | null = null;
   let kvError: unknown = null;
   try {
-    const result = KubeVirt.useList({ namespace: 'kubevirt' });
+    const result = KubeVirt.useList();
     kubeVirtItems = result.items;
     kvError = result.error;
   } catch (error) {
@@ -362,7 +362,7 @@ export default function KubeVirtSettings() {
           Failed to load KubeVirt configuration: {safeError(kvError, 'kubevirt-load')}
         </Alert>
         <Typography variant="body2" color="text.secondary" mt={2}>
-          Make sure KubeVirt is installed in the 'kubevirt' namespace.
+          Make sure KubeVirt is installed and accessible.
         </Typography>
       </Box>
     );
@@ -382,7 +382,7 @@ export default function KubeVirtSettings() {
     return (
       <Box p={3}>
         <Alert severity="warning">
-          KubeVirt CR not found in 'kubevirt' namespace. Make sure KubeVirt is properly installed.
+          KubeVirt CR not found. Make sure KubeVirt is properly installed.
         </Alert>
       </Box>
     );
@@ -717,7 +717,7 @@ export default function KubeVirtSettings() {
         </Box>
       </SectionBox>
 
-      <SystemHealthSection />
+      <SystemHealthSection kubevirtNamespace={kubeVirt.getNamespace()} />
       {/* Plugin Features */}
       <Box
         mt={3}

@@ -118,9 +118,7 @@ function KubeVirtUpdateWatcher() {
   useEffect(() => {
     const checkForUpdates = async () => {
       try {
-        const response = await ApiProxy.request(
-          '/apis/kubevirt.io/v1/namespaces/kubevirt/kubevirts'
-        );
+        const response = await ApiProxy.request('/apis/kubevirt.io/v1/kubevirts');
         const items = response?.items || [];
         if (items.length > 0) {
           const kv = items[0];

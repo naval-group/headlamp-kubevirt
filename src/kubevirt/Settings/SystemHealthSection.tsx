@@ -24,6 +24,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { sanitizePromQL } from '../../utils/sanitize';
 
 type ChartDataPoint = { time: string; [key: string]: string | number };
 type SingleDataPoint = { time: string; value: number };
@@ -48,7 +49,13 @@ type RangeResult = {
   values: Array<[number, string]>;
 };
 
-const SystemHealthSection = React.memo(function SystemHealthSection() {
+interface SystemHealthSectionProps {
+  kubevirtNamespace: string;
+}
+
+const SystemHealthSection = React.memo(function SystemHealthSection({
+  kubevirtNamespace,
+}: SystemHealthSectionProps) {
   const [expanded, setExpanded] = useState(false);
   const [healthTimeRange, setHealthTimeRange] = useState('1h');
   const [healthPromAvailable, setHealthPromAvailable] = useState<boolean | null>(null);
@@ -143,7 +150,7 @@ const SystemHealthSection = React.memo(function SystemHealthSection() {
 
         // Fetch component status (instant queries)
         const [compUp, compErrors] = await Promise.all([
-          queryInstant(`up{namespace="kubevirt"}`),
+          queryInstant(`up{namespace="${sanitizePromQL(kubevirtNamespace)}"}`),
           queryInstant(`sum by (pod) (kubevirt_rest_client_requests_total{code=~"4..|5.."})`),
         ]);
 
