@@ -9,8 +9,11 @@ import {
 import { Box, Chip, Typography } from '@mui/material';
 import React, { useState } from 'react';
 import useFilteredList from '../../hooks/useFilteredList';
+import useResourceActions from '../../hooks/useResourceActions';
+import BulkDeleteToolbar from '../common/BulkDeleteToolbar';
 import CreateButtonWithMode from '../common/CreateButtonWithMode';
 import CreateResourceDialog from '../common/CreateResourceDialog';
+import StandardRowActions from '../common/StandardRowActions';
 import DataImportCron from './DataImportCron';
 import DataImportCronForm from './DataImportCronForm';
 
@@ -19,6 +22,12 @@ export default function DataImportCronList() {
   const items = useFilteredList(rawItems);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [createInitialTab, setCreateInitialTab] = useState(0);
+  const { setEditItem, setViewYamlItem, setDeleteItem, ActionDialogs } = useResourceActions<
+    InstanceType<typeof DataImportCron>
+  >({
+    apiVersion: 'cdi.kubevirt.io/v1beta1',
+    kind: 'DataImportCron',
+  });
 
   const emptyDataImportCron = {
     apiVersion: 'cdi.kubevirt.io/v1beta1',
@@ -123,6 +132,30 @@ export default function DataImportCronList() {
         <Table
           data={items ?? []}
           loading={items === null}
+          enableRowActions
+          enableRowSelection
+          getRowId={(dic: InstanceType<typeof DataImportCron>) =>
+            dic.metadata?.uid ?? `${dic.getNamespace()}/${dic.getName()}`
+          }
+          renderRowSelectionToolbar={({ table }) => (
+            <BulkDeleteToolbar table={table} kind="DataImportCron" />
+          )}
+          renderRowActionMenuItems={({
+            row,
+            closeMenu,
+          }: {
+            row: { original: InstanceType<typeof DataImportCron> };
+            closeMenu: () => void;
+          }) => [
+            <StandardRowActions
+              key="std"
+              resource={row.original}
+              closeMenu={closeMenu}
+              onEdit={setEditItem}
+              onViewYaml={setViewYamlItem}
+              onDelete={setDeleteItem}
+            />,
+          ]}
           columns={[
             {
               id: 'name',
@@ -246,6 +279,8 @@ export default function DataImportCronList() {
           ]}
         />
       </SectionBox>
+
+      {ActionDialogs}
 
       <CreateResourceDialog
         open={createDialogOpen}

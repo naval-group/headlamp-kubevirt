@@ -21,7 +21,10 @@ import {
 import { useSnackbar } from 'notistack';
 import { useEffect, useState } from 'react';
 import useFilteredList from '../../hooks/useFilteredList';
+import useResourceActions from '../../hooks/useResourceActions';
 import { isFeatureGateEnabled, subscribeToFeatureGates } from '../../utils/featureGates';
+import BulkDeleteToolbar from '../common/BulkDeleteToolbar';
+import StandardRowActions from '../common/StandardRowActions';
 import VirtualMachineSnapshot from './VirtualMachineSnapshot';
 
 // CreateExportDialog component for creating exports from snapshots
@@ -154,6 +157,12 @@ export default function VirtualMachineSnapshotList() {
     setVmExportEnabled(isFeatureGateEnabled('VMExport'));
     return subscribeToFeatureGates(() => setVmExportEnabled(isFeatureGateEnabled('VMExport')));
   }, []);
+  const { setEditItem, setViewYamlItem, setDeleteItem, ActionDialogs } = useResourceActions<
+    InstanceType<typeof VirtualMachineSnapshot>
+  >({
+    apiVersion: 'snapshot.kubevirt.io/v1beta1',
+    kind: 'VirtualMachineSnapshot',
+  });
 
   return (
     <>
@@ -161,16 +170,30 @@ export default function VirtualMachineSnapshotList() {
         <Table
           data={items ?? []}
           loading={items === null}
-          enableRowActions={vmExportEnabled}
-          renderRowActionMenuItems={
-            vmExportEnabled
-              ? ({
-                  row,
-                  closeMenu,
-                }: {
-                  row: { original: InstanceType<typeof VirtualMachineSnapshot> };
-                  closeMenu: () => void;
-                }) => [
+          enableRowActions
+          enableRowSelection
+          getRowId={(snap: InstanceType<typeof VirtualMachineSnapshot>) =>
+            snap.metadata?.uid ?? `${snap.getNamespace()}/${snap.getName()}`
+          }
+          renderRowSelectionToolbar={({ table }) => (
+            <BulkDeleteToolbar table={table} kind="Snapshot" />
+          )}
+          renderRowActionMenuItems={({
+            row,
+            closeMenu,
+          }: {
+            row: { original: InstanceType<typeof VirtualMachineSnapshot> };
+            closeMenu: () => void;
+          }) => [
+            <StandardRowActions
+              key="std"
+              resource={row.original}
+              closeMenu={closeMenu}
+              onEdit={setEditItem}
+              onViewYaml={setViewYamlItem}
+              onDelete={setDeleteItem}
+              extraItems={
+                vmExportEnabled ? (
                   <MenuItem
                     key="export"
                     onClick={() => {
@@ -186,10 +209,11 @@ export default function VirtualMachineSnapshotList() {
                       <Icon icon="mdi:export" />
                     </ListItemIcon>
                     <ListItemText>Export</ListItemText>
-                  </MenuItem>,
-                ]
-              : undefined
-          }
+                  </MenuItem>
+                ) : undefined
+              }
+            />,
+          ]}
           columns={[
             {
               id: 'name',
@@ -292,6 +316,7 @@ export default function VirtualMachineSnapshotList() {
           ]}
         />
       </SectionBox>
+      {ActionDialogs}
       {selectedSnapshot && (
         <CreateExportDialog
           open={exportDialogOpen}

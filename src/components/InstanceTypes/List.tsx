@@ -7,8 +7,11 @@ import {
 } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
 import { Box, Tab, Tabs } from '@mui/material';
 import React from 'react';
+import useResourceActions from '../../hooks/useResourceActions';
+import BulkDeleteToolbar from '../common/BulkDeleteToolbar';
 import CreateButtonWithMode from '../common/CreateButtonWithMode';
 import CreateResourceDialog from '../common/CreateResourceDialog';
+import StandardRowActions from '../common/StandardRowActions';
 import InstanceTypeForm from './InstanceTypeForm';
 import VirtualMachineClusterInstanceType from './VirtualMachineClusterInstanceType';
 
@@ -17,6 +20,11 @@ export default function InstanceTypeList() {
   const [tab, setTab] = React.useState(0);
   const [createDialogOpen, setCreateDialogOpen] = React.useState(false);
   const [createInitialTab, setCreateInitialTab] = React.useState(0);
+  const { setEditItem, setViewYamlItem, setDeleteItem, ActionDialogs } =
+    useResourceActions<VirtualMachineClusterInstanceType>({
+      apiVersion: 'instancetype.kubevirt.io/v1beta1',
+      kind: 'VirtualMachineClusterInstancetype',
+    });
 
   const emptyInstanceType = {
     apiVersion: 'instancetype.kubevirt.io/v1beta1',
@@ -89,6 +97,28 @@ export default function InstanceTypeList() {
         <Table
           data={currentData ?? []}
           loading={instanceTypes === null}
+          enableRowActions
+          enableRowSelection
+          getRowId={(it: VirtualMachineClusterInstanceType) => it.metadata?.uid ?? it.getName()}
+          renderRowSelectionToolbar={({ table }) => (
+            <BulkDeleteToolbar table={table} kind="Instance Type" />
+          )}
+          renderRowActionMenuItems={({
+            row,
+            closeMenu,
+          }: {
+            row: { original: VirtualMachineClusterInstanceType };
+            closeMenu: () => void;
+          }) => [
+            <StandardRowActions
+              key="std"
+              resource={row.original}
+              closeMenu={closeMenu}
+              onEdit={setEditItem}
+              onViewYaml={setViewYamlItem}
+              onDelete={setDeleteItem}
+            />,
+          ]}
           columns={[
             {
               id: 'name',
@@ -128,6 +158,8 @@ export default function InstanceTypeList() {
           ]}
         />
       </SectionBox>
+
+      {ActionDialogs}
 
       <CreateResourceDialog
         open={createDialogOpen}
