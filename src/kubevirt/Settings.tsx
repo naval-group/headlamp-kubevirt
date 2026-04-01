@@ -119,8 +119,7 @@ export default function KubeVirtSettings() {
     useState<ForensicSettings>(defaultForensicSettings);
   const [forensicEditing, setForensicEditing] = useState(false);
   const [localForensic, setLocalForensic] = useState<ForensicSettings>(defaultForensicSettings);
-  const [guestfsSettings, setGuestfsSettings] =
-    useState<GuestfsSettings>(defaultGuestfsSettings);
+  const [guestfsSettings, setGuestfsSettings] = useState<GuestfsSettings>(defaultGuestfsSettings);
   const [guestfsEditing, setGuestfsEditing] = useState(false);
   const [localGuestfs, setLocalGuestfs] = useState<GuestfsSettings>(defaultGuestfsSettings);
 

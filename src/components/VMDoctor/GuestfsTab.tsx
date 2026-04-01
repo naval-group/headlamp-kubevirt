@@ -48,7 +48,6 @@ type InspectorStatus = 'idle' | 'creating' | 'pending' | 'running' | 'failed' | 
 const POLL_INTERVAL = 2000;
 const POLL_TIMEOUT = 300000;
 
-
 /** Map index to device letter: 0→vdb, 1→vdc, ..., max 24 (vdz). */
 function devLetter(i: number): string {
   if (i < 0 || i > 24) return '?';
@@ -594,7 +593,9 @@ export default function GuestfsTab({ vmName, namespace, vmItem }: GuestfsTabProp
               title={
                 <Box sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
                   {attachedDisks.map(d => (
-                    <div key={d.serial}>{d.pvcName} → /dev/{d.dev}</div>
+                    <div key={d.serial}>
+                      {d.pvcName} → /dev/{d.dev}
+                    </div>
                   ))}
                 </Box>
               }
@@ -681,7 +682,13 @@ export default function GuestfsTab({ vmName, namespace, vmItem }: GuestfsTabProp
               flexDirection: 'column',
             }}
           >
-            <TerminalPanel ref={terminalRef} item={vmiItem} active compact onStatusChange={handleSerialStatus} />
+            <TerminalPanel
+              ref={terminalRef}
+              item={vmiItem}
+              active
+              compact
+              onStatusChange={handleSerialStatus}
+            />
           </Box>
 
           {/* Command Reference sidebar */}
@@ -745,15 +752,19 @@ export default function GuestfsTab({ vmName, namespace, vmItem }: GuestfsTabProp
                         return;
                       }
                       // Allow partial typing: accept prefixes of valid paths
-                      if (partitionValidation.partial.test(v) || '/dev/'.startsWith(v) ||
-                          attachedDisks.some(d => `/dev/${d.dev}`.startsWith(v))) {
+                      if (
+                        partitionValidation.partial.test(v) ||
+                        '/dev/'.startsWith(v) ||
+                        attachedDisks.some(d => `/dev/${d.dev}`.startsWith(v))
+                      ) {
                         setRootPartition(v);
                       }
                     }}
                     error={(() => {
                       if (rootPartition === '') return false;
                       if (partitionValidation.complete.test(rootPartition)) return false;
-                      const isPrefix = '/dev/'.startsWith(rootPartition) ||
+                      const isPrefix =
+                        '/dev/'.startsWith(rootPartition) ||
                         attachedDisks.some(d => `/dev/${d.dev}`.startsWith(rootPartition)) ||
                         partitionValidation.partial.test(rootPartition);
                       return !isPrefix;
@@ -761,10 +772,13 @@ export default function GuestfsTab({ vmName, namespace, vmItem }: GuestfsTabProp
                     helperText={(() => {
                       if (rootPartition === '') return '';
                       if (partitionValidation.complete.test(rootPartition)) return '';
-                      const isPrefix = '/dev/'.startsWith(rootPartition) ||
+                      const isPrefix =
+                        '/dev/'.startsWith(rootPartition) ||
                         attachedDisks.some(d => `/dev/${d.dev}`.startsWith(rootPartition)) ||
                         partitionValidation.partial.test(rootPartition);
-                      return isPrefix ? '' : `Valid: ${attachedDisks.map(d => `/dev/${d.dev}[N]`).join(', ')}`;
+                      return isPrefix
+                        ? ''
+                        : `Valid: ${attachedDisks.map(d => `/dev/${d.dev}[N]`).join(', ')}`;
                     })()}
                     placeholder={
                       attachedDisks.length > 0 ? `/dev/${attachedDisks[0].dev}4` : '/dev/vdb4'
