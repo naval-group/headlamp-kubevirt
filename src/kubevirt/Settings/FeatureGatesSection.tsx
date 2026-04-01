@@ -685,6 +685,7 @@ const FeatureGatesSection = React.memo(function FeatureGatesSection(
                   size="small"
                   placeholder="Search feature gates..."
                   defaultValue=""
+                  autoFocus
                   onChange={e => {
                     const sanitized = sanitizeFeatureGateSearch(e.target.value);
                     if (e.target.value !== sanitized) e.target.value = sanitized;
@@ -693,7 +694,6 @@ const FeatureGatesSection = React.memo(function FeatureGatesSection(
                   }}
                   inputRef={el => {
                     searchInputRef.current = el;
-                    if (el) el.focus();
                   }}
                   sx={{ flex: 1, minWidth: 200 }}
                   InputProps={{
