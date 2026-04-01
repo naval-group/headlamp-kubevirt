@@ -494,6 +494,7 @@ const FeatureGatesSection = React.memo(function FeatureGatesSection(
     new Set(['GA', 'Beta', 'Alpha'])
   );
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchFocusedRef = useRef(false);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
   const debouncedSearch = featureGateSearch;
@@ -685,7 +686,6 @@ const FeatureGatesSection = React.memo(function FeatureGatesSection(
                   size="small"
                   placeholder="Search feature gates..."
                   defaultValue=""
-                  autoFocus
                   onChange={e => {
                     const sanitized = sanitizeFeatureGateSearch(e.target.value);
                     if (e.target.value !== sanitized) e.target.value = sanitized;
@@ -694,6 +694,10 @@ const FeatureGatesSection = React.memo(function FeatureGatesSection(
                   }}
                   inputRef={el => {
                     searchInputRef.current = el;
+                    if (el && !searchFocusedRef.current) {
+                      searchFocusedRef.current = true;
+                      el.focus();
+                    }
                   }}
                   sx={{ flex: 1, minWidth: 200 }}
                   InputProps={{
@@ -709,6 +713,7 @@ const FeatureGatesSection = React.memo(function FeatureGatesSection(
                           onClick={() => {
                             if (searchInputRef.current) searchInputRef.current.value = '';
                             clearTimeout(searchTimerRef.current);
+                            searchFocusedRef.current = false;
                             setFeatureGateSearch('');
                             setFeatureGateSearchOpen(false);
                           }}
@@ -722,7 +727,10 @@ const FeatureGatesSection = React.memo(function FeatureGatesSection(
               ) : (
                 <IconButton
                   size="small"
-                  onClick={() => setFeatureGateSearchOpen(true)}
+                  onClick={() => {
+                    searchFocusedRef.current = false;
+                    setFeatureGateSearchOpen(true);
+                  }}
                   sx={{ color: 'text.secondary' }}
                 >
                   <Icon icon="mdi:magnify" width={22} />
