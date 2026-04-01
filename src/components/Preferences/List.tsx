@@ -8,8 +8,11 @@ import {
 } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
 import { Box, Tab, Tabs } from '@mui/material';
 import React from 'react';
+import useResourceActions from '../../hooks/useResourceActions';
+import BulkDeleteToolbar from '../common/BulkDeleteToolbar';
 import CreateButtonWithMode from '../common/CreateButtonWithMode';
 import CreateResourceDialog from '../common/CreateResourceDialog';
+import StandardRowActions from '../common/StandardRowActions';
 import { mapIconClass } from './iconMapper';
 import PreferenceForm from './PreferenceForm';
 import VirtualMachineClusterPreference from './VirtualMachineClusterPreference';
@@ -19,6 +22,11 @@ export default function PreferenceList() {
   const [tab, setTab] = React.useState(0);
   const [createDialogOpen, setCreateDialogOpen] = React.useState(false);
   const [createInitialTab, setCreateInitialTab] = React.useState(0);
+  const { setEditItem, setViewYamlItem, setDeleteItem, ActionDialogs } =
+    useResourceActions<VirtualMachineClusterPreference>({
+      apiVersion: 'instancetype.kubevirt.io/v1beta1',
+      kind: 'VirtualMachineClusterPreference',
+    });
 
   const emptyPreference = {
     apiVersion: 'instancetype.kubevirt.io/v1beta1',
@@ -93,6 +101,28 @@ export default function PreferenceList() {
         <Table
           data={currentData ?? []}
           loading={preferences === null}
+          enableRowActions
+          enableRowSelection
+          getRowId={(pref: VirtualMachineClusterPreference) => pref.metadata?.uid ?? pref.getName()}
+          renderRowSelectionToolbar={({ table }) => (
+            <BulkDeleteToolbar table={table} kind="Preference" />
+          )}
+          renderRowActionMenuItems={({
+            row,
+            closeMenu,
+          }: {
+            row: { original: VirtualMachineClusterPreference };
+            closeMenu: () => void;
+          }) => [
+            <StandardRowActions
+              key="std"
+              resource={row.original}
+              closeMenu={closeMenu}
+              onEdit={setEditItem}
+              onViewYaml={setViewYamlItem}
+              onDelete={setDeleteItem}
+            />,
+          ]}
           columns={[
             {
               id: 'name',
@@ -139,6 +169,8 @@ export default function PreferenceList() {
           ]}
         />
       </SectionBox>
+
+      {ActionDialogs}
 
       <CreateResourceDialog
         open={createDialogOpen}
