@@ -254,6 +254,7 @@ describe('validateSettings (via getPluginSettings)', () => {
               isfRegistry: 'localhost:5000',
               isfRepo: 'isf',
             },
+            guestfs: { image: '' },
           };
           savePluginSettings(settings);
           const loaded = getPluginSettings();

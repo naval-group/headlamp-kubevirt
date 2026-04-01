@@ -54,6 +54,26 @@ export function getDumpPhaseIcon(phase: string): string {
   }
 }
 
+/** Map an inspector VM status to a hex color. */
+export function getInspectorStatusColor(
+  status: 'idle' | 'creating' | 'pending' | 'running' | 'failed' | 'deleting'
+): string {
+  switch (status) {
+    case 'creating':
+      return '#42a5f5';
+    case 'pending':
+      return '#ffa726';
+    case 'running':
+      return '#66bb6a';
+    case 'failed':
+      return '#ef5350';
+    case 'deleting':
+      return '#ab47bc';
+    default:
+      return '#78909c';
+  }
+}
+
 /** Map a PVC phase to a hex color. */
 export function getPVCPhaseColor(phase: string): string {
   switch (phase) {

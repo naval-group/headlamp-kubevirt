@@ -787,6 +787,7 @@ export default function MemoryDumpTab({
           namespace,
           labels: {
             app: 'volatility3-analysis',
+            'kubevirt.io/vm': vmName,
             'kubevirt.io/memory-dump': selectedDump,
           },
         },

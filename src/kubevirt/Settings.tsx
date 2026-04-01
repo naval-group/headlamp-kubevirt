@@ -30,19 +30,24 @@ import {
 import { useSnackbar } from 'notistack';
 import { useEffect, useRef, useState } from 'react';
 import ResourceEditorDialog from '../components/ResourceEditorDialog';
+import { INSPECTOR_IMAGE } from '../components/VMDoctor/constants';
 import { LiveUpdateConfig, MigrationConfig, NetworkConfig, PermittedHostDevices } from '../types';
 import {
   addLabelColumn,
   defaultForensicSettings,
+  defaultGuestfsSettings,
   ForensicSettings,
   getForensicSettings,
+  getGuestfsSettings,
   getLabelColumns,
+  GuestfsSettings,
   isValidImageRef,
   isValidRegistry,
   isValidRepo,
   LabelColumn,
   removeLabelColumn,
   saveForensicSettings,
+  saveGuestfsSettings,
 } from '../utils/pluginSettings';
 import {
   isValidColumnName,
@@ -114,13 +119,20 @@ export default function KubeVirtSettings() {
     useState<ForensicSettings>(defaultForensicSettings);
   const [forensicEditing, setForensicEditing] = useState(false);
   const [localForensic, setLocalForensic] = useState<ForensicSettings>(defaultForensicSettings);
+  const [guestfsSettings, setGuestfsSettings] =
+    useState<GuestfsSettings>(defaultGuestfsSettings);
+  const [guestfsEditing, setGuestfsEditing] = useState(false);
+  const [localGuestfs, setLocalGuestfs] = useState<GuestfsSettings>(defaultGuestfsSettings);
 
-  // Load label columns and forensic settings from localStorage
+  // Load label columns, forensic, and guestfs settings from localStorage
   useEffect(() => {
     setLabelColumns(getLabelColumns());
     const fs = getForensicSettings();
     setForensicSettings(fs);
     setLocalForensic(fs);
+    const gs = getGuestfsSettings();
+    setGuestfsSettings(gs);
+    setLocalGuestfs(gs);
   }, []);
 
   // Cleanup pending timers on unmount
@@ -980,6 +992,111 @@ export default function KubeVirtSettings() {
                     >
                       ISF: {forensicSettings.isfRegistry || '(not set)'}/
                       {forensicSettings.isfRepo || '(not set)'}:&lt;kernel&gt;
+                    </Typography>
+                  </Box>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Disk Inspector */}
+            <Card variant="outlined" sx={{ mb: 2 }}>
+              <CardContent>
+                <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+                  <Box flex={1}>
+                    <Box display="flex" alignItems="center" gap={1}>
+                      <Icon icon="mdi:harddisk" width={20} height={20} />
+                      <Typography variant="body1" fontWeight={500}>
+                        Disk Inspector
+                      </Typography>
+                    </Box>
+                    <Typography variant="body2" color="text.secondary">
+                      ContainerDisk image used for VM disk inspection in VM Doctor
+                    </Typography>
+                  </Box>
+                  <Box display="flex" alignItems="center" gap={1}>
+                    {!guestfsEditing && (
+                      <Chip
+                        label={guestfsSettings.image ? 'Configured' : 'Default'}
+                        size="small"
+                        color={guestfsSettings.image ? 'success' : 'default'}
+                        variant="outlined"
+                      />
+                    )}
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      onClick={() => {
+                        if (guestfsEditing) {
+                          setLocalGuestfs(guestfsSettings);
+                        }
+                        setGuestfsEditing(!guestfsEditing);
+                      }}
+                    >
+                      {guestfsEditing ? 'Cancel' : 'Edit'}
+                    </Button>
+                  </Box>
+                </Box>
+
+                {guestfsEditing ? (
+                  (() => {
+                    const imgErr =
+                      localGuestfs.image && !isValidImageRef(localGuestfs.image)
+                        ? 'Invalid image reference'
+                        : '';
+                    return (
+                      <>
+                        <TextField
+                          label="Inspector Image"
+                          value={localGuestfs.image}
+                          onChange={e =>
+                            setLocalGuestfs({ ...localGuestfs, image: e.target.value })
+                          }
+                          fullWidth
+                          size="small"
+                          error={!!imgErr}
+                          helperText={
+                            imgErr ||
+                            'Leave empty to use the default image. Override for custom or airgapped deployments.'
+                          }
+                          placeholder={INSPECTOR_IMAGE}
+                          sx={{ mb: 2 }}
+                        />
+                        <Box display="flex" gap={1} justifyContent="flex-end">
+                          <Button
+                            size="small"
+                            onClick={() => {
+                              setLocalGuestfs(defaultGuestfsSettings);
+                            }}
+                          >
+                            Reset to default
+                          </Button>
+                          <Button
+                            variant="contained"
+                            size="small"
+                            disabled={!!imgErr}
+                            onClick={() => {
+                              saveGuestfsSettings(localGuestfs);
+                              setGuestfsSettings(localGuestfs);
+                              setGuestfsEditing(false);
+                              enqueueSnackbar('Disk Inspector settings saved', {
+                                variant: 'success',
+                              });
+                            }}
+                          >
+                            Save
+                          </Button>
+                        </Box>
+                      </>
+                    );
+                  })()
+                ) : (
+                  <Box mt={0.5}>
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}
+                    >
+                      Image: {guestfsSettings.image || INSPECTOR_IMAGE}
                     </Typography>
                   </Box>
                 )}
