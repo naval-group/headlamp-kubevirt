@@ -54,6 +54,35 @@ export function getDumpPhaseIcon(phase: string): string {
   }
 }
 
+/** MUI Chip color for a VirtualMachineClone status. */
+export type ChipColor = 'default' | 'primary' | 'success' | 'error' | 'warning';
+
+export function getCloneStatusColor(status: string): ChipColor {
+  switch (status) {
+    case 'Succeeded':
+      return 'success';
+    case 'Failed':
+      return 'error';
+    case 'SnapshotInProgress':
+    case 'RestoreInProgress':
+    case 'InProgress':
+      return 'primary';
+    case 'CreatingTargetVM':
+    case 'Pending':
+      return 'warning';
+    default:
+      return 'default';
+  }
+}
+
+/** Find a condition by type from a conditions array. */
+export function findCondition<T extends { type: string }>(
+  conditions: T[] | undefined | null,
+  type: string
+): T | undefined {
+  return conditions?.find(c => c.type === type);
+}
+
 /** Map a PVC phase to a hex color. */
 export function getPVCPhaseColor(phase: string): string {
   switch (phase) {

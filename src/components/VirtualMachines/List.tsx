@@ -23,6 +23,7 @@ import ResourceEditorDialog from '../ResourceEditorDialog';
 import VirtualMachineInstance from '../VirtualMachineInstance/VirtualMachineInstance';
 import VMDoctorDialog from '../VMDoctor/VMDoctorDialog';
 import BulkActionToolbar from './BulkActionToolbar';
+import CloneDialog from './CloneDialog';
 import VirtualMachine from './VirtualMachine';
 import VMFormWrapper from './VMFormWrapper';
 
@@ -30,7 +31,9 @@ function VMRowActionMenuItems({
   vm,
   closeMenu,
   liveMigrationEnabled,
+  snapshotEnabled,
   onDoctor,
+  onClone,
   onEdit,
   onViewYaml,
   onDelete,
@@ -38,7 +41,9 @@ function VMRowActionMenuItems({
   vm: VirtualMachine;
   closeMenu: () => void;
   liveMigrationEnabled: boolean;
+  snapshotEnabled: boolean;
   onDoctor: (vm: VirtualMachine) => void;
+  onClone: (vm: VirtualMachine) => void;
   onEdit: (vm: VirtualMachine) => void;
   onViewYaml: (vm: VirtualMachine) => void;
   onDelete: (vm: VirtualMachine) => void;
@@ -77,6 +82,20 @@ function VMRowActionMenuItems({
         </ListItemIcon>
         <ListItemText>VM Doctor</ListItemText>
       </MenuItem>
+      {snapshotEnabled && (
+        <MenuItem
+          key="clone"
+          onClick={() => {
+            closeMenu();
+            onClone(vm);
+          }}
+        >
+          <ListItemIcon>
+            <Icon icon="mdi:content-copy" />
+          </ListItemIcon>
+          <ListItemText>Clone</ListItemText>
+        </MenuItem>
+      )}
       <Divider />
       <MenuItem
         key="edit"
@@ -130,6 +149,7 @@ export default function VirtualMachineList() {
   const [deleteVM, setDeleteVM] = useState<VirtualMachine | null>(null);
   const [editVM, setEditVM] = useState<VirtualMachine | null>(null);
   const [viewYamlVM, setViewYamlVM] = useState<VirtualMachine | null>(null);
+  const [cloneVM, setCloneVM] = useState<VirtualMachine | null>(null);
   useEffect(() => {
     setCustomLabelColumns(getLabelColumns());
   }, []);
@@ -137,11 +157,14 @@ export default function VirtualMachineList() {
   const [liveMigrationEnabled, setLiveMigrationEnabled] = useState(
     isFeatureGateEnabled('LiveMigration')
   );
+  const [snapshotEnabled, setSnapshotEnabled] = useState(isFeatureGateEnabled('Snapshot'));
   useEffect(() => {
-    setLiveMigrationEnabled(isFeatureGateEnabled('LiveMigration'));
-    return subscribeToFeatureGates(() => {
+    const update = () => {
       setLiveMigrationEnabled(isFeatureGateEnabled('LiveMigration'));
-    });
+      setSnapshotEnabled(isFeatureGateEnabled('Snapshot'));
+    };
+    update();
+    return subscribeToFeatureGates(update);
   }, []);
 
   const emptyVM = {
@@ -455,13 +478,15 @@ export default function VirtualMachineList() {
         vm={row.original}
         closeMenu={closeMenu}
         liveMigrationEnabled={liveMigrationEnabled}
+        snapshotEnabled={snapshotEnabled}
         onDoctor={openDoctor}
+        onClone={setCloneVM}
         onEdit={setEditVM}
         onViewYaml={setViewYamlVM}
         onDelete={setDeleteVM}
       />,
     ],
-    [liveMigrationEnabled, openDoctor]
+    [liveMigrationEnabled, snapshotEnabled, openDoctor]
   );
 
   return (
@@ -579,6 +604,13 @@ export default function VirtualMachineList() {
           kind="VirtualMachine"
         />
       )}
+
+      <CloneDialog
+        open={!!cloneVM}
+        onClose={() => setCloneVM(null)}
+        vmName={cloneVM?.getName() || ''}
+        namespace={cloneVM?.getNamespace() || ''}
+      />
     </>
   );
 }
