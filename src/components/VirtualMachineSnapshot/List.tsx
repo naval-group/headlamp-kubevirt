@@ -7,15 +7,84 @@ import {
   Table,
 } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
 import { Box, Chip, ListItemIcon, ListItemText, MenuItem, Typography } from '@mui/material';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import useFeatureGate from '../../hooks/useFeatureGate';
 import useFilteredList from '../../hooks/useFilteredList';
 import useResourceActions from '../../hooks/useResourceActions';
-import { isFeatureGateEnabled, subscribeToFeatureGates } from '../../utils/featureGates';
 import BulkDeleteToolbar from '../common/BulkDeleteToolbar';
 import StandardRowActions from '../common/StandardRowActions';
 import CreateExportDialog from '../VirtualMachineExport/CreateExportDialog';
 import RestoreDialog from './RestoreDialog';
 import VirtualMachineSnapshot from './VirtualMachineSnapshot';
+
+function SnapshotRowActions({
+  snapshot,
+  closeMenu,
+  vmExportEnabled,
+  onRestore,
+  onExport,
+  onEdit,
+  onViewYaml,
+  onDelete,
+}: {
+  snapshot: InstanceType<typeof VirtualMachineSnapshot>;
+  closeMenu: () => void;
+  vmExportEnabled: boolean;
+  onRestore: (s: { name: string; namespace: string; vmName: string }) => void;
+  onExport: (s: { name: string; namespace: string }) => void;
+  onEdit: (s: InstanceType<typeof VirtualMachineSnapshot>) => void;
+  onViewYaml: (s: InstanceType<typeof VirtualMachineSnapshot>) => void;
+  onDelete: (s: InstanceType<typeof VirtualMachineSnapshot>) => void;
+}) {
+  const [live] = VirtualMachineSnapshot.useGet(snapshot.getName(), snapshot.getNamespace());
+  const snap = live || snapshot;
+
+  return (
+    <StandardRowActions
+      resource={snap}
+      closeMenu={closeMenu}
+      onEdit={onEdit}
+      onViewYaml={onViewYaml}
+      onDelete={onDelete}
+      extraItems={[
+        <MenuItem
+          key="restore"
+          disabled={!snap.isReadyToUse()}
+          onClick={() => {
+            closeMenu();
+            onRestore({
+              name: snap.getName(),
+              namespace: snap.getNamespace(),
+              vmName: snap.getSourceName(),
+            });
+          }}
+        >
+          <ListItemIcon>
+            <Icon icon="mdi:restore" />
+          </ListItemIcon>
+          <ListItemText>Restore</ListItemText>
+        </MenuItem>,
+        vmExportEnabled && (
+          <MenuItem
+            key="export"
+            onClick={() => {
+              closeMenu();
+              onExport({
+                name: snap.getName(),
+                namespace: snap.getNamespace(),
+              });
+            }}
+          >
+            <ListItemIcon>
+              <Icon icon="mdi:export" />
+            </ListItemIcon>
+            <ListItemText>Export</ListItemText>
+          </MenuItem>
+        ),
+      ]}
+    />
+  );
+}
 
 export default function VirtualMachineSnapshotList() {
   const { items: rawItems } = VirtualMachineSnapshot.useList();
@@ -31,11 +100,7 @@ export default function VirtualMachineSnapshotList() {
     vmName: string;
   } | null>(null);
 
-  const [vmExportEnabled, setVmExportEnabled] = useState(isFeatureGateEnabled('VMExport'));
-  useEffect(() => {
-    setVmExportEnabled(isFeatureGateEnabled('VMExport'));
-    return subscribeToFeatureGates(() => setVmExportEnabled(isFeatureGateEnabled('VMExport')));
-  }, []);
+  const vmExportEnabled = useFeatureGate('VMExport');
   const { setEditItem, setViewYamlItem, setDeleteItem, ActionDialogs } = useResourceActions<
     InstanceType<typeof VirtualMachineSnapshot>
   >({
@@ -87,50 +152,16 @@ export default function VirtualMachineSnapshotList() {
             row: { original: InstanceType<typeof VirtualMachineSnapshot> };
             closeMenu: () => void;
           }) => [
-            <StandardRowActions
-              key="std"
-              resource={row.original}
+            <SnapshotRowActions
+              key="actions"
+              snapshot={row.original}
               closeMenu={closeMenu}
+              vmExportEnabled={vmExportEnabled}
+              onRestore={setRestoreSnapshot}
+              onExport={setSelectedSnapshot}
               onEdit={setEditItem}
               onViewYaml={setViewYamlItem}
               onDelete={setDeleteItem}
-              extraItems={[
-                row.original.isReadyToUse() && (
-                  <MenuItem
-                    key="restore"
-                    onClick={() => {
-                      closeMenu();
-                      setRestoreSnapshot({
-                        name: row.original.getName(),
-                        namespace: row.original.getNamespace(),
-                        vmName: row.original.getSourceName(),
-                      });
-                    }}
-                  >
-                    <ListItemIcon>
-                      <Icon icon="mdi:restore" />
-                    </ListItemIcon>
-                    <ListItemText>Restore</ListItemText>
-                  </MenuItem>
-                ),
-                vmExportEnabled && (
-                  <MenuItem
-                    key="export"
-                    onClick={() => {
-                      closeMenu();
-                      setSelectedSnapshot({
-                        name: row.original.getName(),
-                        namespace: row.original.getNamespace(),
-                      });
-                    }}
-                  >
-                    <ListItemIcon>
-                      <Icon icon="mdi:export" />
-                    </ListItemIcon>
-                    <ListItemText>Export</ListItemText>
-                  </MenuItem>
-                ),
-              ]}
             />,
           ]}
           columns={[

@@ -324,7 +324,9 @@ export default function KubeVirtSettings() {
       // Try to read the existing release label from the auto-created ServiceMonitor
       if (kubeVirt.getMonitorNamespace()) {
         ApiProxy.request(
-          `/apis/monitoring.coreos.com/v1/namespaces/${kubeVirt.getMonitorNamespace()}/servicemonitors`
+          `/apis/monitoring.coreos.com/v1/namespaces/${encodeURIComponent(
+            kubeVirt.getMonitorNamespace()
+          )}/servicemonitors`
         )
           .then(
             (resp: {
@@ -336,7 +338,9 @@ export default function KubeVirtSettings() {
               }
             }
           )
-          .catch(() => {});
+          .catch(() => {
+            // ServiceMonitor may not exist yet — not critical
+          });
       }
     }
   }, [kubeVirt]);
@@ -347,7 +351,9 @@ export default function KubeVirtSettings() {
       .then((resp: { items?: Array<{ metadata: { name: string } }> }) => {
         setMonitoringNamespaces(resp?.items?.map(ns => ns.metadata.name) || []);
       })
-      .catch(() => {});
+      .catch(() => {
+        enqueueSnackbar('Failed to load namespaces for monitoring config', { variant: 'warning' });
+      });
   }, []);
 
   useEffect(() => {
@@ -355,13 +361,20 @@ export default function KubeVirtSettings() {
       setMonitoringServiceAccounts([]);
       return;
     }
-    ApiProxy.request(`/api/v1/namespaces/${localMonitorNamespace}/serviceaccounts`)
+    ApiProxy.request(
+      `/api/v1/namespaces/${encodeURIComponent(localMonitorNamespace)}/serviceaccounts`
+    )
       .then((resp: { items?: Array<{ metadata: { name: string } }> }) => {
         setMonitoringServiceAccounts(
           resp?.items?.map(sa => sa.metadata.name).filter(n => n.includes('prometheus')) || []
         );
       })
-      .catch(() => setMonitoringServiceAccounts([]));
+      .catch(() => {
+        setMonitoringServiceAccounts([]);
+        enqueueSnackbar('Failed to load service accounts for monitoring config', {
+          variant: 'warning',
+        });
+      });
   }, [localMonitorNamespace]);
 
   // Fetch system health chart data from Prometheus
@@ -518,12 +531,16 @@ export default function KubeVirtSettings() {
         monitorTimerRef.current = setTimeout(async () => {
           try {
             const smResp = (await ApiProxy.request(
-              `/apis/monitoring.coreos.com/v1/namespaces/${localMonitorNamespace}/servicemonitors`
+              `/apis/monitoring.coreos.com/v1/namespaces/${encodeURIComponent(
+                localMonitorNamespace
+              )}/servicemonitors`
             )) as { items?: Array<{ metadata: { name: string; namespace: string } }> };
             const sm = smResp?.items?.find(s => s.metadata.name.includes('kubevirt'));
             if (sm) {
               await ApiProxy.request(
-                `/apis/monitoring.coreos.com/v1/namespaces/${sm.metadata.namespace}/servicemonitors/${sm.metadata.name}`,
+                `/apis/monitoring.coreos.com/v1/namespaces/${encodeURIComponent(
+                  sm.metadata.namespace
+                )}/servicemonitors/${encodeURIComponent(sm.metadata.name)}`,
                 {
                   method: 'PATCH',
                   headers: { 'Content-Type': 'application/merge-patch+json' },
