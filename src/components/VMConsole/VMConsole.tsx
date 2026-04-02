@@ -21,7 +21,7 @@ import {
 import DialogContent from '@mui/material/DialogContent';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal as XTerminal } from '@xterm/xterm';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import useVMActions from '../../hooks/useVMActions';
 import { RFBPixelFormat } from '../../types';
@@ -233,15 +233,19 @@ function QuickActions({ vm }: { vm?: VirtualMachine }) {
 
 // ── Terminal Panel ───────────────────────────────────────────────────────
 
-export function TerminalPanel({
-  item,
-  active,
-  onStatusChange,
-}: {
-  item: ConsoleObject;
-  active: boolean;
-  onStatusChange: (status: 'connecting' | 'connected') => void;
-}) {
+export interface TerminalPanelHandle {
+  sendText: (text: string) => void;
+}
+
+export const TerminalPanel = React.forwardRef<
+  TerminalPanelHandle,
+  {
+    item: ConsoleObject;
+    active: boolean;
+    onStatusChange: (status: 'connecting' | 'connected') => void;
+    compact?: boolean;
+  }
+>(function TerminalPanel({ item, active, onStatusChange, compact }, ref) {
   const { t } = useTranslation(['translation', 'glossary']);
   const execRef = useRef<execReturn | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -258,9 +262,13 @@ export function TerminalPanel({
     socket.send(encoded);
   }
 
+  useImperativeHandle(ref, () => ({
+    sendText: (text: string) => send(0, text),
+  }));
+
   function onData(xtermc: XTerminalConnected, bytes: ArrayBuffer) {
     const xterm = xtermc.xterm;
-    const text = decoderRef.current.decode(bytes);
+    const text = decoderRef.current.decode(bytes, { stream: true });
     if (!xtermc.connected) {
       xtermc.connected = true;
       xterm.writeln(t('Connected to terminal…'));
@@ -272,14 +280,8 @@ export function TerminalPanel({
     if (!itemRef) return;
     xterm.open(itemRef);
     xterm.onData(data => send(0, data));
-    xterm.onResize(size => {
-      const resizeData = `{"Width":${size.cols},"Height":${size.rows}}`;
-      const socket = execRef.current?.getSocket();
-      if (socket && socket.readyState === 1) {
-        const encoded = encoderRef.current.encode(resizeData);
-        socket.send(encoded);
-      }
-    });
+    // Note: no resize event — serial console (plain.kubevirt.io) has no resize channel.
+    // Terminal width is set via stty in the guest.
     xterm.attachCustomKeyEventHandler(arg => {
       if (arg.ctrlKey && arg.type === 'keydown') {
         if (arg.code === 'KeyC') {
@@ -396,8 +398,8 @@ export function TerminalPanel({
     >
       <Box
         sx={theme => ({
-          paddingTop: theme.spacing(1),
-          paddingBottom: theme.spacing(1),
+          paddingTop: compact ? 0 : theme.spacing(1),
+          paddingBottom: compact ? 0 : theme.spacing(1),
           flex: 1,
           width: '100%',
           overflow: 'hidden',
@@ -413,7 +415,7 @@ export function TerminalPanel({
       </Box>
     </Box>
   );
-}
+});
 
 // ── VNC Panel ───────────────────────────────────────────────────────────
 
