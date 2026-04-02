@@ -1,5 +1,4 @@
 import { Icon } from '@iconify/react';
-import { ApiProxy } from '@kinvolk/headlamp-plugin/lib';
 import {
   DateLabel,
   Link,
@@ -7,149 +6,29 @@ import {
   SectionFilterHeader,
   Table,
 } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
-import {
-  Box,
-  Button,
-  Card,
-  CardContent,
-  Chip,
-  ListItemIcon,
-  ListItemText,
-  MenuItem,
-  Typography,
-} from '@mui/material';
-import { useSnackbar } from 'notistack';
+import { Box, Chip, ListItemIcon, ListItemText, MenuItem, Typography } from '@mui/material';
 import { useEffect, useState } from 'react';
 import useFilteredList from '../../hooks/useFilteredList';
 import useResourceActions from '../../hooks/useResourceActions';
 import { isFeatureGateEnabled, subscribeToFeatureGates } from '../../utils/featureGates';
 import BulkDeleteToolbar from '../common/BulkDeleteToolbar';
 import StandardRowActions from '../common/StandardRowActions';
+import CreateExportDialog from '../VirtualMachineExport/CreateExportDialog';
+import RestoreDialog from './RestoreDialog';
 import VirtualMachineSnapshot from './VirtualMachineSnapshot';
-
-// CreateExportDialog component for creating exports from snapshots
-function CreateExportDialog({
-  open,
-  onClose,
-  snapshotName,
-  snapshotNamespace,
-}: {
-  open: boolean;
-  onClose: () => void;
-  snapshotName: string;
-  snapshotNamespace: string;
-}) {
-  const { enqueueSnackbar } = useSnackbar();
-  const [ttl, setTtl] = useState('2h');
-  const [creating, setCreating] = useState(false);
-
-  const handleCreate = async () => {
-    setCreating(true);
-    try {
-      const exportName = `${snapshotName}-export-${Date.now()}`;
-      const exportResource = {
-        apiVersion: 'export.kubevirt.io/v1beta1',
-        kind: 'VirtualMachineExport',
-        metadata: {
-          name: exportName,
-          namespace: snapshotNamespace,
-        },
-        spec: {
-          source: {
-            apiGroup: 'snapshot.kubevirt.io',
-            kind: 'VirtualMachineSnapshot',
-            name: snapshotName,
-          },
-          ttlDuration: ttl,
-        },
-      };
-
-      await ApiProxy.request(
-        `/apis/export.kubevirt.io/v1beta1/namespaces/${encodeURIComponent(
-          snapshotNamespace
-        )}/virtualmachineexports`,
-        {
-          method: 'POST',
-          body: JSON.stringify(exportResource),
-          headers: { 'Content-Type': 'application/json' },
-        }
-      );
-
-      enqueueSnackbar(`Export ${exportName} created`, { variant: 'success' });
-      onClose();
-    } catch (error: unknown) {
-      console.error('Failed to create export:', error);
-      enqueueSnackbar('Failed to create export.', { variant: 'error' });
-    } finally {
-      setCreating(false);
-    }
-  };
-
-  if (!open) return null;
-
-  return (
-    <Box
-      sx={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 1300,
-      }}
-      onClick={onClose}
-    >
-      <Card sx={{ minWidth: 400, maxWidth: 500 }} onClick={e => e.stopPropagation()}>
-        <CardContent>
-          <Typography variant="h6" gutterBottom>
-            Create Export from Snapshot
-          </Typography>
-          <Typography variant="body2" color="text.secondary" gutterBottom>
-            Snapshot: {snapshotName}
-          </Typography>
-          <Box sx={{ mt: 2 }}>
-            <Typography variant="subtitle2" gutterBottom>
-              TTL Duration
-            </Typography>
-            <select
-              value={ttl}
-              onChange={e => setTtl(e.target.value)}
-              style={{ width: '100%', padding: '8px', borderRadius: '4px' }}
-            >
-              <option value="1h">1 hour</option>
-              <option value="2h">2 hours</option>
-              <option value="6h">6 hours</option>
-              <option value="12h">12 hours</option>
-              <option value="24h">24 hours</option>
-              <option value="48h">48 hours</option>
-              <option value="168h">1 week</option>
-            </select>
-          </Box>
-          <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-            <Button onClick={onClose} disabled={creating}>
-              Cancel
-            </Button>
-            <Button variant="contained" onClick={handleCreate} disabled={creating}>
-              {creating ? 'Creating...' : 'Create Export'}
-            </Button>
-          </Box>
-        </CardContent>
-      </Card>
-    </Box>
-  );
-}
 
 export default function VirtualMachineSnapshotList() {
   const { items: rawItems } = VirtualMachineSnapshot.useList();
   const items = useFilteredList(rawItems);
-  const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [selectedSnapshot, setSelectedSnapshot] = useState<{
     name: string;
     namespace: string;
+  } | null>(null);
+
+  const [restoreSnapshot, setRestoreSnapshot] = useState<{
+    name: string;
+    namespace: string;
+    vmName: string;
   } | null>(null);
 
   const [vmExportEnabled, setVmExportEnabled] = useState(isFeatureGateEnabled('VMExport'));
@@ -163,6 +42,29 @@ export default function VirtualMachineSnapshotList() {
     apiVersion: 'snapshot.kubevirt.io/v1beta1',
     kind: 'VirtualMachineSnapshot',
   });
+
+  if (rawItems && rawItems.length === 0) {
+    return (
+      <Box
+        sx={{
+          p: 4,
+          textAlign: 'center',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 2,
+        }}
+      >
+        <Icon icon="mdi:camera" width={48} style={{ opacity: 0.4 }} />
+        <Typography variant="h6" color="text.secondary">
+          No VM Snapshots
+        </Typography>
+        <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 600 }}>
+          Create a snapshot from a virtual machine's details page to capture its current state.
+        </Typography>
+      </Box>
+    );
+  }
 
   return (
     <>
@@ -192,8 +94,26 @@ export default function VirtualMachineSnapshotList() {
               onEdit={setEditItem}
               onViewYaml={setViewYamlItem}
               onDelete={setDeleteItem}
-              extraItems={
-                vmExportEnabled ? (
+              extraItems={[
+                row.original.isReadyToUse() && (
+                  <MenuItem
+                    key="restore"
+                    onClick={() => {
+                      closeMenu();
+                      setRestoreSnapshot({
+                        name: row.original.getName(),
+                        namespace: row.original.getNamespace(),
+                        vmName: row.original.getSourceName(),
+                      });
+                    }}
+                  >
+                    <ListItemIcon>
+                      <Icon icon="mdi:restore" />
+                    </ListItemIcon>
+                    <ListItemText>Restore</ListItemText>
+                  </MenuItem>
+                ),
+                vmExportEnabled && (
                   <MenuItem
                     key="export"
                     onClick={() => {
@@ -202,7 +122,6 @@ export default function VirtualMachineSnapshotList() {
                         name: row.original.getName(),
                         namespace: row.original.getNamespace(),
                       });
-                      setExportDialogOpen(true);
                     }}
                   >
                     <ListItemIcon>
@@ -210,8 +129,8 @@ export default function VirtualMachineSnapshotList() {
                     </ListItemIcon>
                     <ListItemText>Export</ListItemText>
                   </MenuItem>
-                ) : undefined
-              }
+                ),
+              ]}
             />,
           ]}
           columns={[
@@ -319,13 +238,19 @@ export default function VirtualMachineSnapshotList() {
       {ActionDialogs}
       {selectedSnapshot && (
         <CreateExportDialog
-          open={exportDialogOpen}
-          onClose={() => {
-            setExportDialogOpen(false);
-            setSelectedSnapshot(null);
-          }}
+          open={!!selectedSnapshot}
+          onClose={() => setSelectedSnapshot(null)}
           snapshotName={selectedSnapshot.name}
           snapshotNamespace={selectedSnapshot.namespace}
+        />
+      )}
+      {restoreSnapshot && (
+        <RestoreDialog
+          open={!!restoreSnapshot}
+          onClose={() => setRestoreSnapshot(null)}
+          snapshotName={restoreSnapshot.name}
+          vmName={restoreSnapshot.vmName}
+          namespace={restoreSnapshot.namespace}
         />
       )}
     </>

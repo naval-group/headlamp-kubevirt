@@ -32,6 +32,7 @@ import { useEffect, useRef, useState } from 'react';
 import ResourceEditorDialog from '../components/ResourceEditorDialog';
 import { INSPECTOR_IMAGE } from '../components/VMDoctor/constants';
 import { LiveUpdateConfig, MigrationConfig, NetworkConfig, PermittedHostDevices } from '../types';
+import { updateFeatureGates } from '../utils/featureGates';
 import {
   addLabelColumn,
   defaultForensicSettings,
@@ -412,6 +413,7 @@ export default function KubeVirtSettings() {
       }
 
       await kubeVirt.updateFeatureGates(newFeatureGates);
+      updateFeatureGates(newFeatureGates);
 
       // Add inline warning for features that affect sidebar
       const sidebarFeatures = ['Snapshot', 'VMExport', 'DataVolumes', 'LiveMigration'];

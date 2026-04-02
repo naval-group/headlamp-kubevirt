@@ -83,6 +83,20 @@ export function findCondition<T extends { type: string }>(
   return conditions?.find(c => c.type === type);
 }
 
+/** MUI Chip color for a VirtualMachineRestore status. */
+export function getRestoreStatusColor(status: string): ChipColor {
+  switch (status) {
+    case 'Succeeded':
+      return 'success';
+    case 'Failed':
+      return 'error';
+    case 'InProgress':
+      return 'primary';
+    default:
+      return 'default';
+  }
+}
+
 /** Map an inspector VM status to a hex color. */
 export function getInspectorStatusColor(
   status: 'idle' | 'creating' | 'pending' | 'running' | 'failed' | 'deleting'
