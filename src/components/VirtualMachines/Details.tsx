@@ -34,6 +34,7 @@ import CopyCodeBlock from '../common/CopyCodeBlock';
 import { SimpleStyledTooltip, TitledTooltip } from '../common/StyledTooltip';
 import VMConsole from '../VMConsole/VMConsole';
 import VMDoctorDialog from '../VMDoctor/VMDoctorDialog';
+import CloneDialog from './CloneDialog';
 import VirtualMachine from './VirtualMachine';
 
 /** Runtime interface info from VMI status (not the spec-level VMInterface) */
@@ -82,6 +83,7 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
   const [showSnapshotDialog, setShowSnapshotDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDoctor, setShowDoctor] = useState(false);
+  const [showCloneDialog, setShowCloneDialog] = useState(false);
   const [vmItem] = VirtualMachine.useGet(name, namespace);
   const { actions: vmActions } = useVMActions(vmItem);
 
@@ -862,6 +864,16 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                       ></ActionButton>
                     ),
                   },
+                  {
+                    id: 'clone',
+                    action: (
+                      <ActionButton
+                        description={t('Clone VM')}
+                        icon="mdi:content-copy"
+                        onClick={() => setShowCloneDialog(true)}
+                      ></ActionButton>
+                    ),
+                  },
                 ]
               : []),
             {
@@ -913,6 +925,12 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
       <CreateSnapshotDialog
         open={showSnapshotDialog}
         onClose={() => setShowSnapshotDialog(false)}
+        vmName={name || ''}
+        namespace={namespace || ''}
+      />
+      <CloneDialog
+        open={showCloneDialog}
+        onClose={() => setShowCloneDialog(false)}
         vmName={name || ''}
         namespace={namespace || ''}
       />
