@@ -21,7 +21,9 @@ import ConfirmDialog from '../common/ConfirmDialog';
 import { TabContent, TabDef, TabPanelHeader } from '../common/TabPanel';
 import VirtualMachine from '../VirtualMachines/VirtualMachine';
 import ConditionsTab from './ConditionsTab';
+import { GUESTFS_LABEL } from './constants';
 import EventsTab from './EventsTab';
+import GuestfsTab from './GuestfsTab';
 import GuestInfoTab from './GuestInfoTab';
 import MemoryDumpTab from './MemoryDumpTab';
 import MetricsDashboardTab from './MetricsDashboardTab';
@@ -52,6 +54,7 @@ const TAB_VM_SHELL = 6;
 const TAB_POD_SHELL = 7;
 const TAB_YAML = 8;
 const TAB_MEMDUMP = 9;
+const TAB_GUESTFS = 10;
 
 export default function VMDoctorDialog({
   open,
@@ -69,17 +72,27 @@ export default function VMDoctorDialog({
   const { enqueueSnackbar } = useSnackbar();
   const { actions: vmActions } = useVMActions(vmItem);
 
-  // Intercept close: check for running analysis pods before closing
+  // Intercept close: check for running analysis/guestfs pods before closing
   const handleClose = useCallback(async () => {
     try {
-      const res = await ApiProxy.request(
-        `/api/v1/namespaces/${namespace}/pods?labelSelector=app%3Dvolatility3-analysis`
-      );
-      const pods = (res?.items || [])
+      const vmLabel = encodeURIComponent(vmName);
+      const [volRes, guestfsVmiRes] = await Promise.all([
+        ApiProxy.request(
+          `/api/v1/namespaces/${namespace}/pods?labelSelector=app%3Dvolatility3-analysis%2Ckubevirt.io%2Fvm%3D${vmLabel}`
+        ).catch(() => ({ items: [] })),
+        ApiProxy.request(
+          `/apis/kubevirt.io/v1/namespaces/${namespace}/virtualmachineinstances?labelSelector=app%3D${GUESTFS_LABEL}%2Ckubevirt.io%2Fvm%3D${vmLabel}`
+        ).catch(() => ({ items: [] })),
+      ]);
+      const runningPods = (volRes?.items || [])
         .filter((p: any) => !p.metadata.deletionTimestamp && p.status?.phase === 'Running')
         .map((p: any) => p.metadata.name);
-      if (pods.length > 0) {
-        setAnalysisPods(pods);
+      const runningVMIs = (guestfsVmiRes?.items || [])
+        .filter((v: any) => !v.metadata.deletionTimestamp && v.status?.phase === 'Running')
+        .map((v: any) => v.metadata.name);
+      const allRunning = [...runningPods, ...runningVMIs];
+      if (allRunning.length > 0) {
+        setAnalysisPods(allRunning);
         setShowCleanupPrompt(true);
         return;
       }
@@ -87,21 +100,25 @@ export default function VMDoctorDialog({
       /* ignore — just close */
     }
     onClose();
-  }, [namespace, onClose]);
+  }, [namespace, vmName, onClose]);
 
   const cleanupAndClose = async () => {
     setShowCleanupPrompt(false);
-    for (const pod of analysisPods) {
+    for (const name of analysisPods) {
+      // Try VMI first (inspector VMs), then pod (volatility3)
+      const isInspectorVM = name.startsWith('inspector-vm-');
+      const apiPath = isInspectorVM
+        ? `/apis/kubevirt.io/v1/namespaces/${namespace}/virtualmachineinstances/${name}`
+        : `/api/v1/namespaces/${namespace}/pods/${name}`;
       try {
-        await ApiProxy.request(`/api/v1/namespaces/${namespace}/pods/${pod}`, {
-          method: 'DELETE',
-          isJSON: false,
-        });
+        await ApiProxy.request(apiPath, { method: 'DELETE', isJSON: false });
       } catch {
         /* ignore */
       }
     }
-    enqueueSnackbar(`Cleaning up ${analysisPods.length} analysis pod(s)`, { variant: 'info' });
+    enqueueSnackbar(`Cleaning up ${analysisPods.length} analysis resource(s)`, {
+      variant: 'info',
+    });
     onClose();
   };
 
@@ -117,8 +134,9 @@ export default function VMDoctorDialog({
   const isLogs = activeTab === TAB_LOGS;
   const isYaml = activeTab === TAB_YAML;
   const isMemDump = activeTab === TAB_MEMDUMP;
+  const isGuestfs = activeTab === TAB_GUESTFS;
   const isShellTab = isVMShell || isPodShell;
-  const isFixedLayout = isShellTab || isLogs || isYaml || isMemDump;
+  const isFixedLayout = isShellTab || isLogs || isYaml || isMemDump || isGuestfs;
 
   const isRunning = vmiPhase === 'Running';
   const hasPod = !!podName;
@@ -174,8 +192,8 @@ export default function VMDoctorDialog({
     {
       icon: 'mdi:console-line',
       label: 'Pod Shell',
-      disabled: !hasPod,
-      reason: 'No virt-launcher pod found. Pod Shell requires a running VM.',
+      disabled: !hasPod || !isRunning,
+      reason: 'Pod Shell requires a running VM.',
     },
     {
       icon: 'mdi:code-braces',
@@ -186,6 +204,12 @@ export default function VMDoctorDialog({
     {
       icon: 'mdi:memory',
       label: 'Memory Dump',
+      disabled: false,
+      reason: '',
+    },
+    {
+      icon: 'mdi:harddisk',
+      label: 'Disk Inspector',
       disabled: false,
       reason: '',
     },
@@ -346,6 +370,9 @@ export default function VMDoctorDialog({
             hasAgent={hasAgent}
           />
         </TabContent>
+        <TabContent activeTab={activeTab} index={TAB_GUESTFS} keepAlive flex>
+          <GuestfsTab vmName={vmName} namespace={namespace} vmItem={vmItem} />
+        </TabContent>
       </DialogContent>
 
       <ConfirmDialog
@@ -381,8 +408,8 @@ export default function VMDoctorDialog({
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
             {analysisPods.length === 1
-              ? 'There is 1 Volatility3 analysis pod still running:'
-              : `There are ${analysisPods.length} Volatility3 analysis pods still running:`}
+              ? 'There is 1 analysis pod still running:'
+              : `There are ${analysisPods.length} analysis pods still running:`}
           </Typography>
           {analysisPods.map(pod => (
             <Chip
