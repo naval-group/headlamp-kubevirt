@@ -10,9 +10,9 @@ import { DateLabel } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
 import { Box, Chip, Divider, ListItemIcon, ListItemText, MenuItem } from '@mui/material';
 import { useSnackbar } from 'notistack';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import useFeatureGate from '../../hooks/useFeatureGate';
 import useFilteredList from '../../hooks/useFilteredList';
 import useVMActions from '../../hooks/useVMActions';
-import { isFeatureGateEnabled, subscribeToFeatureGates } from '../../utils/featureGates';
 import { getLabelColumns, LabelColumn } from '../../utils/pluginSettings';
 import { safeError } from '../../utils/sanitize';
 import ConfirmDialog from '../common/ConfirmDialog';
@@ -21,16 +21,38 @@ import CreateResourceDialog from '../common/CreateResourceDialog';
 import { SimpleStyledTooltip, TitledTooltip } from '../common/StyledTooltip';
 import ResourceEditorDialog from '../ResourceEditorDialog';
 import VirtualMachineInstance from '../VirtualMachineInstance/VirtualMachineInstance';
+import CreateSnapshotDialog from '../VirtualMachineSnapshot/CreateSnapshotDialog';
 import VMDoctorDialog from '../VMDoctor/VMDoctorDialog';
 import BulkActionToolbar from './BulkActionToolbar';
+import CloneDialog from './CloneDialog';
 import VirtualMachine from './VirtualMachine';
 import VMFormWrapper from './VMFormWrapper';
+
+function DeleteProtectionBadge({ vm }: { vm: VirtualMachine }) {
+  const [liveVM] = VirtualMachine.useGet(vm.getName(), vm.getNamespace());
+  const isProtected = (liveVM || vm).isDeleteProtected();
+  if (!isProtected) return null;
+  return (
+    <SimpleStyledTooltip title="Delete protection enabled — cannot be deleted until protection is removed">
+      <Chip
+        size="small"
+        color="info"
+        sx={{ minWidth: 'auto', '& .MuiChip-label': { px: 0.5 } }}
+        icon={<Icon icon="mdi:lock" />}
+        label=""
+      />
+    </SimpleStyledTooltip>
+  );
+}
 
 function VMRowActionMenuItems({
   vm,
   closeMenu,
   liveMigrationEnabled,
+  snapshotEnabled,
   onDoctor,
+  onClone,
+  onSnapshot,
   onEdit,
   onViewYaml,
   onDelete,
@@ -38,12 +60,15 @@ function VMRowActionMenuItems({
   vm: VirtualMachine;
   closeMenu: () => void;
   liveMigrationEnabled: boolean;
+  snapshotEnabled: boolean;
   onDoctor: (vm: VirtualMachine) => void;
+  onClone: (vm: VirtualMachine) => void;
+  onSnapshot: (vm: VirtualMachine) => void;
   onEdit: (vm: VirtualMachine) => void;
   onViewYaml: (vm: VirtualMachine) => void;
   onDelete: (vm: VirtualMachine) => void;
 }) {
-  // Use live VM data instead of stale row.original snapshot
+  // Use live VM data only when menu is open (one at a time, not per row)
   const [liveVM] = VirtualMachine.useGet(vm.getName(), vm.getNamespace());
   const { actions, isProtected } = useVMActions(liveVM || vm);
   const visibleActions = actions.filter(a => a.id !== 'migrate' || liveMigrationEnabled);
@@ -77,12 +102,40 @@ function VMRowActionMenuItems({
         </ListItemIcon>
         <ListItemText>VM Doctor</ListItemText>
       </MenuItem>
+      {snapshotEnabled && (
+        <MenuItem
+          key="snapshot"
+          onClick={() => {
+            closeMenu();
+            onSnapshot(vm);
+          }}
+        >
+          <ListItemIcon>
+            <Icon icon="mdi:camera" />
+          </ListItemIcon>
+          <ListItemText>Snapshot</ListItemText>
+        </MenuItem>
+      )}
+      {snapshotEnabled && (
+        <MenuItem
+          key="clone"
+          onClick={() => {
+            closeMenu();
+            onClone(vm);
+          }}
+        >
+          <ListItemIcon>
+            <Icon icon="mdi:content-copy" />
+          </ListItemIcon>
+          <ListItemText>Clone</ListItemText>
+        </MenuItem>
+      )}
       <Divider />
       <MenuItem
         key="edit"
         onClick={() => {
           closeMenu();
-          onEdit(vm);
+          onEdit(liveVM || vm);
         }}
       >
         <ListItemIcon>
@@ -94,7 +147,7 @@ function VMRowActionMenuItems({
         key="view-yaml"
         onClick={() => {
           closeMenu();
-          onViewYaml(vm);
+          onViewYaml(liveVM || vm);
         }}
       >
         <ListItemIcon>
@@ -130,19 +183,14 @@ export default function VirtualMachineList() {
   const [deleteVM, setDeleteVM] = useState<VirtualMachine | null>(null);
   const [editVM, setEditVM] = useState<VirtualMachine | null>(null);
   const [viewYamlVM, setViewYamlVM] = useState<VirtualMachine | null>(null);
+  const [cloneVM, setCloneVM] = useState<VirtualMachine | null>(null);
+  const [snapshotVM, setSnapshotVM] = useState<VirtualMachine | null>(null);
   useEffect(() => {
     setCustomLabelColumns(getLabelColumns());
   }, []);
 
-  const [liveMigrationEnabled, setLiveMigrationEnabled] = useState(
-    isFeatureGateEnabled('LiveMigration')
-  );
-  useEffect(() => {
-    setLiveMigrationEnabled(isFeatureGateEnabled('LiveMigration'));
-    return subscribeToFeatureGates(() => {
-      setLiveMigrationEnabled(isFeatureGateEnabled('LiveMigration'));
-    });
-  }, []);
+  const liveMigrationEnabled = useFeatureGate('LiveMigration');
+  const snapshotEnabled = useFeatureGate('Snapshot');
 
   const emptyVM = {
     apiVersion: 'kubevirt.io/v1',
@@ -303,17 +351,7 @@ export default function VirtualMachineList() {
                   />
                 </TitledTooltip>
               )}
-              {vm.isDeleteProtected() && (
-                <SimpleStyledTooltip title="Delete protection enabled — cannot be deleted until protection is removed">
-                  <Chip
-                    size="small"
-                    color="info"
-                    sx={{ minWidth: 'auto', '& .MuiChip-label': { px: 0.5 } }}
-                    icon={<Icon icon="mdi:lock" />}
-                    label=""
-                  />
-                </SimpleStyledTooltip>
-              )}
+              <DeleteProtectionBadge vm={vm} />
             </Box>
           );
         },
@@ -455,13 +493,16 @@ export default function VirtualMachineList() {
         vm={row.original}
         closeMenu={closeMenu}
         liveMigrationEnabled={liveMigrationEnabled}
+        snapshotEnabled={snapshotEnabled}
         onDoctor={openDoctor}
+        onClone={setCloneVM}
+        onSnapshot={setSnapshotVM}
         onEdit={setEditVM}
         onViewYaml={setViewYamlVM}
         onDelete={setDeleteVM}
       />,
     ],
-    [liveMigrationEnabled, openDoctor]
+    [liveMigrationEnabled, snapshotEnabled, openDoctor]
   );
 
   return (
@@ -579,6 +620,20 @@ export default function VirtualMachineList() {
           kind="VirtualMachine"
         />
       )}
+
+      <CloneDialog
+        open={!!cloneVM}
+        onClose={() => setCloneVM(null)}
+        vmName={cloneVM?.getName() || ''}
+        namespace={cloneVM?.getNamespace() || ''}
+      />
+
+      <CreateSnapshotDialog
+        open={!!snapshotVM}
+        onClose={() => setSnapshotVM(null)}
+        vmName={snapshotVM?.getName() || ''}
+        namespace={snapshotVM?.getNamespace() || ''}
+      />
     </>
   );
 }

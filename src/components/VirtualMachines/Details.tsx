@@ -7,34 +7,30 @@ import {
   SimpleTable,
 } from '@kinvolk/headlamp-plugin/lib/components/common';
 import { ActionButton } from '@kinvolk/headlamp-plugin/lib/components/common';
-import {
-  Alert,
-  Box,
-  Button,
-  Chip,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  FormControl,
-  IconButton,
-  InputLabel,
-  MenuItem,
-  Select,
-  TextField,
-  Typography,
-} from '@mui/material';
+import { Alert, Box, Chip, IconButton, Typography } from '@mui/material';
 import { useSnackbar } from 'notistack';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
+import useFeatureGate from '../../hooks/useFeatureGate';
 import useVMActions from '../../hooks/useVMActions';
+import DataVolume from '../BootableVolumes/DataVolume';
 import ConfirmDialog from '../common/ConfirmDialog';
 import CopyCodeBlock from '../common/CopyCodeBlock';
+import CreateResourceDialog from '../common/CreateResourceDialog';
 import { SimpleStyledTooltip, TitledTooltip } from '../common/StyledTooltip';
+import CreateExportDialog from '../VirtualMachineExport/CreateExportDialog';
+import VirtualMachineExport from '../VirtualMachineExport/VirtualMachineExport';
+import CreateSnapshotDialog from '../VirtualMachineSnapshot/CreateSnapshotDialog';
+import RestoreDialog from '../VirtualMachineSnapshot/RestoreDialog';
+import VirtualMachineSnapshot from '../VirtualMachineSnapshot/VirtualMachineSnapshot';
 import VMConsole from '../VMConsole/VMConsole';
 import VMDoctorDialog from '../VMDoctor/VMDoctorDialog';
+import CloneDialog from './CloneDialog';
+import FloatingNav from './FloatingNav';
+import VMMetrics from './Metrics';
 import VirtualMachine from './VirtualMachine';
+import VMFormWrapper from './VMFormWrapper';
 
 /** Runtime interface info from VMI status (not the spec-level VMInterface) */
 interface VMIStatusInterface {
@@ -58,14 +54,29 @@ interface VMIVolumeStatus {
     accessModes?: string[];
   };
 }
-import { isFeatureGateEnabled, subscribeToFeatureGates } from '../../utils/featureGates';
-import DataVolume from '../BootableVolumes/DataVolume';
-import CreateResourceDialog from '../common/CreateResourceDialog';
-import VirtualMachineExport from '../VirtualMachineExport/VirtualMachineExport';
-import VirtualMachineSnapshot from '../VirtualMachineSnapshot/VirtualMachineSnapshot';
-import FloatingNav from './FloatingNav';
-import VMMetrics from './Metrics';
-import VMFormWrapper from './VMFormWrapper';
+
+/** Subset of VirtualMachineInstance used in the details view */
+interface VMIData {
+  status?: {
+    phase?: string;
+    nodeName?: string;
+    currentCPUTopology?: {
+      sockets?: number;
+      cores?: number;
+      threads?: number;
+    };
+    memory?: {
+      guestCurrent?: string;
+      guestRequested?: string;
+    };
+    guestOSInfo?: {
+      prettyName?: string;
+      kernelRelease?: string;
+    };
+    interfaces?: VMIStatusInterface[];
+    volumeStatus?: VMIVolumeStatus[];
+  };
+}
 
 export interface VirtualMachineDetailsProps {
   showLogsDefault?: boolean;
@@ -82,26 +93,16 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
   const [showSnapshotDialog, setShowSnapshotDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDoctor, setShowDoctor] = useState(false);
+  const [showCloneDialog, setShowCloneDialog] = useState(false);
   const [vmItem] = VirtualMachine.useGet(name, namespace);
   const { actions: vmActions } = useVMActions(vmItem);
 
   const [podName, setPodName] = useState<string | null>(null);
-  const [vmiData, setVmiData] = useState<any>(null);
+  const [vmiData, setVmiData] = useState<VMIData | null>(null);
 
-  const [snapshotEnabled, setSnapshotEnabled] = useState(isFeatureGateEnabled('Snapshot'));
-  const [vmExportEnabled, setVmExportEnabled] = useState(isFeatureGateEnabled('VMExport'));
-  const [liveMigrationEnabled, setLiveMigrationEnabled] = useState(
-    isFeatureGateEnabled('LiveMigration')
-  );
-  useEffect(() => {
-    const update = () => {
-      setSnapshotEnabled(isFeatureGateEnabled('Snapshot'));
-      setVmExportEnabled(isFeatureGateEnabled('VMExport'));
-      setLiveMigrationEnabled(isFeatureGateEnabled('LiveMigration'));
-    };
-    update();
-    return subscribeToFeatureGates(update);
-  }, []);
+  const snapshotEnabled = useFeatureGate('Snapshot');
+  const vmExportEnabled = useFeatureGate('VMExport');
+  const liveMigrationEnabled = useFeatureGate('LiveMigration');
 
   useEffect(() => {
     const fetchPodName = async () => {
@@ -772,7 +773,11 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                     section: (
                       <Box id="section-snapshots">
                         <SectionBox title="Snapshots">
-                          <SnapshotsList vmName={name || ''} namespace={namespace || ''} />
+                          <SnapshotsList
+                            vmName={name || ''}
+                            namespace={namespace || ''}
+                            vmExportEnabled={vmExportEnabled}
+                          />
                         </SectionBox>
                       </Box>
                     ),
@@ -862,6 +867,16 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                       ></ActionButton>
                     ),
                   },
+                  {
+                    id: 'clone',
+                    action: (
+                      <ActionButton
+                        description={t('Clone VM')}
+                        icon="mdi:content-copy"
+                        onClick={() => setShowCloneDialog(true)}
+                      ></ActionButton>
+                    ),
+                  },
                 ]
               : []),
             {
@@ -916,6 +931,12 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
         vmName={name || ''}
         namespace={namespace || ''}
       />
+      <CloneDialog
+        open={showCloneDialog}
+        onClose={() => setShowCloneDialog(false)}
+        vmName={name || ''}
+        namespace={namespace || ''}
+      />
       {vmItem && (
         <CreateResourceDialog
           open={showEditDialog}
@@ -959,20 +980,16 @@ async function getPodName(name: string, namespace: string): Promise<string> {
 interface SnapshotsListProps {
   vmName: string;
   namespace: string;
+  vmExportEnabled: boolean;
 }
 
-function SnapshotsList({ vmName, namespace }: SnapshotsListProps) {
-  const [vmExportEnabled, setVmExportEnabled] = useState(isFeatureGateEnabled('VMExport'));
-  useEffect(() => {
-    setVmExportEnabled(isFeatureGateEnabled('VMExport'));
-    return subscribeToFeatureGates(() => setVmExportEnabled(isFeatureGateEnabled('VMExport')));
-  }, []);
+function SnapshotsList({ vmName, namespace, vmExportEnabled }: SnapshotsListProps) {
   const { items: snapshots } = VirtualMachineSnapshot.useList({ namespace });
   const { enqueueSnackbar } = useSnackbar();
   const [currentPage, setCurrentPage] = useState(0);
-  const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [selectedSnapshot, setSelectedSnapshot] = useState<VirtualMachineSnapshot | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<VirtualMachineSnapshot | null>(null);
+  const [restoreSnapshot, setRestoreSnapshot] = useState<VirtualMachineSnapshot | null>(null);
   const itemsPerPage = 10;
 
   // Filter snapshots for this VM and sort by creation time (newest first)
@@ -1044,15 +1061,23 @@ function SnapshotsList({ vmName, namespace }: SnapshotsListProps) {
             label: '',
             getter: (snapshot: VirtualMachineSnapshot) => (
               <Box display="flex" gap={0.5}>
+                {snapshot.isReadyToUse() && (
+                  <SimpleStyledTooltip title="Restore snapshot">
+                    <IconButton
+                      size="small"
+                      color="primary"
+                      onClick={() => setRestoreSnapshot(snapshot)}
+                    >
+                      <Icon icon="mdi:restore" width={18} />
+                    </IconButton>
+                  </SimpleStyledTooltip>
+                )}
                 {vmExportEnabled && snapshot.isReadyToUse() && (
                   <SimpleStyledTooltip title="Export snapshot">
                     <IconButton
                       size="small"
                       color="primary"
-                      onClick={() => {
-                        setSelectedSnapshot(snapshot);
-                        setExportDialogOpen(true);
-                      }}
+                      onClick={() => setSelectedSnapshot(snapshot)}
                     >
                       <Icon icon="mdi:export" width={18} />
                     </IconButton>
@@ -1098,13 +1123,10 @@ function SnapshotsList({ vmName, namespace }: SnapshotsListProps) {
       )}
       {selectedSnapshot && (
         <CreateExportDialog
-          open={exportDialogOpen}
-          onClose={() => {
-            setExportDialogOpen(false);
-            setSelectedSnapshot(null);
-          }}
+          open={!!selectedSnapshot}
+          onClose={() => setSelectedSnapshot(null)}
           snapshotName={selectedSnapshot.getName()}
-          namespace={namespace}
+          snapshotNamespace={namespace}
         />
       )}
       <ConfirmDialog
@@ -1114,261 +1136,16 @@ function SnapshotsList({ vmName, namespace }: SnapshotsListProps) {
         onConfirm={handleDeleteConfirm}
         onCancel={() => setDeleteTarget(null)}
       />
+      {restoreSnapshot && (
+        <RestoreDialog
+          open={!!restoreSnapshot}
+          onClose={() => setRestoreSnapshot(null)}
+          snapshotName={restoreSnapshot.getName()}
+          vmName={vmName}
+          namespace={namespace}
+        />
+      )}
     </Box>
-  );
-}
-
-// Export creation modal component
-interface CreateExportDialogProps {
-  open: boolean;
-  onClose: () => void;
-  snapshotName: string;
-  namespace: string;
-}
-
-function CreateExportDialog({ open, onClose, snapshotName, namespace }: CreateExportDialogProps) {
-  const { enqueueSnackbar } = useSnackbar();
-  const [exportName, setExportName] = useState(`${snapshotName}-export`);
-  const [ttlDuration, setTtlDuration] = useState('2h');
-  const [creating, setCreating] = useState(false);
-
-  // Reset form when dialog opens
-  useEffect(() => {
-    if (open) {
-      setExportName(`${snapshotName}-export`);
-      setTtlDuration('2h');
-    }
-  }, [open, snapshotName]);
-
-  const handleCreate = async () => {
-    if (!exportName.trim()) {
-      enqueueSnackbar('Export name is required', { variant: 'error' });
-      return;
-    }
-
-    setCreating(true);
-    const vmExport: {
-      apiVersion: string;
-      kind: string;
-      metadata: { name: string; namespace: string };
-      spec: { source: { apiGroup: string; kind: string; name: string }; ttlDuration?: string };
-    } = {
-      apiVersion: 'export.kubevirt.io/v1beta1',
-      kind: 'VirtualMachineExport',
-      metadata: {
-        name: exportName.trim(),
-        namespace: namespace,
-      },
-      spec: {
-        source: {
-          apiGroup: 'snapshot.kubevirt.io',
-          kind: 'VirtualMachineSnapshot',
-          name: snapshotName,
-        },
-      },
-    };
-
-    if (ttlDuration) {
-      vmExport.spec.ttlDuration = ttlDuration;
-    }
-
-    try {
-      await ApiProxy.request(
-        `/apis/export.kubevirt.io/v1beta1/namespaces/${namespace}/virtualmachineexports`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(vmExport),
-        }
-      );
-      enqueueSnackbar(`Export ${exportName} created`, { variant: 'success' });
-      onClose();
-    } catch (e) {
-      console.error('export failed', e);
-      enqueueSnackbar('Failed to create export.', { variant: 'error' });
-    } finally {
-      setCreating(false);
-    }
-  };
-
-  return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Export Snapshot</DialogTitle>
-      <DialogContent>
-        <Box display="flex" flexDirection="column" gap={2} mt={1}>
-          <Typography variant="body2" color="text.secondary">
-            Create an export from snapshot: <strong>{snapshotName}</strong>
-          </Typography>
-          <TextField
-            label="Export Name"
-            value={exportName}
-            onChange={e => setExportName(e.target.value)}
-            fullWidth
-            required
-            helperText="Unique name for the export"
-          />
-          <TextField
-            label="TTL Duration"
-            value={ttlDuration}
-            onChange={e => setTtlDuration(e.target.value)}
-            fullWidth
-            placeholder="e.g., 2h, 24h, 7d"
-            helperText="How long the export should be available (e.g., 2h for 2 hours, 24h for 1 day)"
-          />
-        </Box>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose} disabled={creating}>
-          Cancel
-        </Button>
-        <Button
-          onClick={handleCreate}
-          variant="contained"
-          disabled={creating || !exportName.trim()}
-          startIcon={<Icon icon="mdi:export" />}
-        >
-          {creating ? 'Creating...' : 'Create Export'}
-        </Button>
-      </DialogActions>
-    </Dialog>
-  );
-}
-
-// Snapshot creation modal component
-interface CreateSnapshotDialogProps {
-  open: boolean;
-  onClose: () => void;
-  vmName: string;
-  namespace: string;
-}
-
-function CreateSnapshotDialog({ open, onClose, vmName, namespace }: CreateSnapshotDialogProps) {
-  const { enqueueSnackbar } = useSnackbar();
-  const [snapshotName, setSnapshotName] = useState(`${vmName}-snapshot-${Date.now()}`);
-  const [deletionPolicy, setDeletionPolicy] = useState('default');
-  const [failureDeadline, setFailureDeadline] = useState('');
-  const [creating, setCreating] = useState(false);
-
-  // Reset form when dialog opens
-  useEffect(() => {
-    if (open) {
-      setSnapshotName(`${vmName}-snapshot-${Date.now()}`);
-      setDeletionPolicy('default');
-      setFailureDeadline('');
-    }
-  }, [open, vmName]);
-
-  const handleCreate = async () => {
-    if (!snapshotName.trim()) {
-      enqueueSnackbar('Snapshot name is required', { variant: 'error' });
-      return;
-    }
-
-    setCreating(true);
-    const snapshot: {
-      apiVersion: string;
-      kind: string;
-      metadata: { name: string; namespace: string };
-      spec: {
-        source: { apiGroup: string; kind: string; name: string };
-        deletionPolicy?: string;
-        failureDeadline?: string;
-      };
-    } = {
-      apiVersion: 'snapshot.kubevirt.io/v1beta1',
-      kind: 'VirtualMachineSnapshot',
-      metadata: {
-        name: snapshotName.trim(),
-        namespace: namespace,
-      },
-      spec: {
-        source: {
-          apiGroup: 'kubevirt.io',
-          kind: 'VirtualMachine',
-          name: vmName,
-        },
-      },
-    };
-
-    if (deletionPolicy && deletionPolicy !== 'default') {
-      snapshot.spec.deletionPolicy = deletionPolicy;
-    }
-    if (failureDeadline) {
-      snapshot.spec.failureDeadline = failureDeadline;
-    }
-
-    try {
-      await ApiProxy.request(
-        `/apis/snapshot.kubevirt.io/v1beta1/namespaces/${namespace}/virtualmachinesnapshots`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(snapshot),
-        }
-      );
-      enqueueSnackbar(`Snapshot ${snapshotName} created`, { variant: 'success' });
-      onClose();
-    } catch (e) {
-      console.error('snapshot failed', e);
-      enqueueSnackbar('Failed to create snapshot.', { variant: 'error' });
-    } finally {
-      setCreating(false);
-    }
-  };
-
-  return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Take Snapshot</DialogTitle>
-      <DialogContent>
-        <Box display="flex" flexDirection="column" gap={2} mt={1}>
-          <TextField
-            label="Snapshot Name"
-            value={snapshotName}
-            onChange={e => setSnapshotName(e.target.value)}
-            fullWidth
-            required
-            helperText="Unique name for the snapshot"
-          />
-          <FormControl fullWidth>
-            <InputLabel>Deletion Policy</InputLabel>
-            <Select
-              value={deletionPolicy}
-              label="Deletion Policy"
-              onChange={e => setDeletionPolicy(e.target.value)}
-            >
-              <MenuItem value="default">Default</MenuItem>
-              <MenuItem value="Delete">
-                Delete - Remove snapshot content when snapshot is deleted
-              </MenuItem>
-              <MenuItem value="Retain">
-                Retain - Keep snapshot content when snapshot is deleted
-              </MenuItem>
-            </Select>
-          </FormControl>
-          <TextField
-            label="Failure Deadline"
-            value={failureDeadline}
-            onChange={e => setFailureDeadline(e.target.value)}
-            fullWidth
-            placeholder="e.g., 5m, 1h"
-            helperText="Timeout for snapshot creation (e.g., 5m for 5 minutes)"
-          />
-        </Box>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose} disabled={creating}>
-          Cancel
-        </Button>
-        <Button
-          onClick={handleCreate}
-          variant="contained"
-          disabled={creating || !snapshotName.trim()}
-          startIcon={<Icon icon="mdi:camera" />}
-        >
-          {creating ? 'Creating...' : 'Create Snapshot'}
-        </Button>
-      </DialogActions>
-    </Dialog>
   );
 }
 
