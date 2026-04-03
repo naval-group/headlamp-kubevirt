@@ -211,18 +211,11 @@ class VirtualMachine extends KubeObject {
   }
 
   async setDeleteProtection(enabled: boolean) {
-    const updated = { ...this.jsonData };
-    if (!updated.metadata) updated.metadata = {};
-    if (!updated.metadata.labels) updated.metadata.labels = {};
+    const patch = enabled
+      ? { metadata: { labels: { 'kubevirt.io/vm-delete-protection': 'True' } } }
+      : { metadata: { labels: { 'kubevirt.io/vm-delete-protection': null } } };
 
-    if (enabled) {
-      updated.metadata.labels['kubevirt.io/vm-delete-protection'] = 'True';
-    } else {
-      delete updated.metadata.labels['kubevirt.io/vm-delete-protection'];
-    }
-
-    const result = await this.update(updated);
-    // Update local jsonData to reflect changes immediately
+    const result = await this.patch(patch);
     if (result) {
       this.jsonData = result;
     }

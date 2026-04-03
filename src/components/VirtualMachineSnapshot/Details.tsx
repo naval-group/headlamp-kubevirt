@@ -1,10 +1,10 @@
 import { Icon } from '@iconify/react';
 import { Link, Resource, SectionBox } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
 import { Box, Button, Card, CardContent, Chip, Grid, Typography } from '@mui/material';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useParams } from 'react-router-dom';
+import useFeatureGate from '../../hooks/useFeatureGate';
 import { KubeCondition } from '../../types';
-import { isFeatureGateEnabled, subscribeToFeatureGates } from '../../utils/featureGates';
 import CreateExportDialog from '../VirtualMachineExport/CreateExportDialog';
 import VirtualMachineSnapshot from './VirtualMachineSnapshot';
 
@@ -13,11 +13,7 @@ export default function VirtualMachineSnapshotDetails() {
   const [snapshot] = VirtualMachineSnapshot.useGet(name, namespace);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
 
-  const [vmExportEnabled, setVmExportEnabled] = useState(isFeatureGateEnabled('VMExport'));
-  useEffect(() => {
-    setVmExportEnabled(isFeatureGateEnabled('VMExport'));
-    return subscribeToFeatureGates(() => setVmExportEnabled(isFeatureGateEnabled('VMExport')));
-  }, []);
+  const vmExportEnabled = useFeatureGate('VMExport');
 
   if (!snapshot) {
     return null;
