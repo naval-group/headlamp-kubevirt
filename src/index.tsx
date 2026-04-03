@@ -40,10 +40,14 @@ import NADList from './components/NetworkAttachmentDefinitions/List';
 import VirtualizationOverview from './components/Overview/Overview';
 import PreferenceDetails from './components/Preferences/Details';
 import PreferenceList from './components/Preferences/List';
+import VirtualMachineCloneDetails from './components/VirtualMachineClone/Details';
+import VirtualMachineCloneList from './components/VirtualMachineClone/List';
 import ExportDetails from './components/VirtualMachineExport/Details';
 import ExportList from './components/VirtualMachineExport/List';
 import VMIDetails from './components/VirtualMachineInstance/Details';
 import VMIList from './components/VirtualMachineInstance/List';
+import RestoreDetails from './components/VirtualMachineRestore/Details';
+import RestoreList from './components/VirtualMachineRestore/List';
 import VirtualMachineDetails from './components/VirtualMachines/Details';
 import VirtualMachineList from './components/VirtualMachines/List';
 import SnapshotDetails from './components/VirtualMachineSnapshot/Details';
@@ -369,6 +373,14 @@ registerSidebarEntryFilter(entry => {
   if (entry.name === 'snapshots' && loaded && !gates.includes('Snapshot')) {
     return null;
   }
+  // Hide clones if Snapshot feature gate is not enabled (clone requires snapshot)
+  if (entry.name === 'clones' && loaded && !gates.includes('Snapshot')) {
+    return null;
+  }
+  // Hide restores if Snapshot feature gate is not enabled
+  if (entry.name === 'restores' && loaded && !gates.includes('Snapshot')) {
+    return null;
+  }
   // Hide exports if VMExport feature gate is not enabled
   if (entry.name === 'exports' && loaded && !gates.includes('VMExport')) {
     return null;
@@ -520,6 +532,28 @@ registerKubeVirtResource({
   ListComponent: SnapshotList,
   DetailsComponent: SnapshotDetails,
   detailsRouteName: 'snapshot',
+  hasNamespace: true,
+});
+
+registerKubeVirtResource({
+  name: 'clones',
+  label: 'Clones',
+  path: 'clones',
+  icon: 'mdi:content-copy',
+  ListComponent: VirtualMachineCloneList,
+  DetailsComponent: VirtualMachineCloneDetails,
+  detailsRouteName: 'clone',
+  hasNamespace: true,
+});
+
+registerKubeVirtResource({
+  name: 'restores',
+  label: 'Restores',
+  path: 'restores',
+  icon: 'mdi:restore',
+  ListComponent: RestoreList,
+  DetailsComponent: RestoreDetails,
+  detailsRouteName: 'restore',
   hasNamespace: true,
 });
 

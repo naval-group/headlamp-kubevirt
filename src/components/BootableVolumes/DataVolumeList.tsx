@@ -9,7 +9,10 @@ import {
 import { Button, Chip } from '@mui/material';
 import { useState } from 'react';
 import useFilteredList from '../../hooks/useFilteredList';
+import useResourceActions from '../../hooks/useResourceActions';
+import BulkDeleteToolbar from '../common/BulkDeleteToolbar';
 import CreateResourceDialog from '../common/CreateResourceDialog';
+import StandardRowActions from '../common/StandardRowActions';
 import DataVolume from './DataVolume';
 import ImportVolumeForm from './ImportVolumeForm';
 
@@ -17,6 +20,12 @@ export default function DataVolumeList() {
   const { items: rawItems } = DataVolume.useList();
   const items = useFilteredList(rawItems);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const { setEditItem, setViewYamlItem, setDeleteItem, ActionDialogs } = useResourceActions<
+    InstanceType<typeof DataVolume>
+  >({
+    apiVersion: 'cdi.kubevirt.io/v1beta1',
+    kind: 'DataVolume',
+  });
 
   // Empty DataVolume for import
   const emptyDataVolume = {
@@ -67,6 +76,30 @@ export default function DataVolumeList() {
         <Table
           data={items ?? []}
           loading={items === null}
+          enableRowActions
+          enableRowSelection
+          getRowId={(dv: InstanceType<typeof DataVolume>) =>
+            dv.metadata?.uid ?? `${dv.getNamespace()}/${dv.getName()}`
+          }
+          renderRowSelectionToolbar={({ table }) => (
+            <BulkDeleteToolbar table={table} kind="DataVolume" />
+          )}
+          renderRowActionMenuItems={({
+            row,
+            closeMenu,
+          }: {
+            row: { original: InstanceType<typeof DataVolume> };
+            closeMenu: () => void;
+          }) => [
+            <StandardRowActions
+              key="std"
+              resource={row.original}
+              closeMenu={closeMenu}
+              onEdit={setEditItem}
+              onViewYaml={setViewYamlItem}
+              onDelete={setDeleteItem}
+            />,
+          ]}
           columns={[
             {
               id: 'name',
@@ -160,6 +193,8 @@ export default function DataVolumeList() {
           ]}
         />
       </SectionBox>
+
+      {ActionDialogs}
 
       <CreateResourceDialog
         open={importDialogOpen}

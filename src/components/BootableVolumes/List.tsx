@@ -8,9 +8,12 @@ import {
 import { Box, Chip, Typography } from '@mui/material';
 import { useState } from 'react';
 import useFilteredList from '../../hooks/useFilteredList';
+import useResourceActions from '../../hooks/useResourceActions';
 import { KubeCondition } from '../../types';
+import BulkDeleteToolbar from '../common/BulkDeleteToolbar';
 import CreateButtonWithMode from '../common/CreateButtonWithMode';
 import CreateResourceDialog from '../common/CreateResourceDialog';
+import StandardRowActions from '../common/StandardRowActions';
 import DataSource from './DataSource';
 import DataSourceForm from './DataSourceForm';
 
@@ -19,6 +22,12 @@ export default function DataSourceList() {
   const items = useFilteredList(rawItems);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [createInitialTab, setCreateInitialTab] = useState(0);
+  const { setEditItem, setViewYamlItem, setDeleteItem, ActionDialogs } = useResourceActions<
+    InstanceType<typeof DataSource>
+  >({
+    apiVersion: 'cdi.kubevirt.io/v1beta1',
+    kind: 'DataSource',
+  });
 
   const emptyDataSource = {
     apiVersion: 'cdi.kubevirt.io/v1beta1',
@@ -107,6 +116,30 @@ export default function DataSourceList() {
         <Table
           data={items ?? []}
           loading={items === null}
+          enableRowActions
+          enableRowSelection
+          getRowId={(ds: InstanceType<typeof DataSource>) =>
+            ds.metadata?.uid ?? `${ds.getNamespace()}/${ds.getName()}`
+          }
+          renderRowSelectionToolbar={({ table }) => (
+            <BulkDeleteToolbar table={table} kind="DataSource" />
+          )}
+          renderRowActionMenuItems={({
+            row,
+            closeMenu,
+          }: {
+            row: { original: InstanceType<typeof DataSource> };
+            closeMenu: () => void;
+          }) => [
+            <StandardRowActions
+              key="std"
+              resource={row.original}
+              closeMenu={closeMenu}
+              onEdit={setEditItem}
+              onViewYaml={setViewYamlItem}
+              onDelete={setDeleteItem}
+            />,
+          ]}
           columns={[
             {
               id: 'name',
@@ -231,6 +264,8 @@ export default function DataSourceList() {
           ]}
         />
       </SectionBox>
+
+      {ActionDialogs}
 
       <CreateResourceDialog
         open={createDialogOpen}

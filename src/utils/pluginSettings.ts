@@ -13,9 +13,14 @@ export interface ForensicSettings {
   isfRepo: string; // ISF image repository name (e.g., 'isf')
 }
 
+export interface GuestfsSettings {
+  image: string; // ContainerDisk image for disk inspector VM
+}
+
 export interface PluginSettings {
   customLabelColumns: LabelColumn[];
   forensic: ForensicSettings;
+  guestfs: GuestfsSettings;
 }
 
 export const defaultForensicSettings: ForensicSettings = {
@@ -24,9 +29,14 @@ export const defaultForensicSettings: ForensicSettings = {
   isfRepo: 'isf',
 };
 
+export const defaultGuestfsSettings: GuestfsSettings = {
+  image: '', // Empty = use INSPECTOR_IMAGE default (alpine-with-test-tooling)
+};
+
 const defaultSettings: PluginSettings = {
   customLabelColumns: [],
   forensic: { ...defaultForensicSettings },
+  guestfs: { ...defaultGuestfsSettings },
 };
 
 /**
@@ -98,6 +108,16 @@ function validateSettings(parsed: unknown): PluginSettings {
     };
   }
 
+  if (typeof raw.guestfs === 'object' && raw.guestfs !== null) {
+    const g = raw.guestfs as Record<string, unknown>;
+    result.guestfs = {
+      image:
+        typeof g.image === 'string' && (g.image === '' || isValidImageRef(g.image))
+          ? g.image
+          : defaultGuestfsSettings.image,
+    };
+  }
+
   return result;
 }
 
@@ -155,5 +175,15 @@ export function getForensicSettings(): ForensicSettings {
 export function saveForensicSettings(forensic: ForensicSettings): void {
   const settings = getPluginSettings();
   settings.forensic = forensic;
+  savePluginSettings(settings);
+}
+
+export function getGuestfsSettings(): GuestfsSettings {
+  return getPluginSettings().guestfs;
+}
+
+export function saveGuestfsSettings(guestfs: GuestfsSettings): void {
+  const settings = getPluginSettings();
+  settings.guestfs = guestfs;
   savePluginSettings(settings);
 }
