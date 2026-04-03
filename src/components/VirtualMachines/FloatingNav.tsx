@@ -1,5 +1,6 @@
 import { Icon } from '@iconify/react';
 import { Box, IconButton, Tooltip } from '@mui/material';
+import React, { useCallback, useEffect, useState } from 'react';
 
 interface FloatingNavProps {
   sections: Array<{
@@ -9,14 +10,47 @@ interface FloatingNavProps {
   }>;
   onTerminalClick?: () => void;
   onVNCClick?: () => void;
+  onDoctorClick?: () => void;
 }
 
-export default function FloatingNav({ sections, onTerminalClick, onVNCClick }: FloatingNavProps) {
+export default function FloatingNav({
+  sections,
+  onTerminalClick,
+  onVNCClick,
+  onDoctorClick,
+}: FloatingNavProps) {
+  const [visible, setVisible] = useState(true);
+
+  // Hide our sidebar when a Headlamp complementary view is active.
+  // When a taskbar view (editor, logs, etc.) opens, a div with
+  // role="complementary" becomes visible (display changes from "none"
+  // to something else). We observe this to hide our floating nav.
+  const checkVisibility = useCallback(() => {
+    const complementaryDivs = document.querySelectorAll('[role="complementary"]');
+    let anyVisible = false;
+    complementaryDivs.forEach(el => {
+      const style = getComputedStyle(el);
+      if (style.display !== 'none') {
+        anyVisible = true;
+      }
+    });
+    setVisible(!anyVisible);
+  }, []);
+
+  useEffect(() => {
+    checkVisibility();
+    const observer = new MutationObserver(checkVisibility);
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['style', 'class'],
+    });
+    return () => observer.disconnect();
+  }, [checkVisibility]);
+
   const scrollToSection = (sectionId: string) => {
-    // Special handling for different section types
     if (sectionId === 'info') {
-      // Try multiple methods to scroll to top
-      // 1. Try to find main content scrollable container
       const mainContent = document.querySelector('main');
       const scrollableContainer = document.querySelector('[class*="MuiBox-root"]');
 
@@ -30,12 +64,10 @@ export default function FloatingNav({ sections, onTerminalClick, onVNCClick }: F
         scrollableContainer.scrollTo?.({ top: 0, behavior: 'smooth' });
       }
 
-      // Also scroll window
       document.documentElement.scrollTop = 0;
       document.body.scrollTop = 0;
       window.scrollTo({ top: 0, behavior: 'smooth' });
 
-      // Force scroll all elements with scrollTop
       document.querySelectorAll('*').forEach(el => {
         if ((el as HTMLElement).scrollTop > 0) {
           (el as HTMLElement).scrollTop = 0;
@@ -55,11 +87,18 @@ export default function FloatingNav({ sections, onTerminalClick, onVNCClick }: F
       return;
     }
 
+    if (sectionId === 'doctor' && onDoctorClick) {
+      onDoctorClick();
+      return;
+    }
+
     const element = document.getElementById(`section-${sectionId}`);
     if (element) {
       element.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   };
+
+  if (!visible) return null;
 
   return (
     <Box

@@ -13,6 +13,8 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      digest: ${{ steps.digest.outputs.digest }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -46,12 +48,27 @@ jobs:
           npx @kinvolk/headlamp-plugin package kubevirt
           for f in kubevirt-*.tar.gz; do mv "$f" "headlamp-${f}"; done
 
+      - name: Generate SBOM
+        uses: anchore/sbom-action@f325610c9f50a54015d37c8d16cb3b0e2c8f4de0 # v0.18.0
+        with:
+          artifact-name: sbom-headlamp-kubevirt.spdx.json
+          output-file: sbom-headlamp-kubevirt.spdx.json
+
+      - name: Compute artifact digest
+        id: digest
+        run: |
+          sha256sum headlamp-kubevirt-*.tar.gz > checksums.txt
+          digest=$(sha256sum headlamp-kubevirt-*.tar.gz | base64 -w0)
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: headlamp-kubevirt
           path: |
             dist/
             headlamp-kubevirt-*.tar.gz
+            checksums.txt
+            sbom-headlamp-kubevirt.spdx.json
 
   docker:
     needs: build
@@ -92,8 +109,20 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  release:
+  provenance:
     needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      actions: read
+      id-token: write
+      contents: write
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@f7dd8c54c2067bafc12ca7a55595d5ee9b75204a # v2.1.0
+    with:
+      base64-subjects: "${{ needs.build.outputs.digest }}"
+      upload-assets: true
+
+  release:
+    needs: [build, provenance]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -103,15 +132,11 @@ jobs:
         with:
           name: headlamp-kubevirt
 
-      - name: Compute checksum
-        run: |
-          sha256sum headlamp-kubevirt-*.tar.gz > checksums.txt
-          cat checksums.txt
-
       - uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2.6.1
         with:
           files: |
             headlamp-kubevirt-*.tar.gz
             checksums.txt
+            sbom-headlamp-kubevirt.spdx.json
           generate_release_notes: true
           prerelease: ${{ contains(github.ref, '-rc') }}

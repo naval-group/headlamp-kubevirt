@@ -1,4 +1,5 @@
 import { Icon } from '@iconify/react';
+import { ApiProxy } from '@kinvolk/headlamp-plugin/lib';
 import { Link } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
 import {
   SectionBox,
@@ -6,49 +7,190 @@ import {
   Table,
 } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
 import { DateLabel } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
-import { Box, Chip, ListItemIcon, ListItemText, MenuItem, Tooltip } from '@mui/material';
+import { Box, Chip, Divider, ListItemIcon, ListItemText, MenuItem } from '@mui/material';
 import { useSnackbar } from 'notistack';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useLocation } from 'react-router-dom';
-import { isFeatureGateEnabled, subscribeToFeatureGates } from '../../utils/featureGates';
+import useFeatureGate from '../../hooks/useFeatureGate';
+import useFilteredList from '../../hooks/useFilteredList';
+import useVMActions from '../../hooks/useVMActions';
 import { getLabelColumns, LabelColumn } from '../../utils/pluginSettings';
+import { safeError } from '../../utils/sanitize';
+import ConfirmDialog from '../common/ConfirmDialog';
 import CreateButtonWithMode from '../common/CreateButtonWithMode';
 import CreateResourceDialog from '../common/CreateResourceDialog';
+import { SimpleStyledTooltip, TitledTooltip } from '../common/StyledTooltip';
+import ResourceEditorDialog from '../ResourceEditorDialog';
 import VirtualMachineInstance from '../VirtualMachineInstance/VirtualMachineInstance';
+import CreateSnapshotDialog from '../VirtualMachineSnapshot/CreateSnapshotDialog';
+import VMDoctorDialog from '../VMDoctor/VMDoctorDialog';
 import BulkActionToolbar from './BulkActionToolbar';
+import CloneDialog from './CloneDialog';
 import VirtualMachine from './VirtualMachine';
 import VMFormWrapper from './VMFormWrapper';
+
+function DeleteProtectionBadge({ vm }: { vm: VirtualMachine }) {
+  const [liveVM] = VirtualMachine.useGet(vm.getName(), vm.getNamespace());
+  const isProtected = (liveVM || vm).isDeleteProtected();
+  if (!isProtected) return null;
+  return (
+    <SimpleStyledTooltip title="Delete protection enabled — cannot be deleted until protection is removed">
+      <Chip
+        size="small"
+        color="info"
+        sx={{ minWidth: 'auto', '& .MuiChip-label': { px: 0.5 } }}
+        icon={<Icon icon="mdi:lock" />}
+        label=""
+      />
+    </SimpleStyledTooltip>
+  );
+}
+
+function VMRowActionMenuItems({
+  vm,
+  closeMenu,
+  liveMigrationEnabled,
+  snapshotEnabled,
+  onDoctor,
+  onClone,
+  onSnapshot,
+  onEdit,
+  onViewYaml,
+  onDelete,
+}: {
+  vm: VirtualMachine;
+  closeMenu: () => void;
+  liveMigrationEnabled: boolean;
+  snapshotEnabled: boolean;
+  onDoctor: (vm: VirtualMachine) => void;
+  onClone: (vm: VirtualMachine) => void;
+  onSnapshot: (vm: VirtualMachine) => void;
+  onEdit: (vm: VirtualMachine) => void;
+  onViewYaml: (vm: VirtualMachine) => void;
+  onDelete: (vm: VirtualMachine) => void;
+}) {
+  // Use live VM data only when menu is open (one at a time, not per row)
+  const [liveVM] = VirtualMachine.useGet(vm.getName(), vm.getNamespace());
+  const { actions, isProtected } = useVMActions(liveVM || vm);
+  const visibleActions = actions.filter(a => a.id !== 'migrate' || liveMigrationEnabled);
+
+  return (
+    <>
+      {visibleActions.map(a => (
+        <MenuItem
+          key={a.id}
+          onClick={() => {
+            closeMenu();
+            a.handler();
+          }}
+          disabled={a.disabled}
+        >
+          <ListItemIcon>
+            <Icon icon={a.icon} />
+          </ListItemIcon>
+          <ListItemText>{a.label}</ListItemText>
+        </MenuItem>
+      ))}
+      <MenuItem
+        key="doctor"
+        onClick={() => {
+          closeMenu();
+          onDoctor(vm);
+        }}
+      >
+        <ListItemIcon>
+          <Icon icon="mdi:stethoscope" />
+        </ListItemIcon>
+        <ListItemText>VM Doctor</ListItemText>
+      </MenuItem>
+      {snapshotEnabled && (
+        <MenuItem
+          key="snapshot"
+          onClick={() => {
+            closeMenu();
+            onSnapshot(vm);
+          }}
+        >
+          <ListItemIcon>
+            <Icon icon="mdi:camera" />
+          </ListItemIcon>
+          <ListItemText>Snapshot</ListItemText>
+        </MenuItem>
+      )}
+      {snapshotEnabled && (
+        <MenuItem
+          key="clone"
+          onClick={() => {
+            closeMenu();
+            onClone(vm);
+          }}
+        >
+          <ListItemIcon>
+            <Icon icon="mdi:content-copy" />
+          </ListItemIcon>
+          <ListItemText>Clone</ListItemText>
+        </MenuItem>
+      )}
+      <Divider />
+      <MenuItem
+        key="edit"
+        onClick={() => {
+          closeMenu();
+          onEdit(liveVM || vm);
+        }}
+      >
+        <ListItemIcon>
+          <Icon icon="mdi:pencil" />
+        </ListItemIcon>
+        <ListItemText>Edit</ListItemText>
+      </MenuItem>
+      <MenuItem
+        key="view-yaml"
+        onClick={() => {
+          closeMenu();
+          onViewYaml(liveVM || vm);
+        }}
+      >
+        <ListItemIcon>
+          <Icon icon="mdi:eye" />
+        </ListItemIcon>
+        <ListItemText>View YAML</ListItemText>
+      </MenuItem>
+      <MenuItem
+        key="delete"
+        onClick={() => {
+          closeMenu();
+          onDelete(vm);
+        }}
+        disabled={isProtected}
+      >
+        <ListItemIcon>
+          <Icon icon="mdi:delete" />
+        </ListItemIcon>
+        <ListItemText>Delete</ListItemText>
+      </MenuItem>
+    </>
+  );
+}
 
 export default function VirtualMachineList() {
   const { enqueueSnackbar } = useSnackbar();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [createInitialTab, setCreateInitialTab] = useState(0);
   const [customLabelColumns, setCustomLabelColumns] = useState<LabelColumn[]>([]);
-  const location = useLocation();
-
-  const triggerRefresh = useCallback(() => {
-    // Force re-fetch by toggling a key — not needed with useList but kept for protection toggle
-  }, []);
-
+  const [doctorVM, setDoctorVM] = useState<VirtualMachine | null>(null);
+  const [doctorVMI, setDoctorVMI] = useState<any>(null);
+  const [doctorPodName, setDoctorPodName] = useState('');
+  const [deleteVM, setDeleteVM] = useState<VirtualMachine | null>(null);
+  const [editVM, setEditVM] = useState<VirtualMachine | null>(null);
+  const [viewYamlVM, setViewYamlVM] = useState<VirtualMachine | null>(null);
+  const [cloneVM, setCloneVM] = useState<VirtualMachine | null>(null);
+  const [snapshotVM, setSnapshotVM] = useState<VirtualMachine | null>(null);
   useEffect(() => {
     setCustomLabelColumns(getLabelColumns());
   }, []);
 
-  const isNamespaceFiltered = useMemo(() => {
-    const params = new URLSearchParams(location.search);
-    const namespace = params.get('namespace');
-    return namespace && namespace !== '';
-  }, [location.search]);
-
-  const [liveMigrationEnabled, setLiveMigrationEnabled] = useState(
-    isFeatureGateEnabled('LiveMigration')
-  );
-  useEffect(() => {
-    setLiveMigrationEnabled(isFeatureGateEnabled('LiveMigration'));
-    return subscribeToFeatureGates(() => {
-      setLiveMigrationEnabled(isFeatureGateEnabled('LiveMigration'));
-    });
-  }, []);
+  const liveMigrationEnabled = useFeatureGate('LiveMigration');
+  const snapshotEnabled = useFeatureGate('Snapshot');
 
   const emptyVM = {
     apiVersion: 'kubevirt.io/v1',
@@ -87,11 +229,13 @@ export default function VirtualMachineList() {
     },
   };
 
-  // Fetch VMs
-  const { items: vmItems } = VirtualMachine.useList();
+  // Fetch VMs (all namespaces, filtered client-side for smooth switching)
+  const { items: rawVmItems } = VirtualMachine.useList();
+  const vmItems = useFilteredList(rawVmItems);
 
   // Fetch VMIs for node and IP information
-  const { items: vmiItems } = VirtualMachineInstance.useList();
+  const { items: rawVmiItems } = VirtualMachineInstance.useList();
+  const vmiItems = useFilteredList(rawVmiItems);
   const vmiMap = React.useMemo(() => {
     const map = new Map();
     if (vmiItems) {
@@ -130,15 +274,12 @@ export default function VirtualMachineList() {
           </Link>
         ),
       },
-    ];
-
-    if (!isNamespaceFiltered) {
-      cols.push({
+      {
         id: 'namespace',
         header: 'Namespace',
         accessorFn: (vm: VirtualMachine) => vm.getNamespace(),
-      });
-    }
+      },
+    ];
 
     cols.push(
       {
@@ -183,15 +324,9 @@ export default function VirtualMachineList() {
             <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center', flexWrap: 'wrap' }}>
               <Chip label={status} size="small" color={color} icon={icon} />
               {liveMigrationEnabled && !vm.isLiveMigratable() && status === 'Running' && (
-                <Tooltip
-                  title={
-                    <div style={{ fontSize: '0.875rem' }}>
-                      <strong>Not Migratable</strong>
-                      <br />
-                      {vm.getLiveMigratableReason()}
-                    </div>
-                  }
-                  arrow
+                <TitledTooltip
+                  title="Not Migratable"
+                  rows={[{ label: 'Reason', value: vm.getLiveMigratableReason() }]}
                 >
                   <Chip
                     size="small"
@@ -214,28 +349,9 @@ export default function VirtualMachineList() {
                     }
                     label=""
                   />
-                </Tooltip>
+                </TitledTooltip>
               )}
-              {vm.isDeleteProtected() && (
-                <Tooltip
-                  title={
-                    <div style={{ fontSize: '0.875rem' }}>
-                      <strong>Protected</strong>
-                      <br />
-                      Delete protection enabled - cannot be deleted until protection is removed
-                    </div>
-                  }
-                  arrow
-                >
-                  <Chip
-                    size="small"
-                    color="info"
-                    sx={{ minWidth: 'auto', '& .MuiChip-label': { px: 0.5 } }}
-                    icon={<Icon icon="mdi:lock" />}
-                    label=""
-                  />
-                </Tooltip>
-              )}
+              <DeleteProtectionBadge vm={vm} />
             </Box>
           );
         },
@@ -289,15 +405,9 @@ export default function VirtualMachineList() {
           return (
             <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
               <span>{ips[0]}</span>
-              <Tooltip
-                title={
-                  <div style={{ fontSize: '0.875rem' }}>
-                    {ips.slice(1).map((ip: string, idx: number) => (
-                      <div key={idx}>{ip}</div>
-                    ))}
-                  </div>
-                }
-                arrow
+              <TitledTooltip
+                title="Additional IPs"
+                rows={ips.slice(1).map((ip: string) => ({ label: '', value: ip }))}
               >
                 <Chip
                   label={`+${ips.length - 1} more`}
@@ -305,7 +415,7 @@ export default function VirtualMachineList() {
                   variant="outlined"
                   sx={{ cursor: 'help' }}
                 />
-              </Tooltip>
+              </TitledTooltip>
             </Box>
           );
         },
@@ -336,185 +446,63 @@ export default function VirtualMachineList() {
     });
 
     return cols;
-  }, [isNamespaceFiltered, liveMigrationEnabled, getVMI, customLabelColumns]);
+  }, [liveMigrationEnabled, getVMI, customLabelColumns]);
+
+  const openDoctor = useCallback(async (vm: VirtualMachine) => {
+    const vmName = vm.getName();
+    const ns = vm.getNamespace();
+
+    // Fetch VMI and pod before opening dialog
+    let vmi = null;
+    let podName = '';
+
+    try {
+      const [vmiResult, podResult] = await Promise.allSettled([
+        ApiProxy.request(
+          `/apis/kubevirt.io/v1/namespaces/${encodeURIComponent(
+            ns
+          )}/virtualmachineinstances/${encodeURIComponent(vmName)}`
+        ),
+        ApiProxy.request(
+          `/api/v1/namespaces/${encodeURIComponent(ns)}/pods?labelSelector=${encodeURIComponent(
+            `vm.kubevirt.io/name=${vmName}`
+          )}`
+        ),
+      ]);
+      if (vmiResult.status === 'fulfilled') vmi = vmiResult.value;
+      if (podResult.status === 'fulfilled') {
+        const pod = (podResult.value?.items || []).find((p: any) =>
+          p.metadata?.name?.startsWith('virt-launcher-')
+        );
+        if (pod) podName = pod.metadata.name;
+      }
+    } catch {
+      /* ignore */
+    }
+
+    setDoctorVMI(vmi);
+    setDoctorPodName(podName);
+    setDoctorVM(vm);
+  }, []);
 
   // Row action menu items (per-row three-dot menu)
   const renderRowActionMenuItems = useCallback(
-    ({ row, closeMenu }: { row: { original: VirtualMachine }; closeMenu: () => void }) => {
-      const item = row.original;
-      const status = item.status?.printableStatus || 'Unknown';
-      const isPaused = item.isPaused();
-      const isProtected = item.isDeleteProtected();
-
-      const actions = [
-        <MenuItem
-          key="start"
-          onClick={async () => {
-            closeMenu();
-            try {
-              await item.start();
-              enqueueSnackbar(`Starting VM ${item.getName()}`, { variant: 'success' });
-            } catch (e) {
-              console.error('Failed to start VM:', e);
-              enqueueSnackbar(`Failed to start VM ${item.getName()}.`, { variant: 'error' });
-            }
-          }}
-          disabled={status !== 'Stopped'}
-        >
-          <ListItemIcon>
-            <Icon icon="mdi:play" />
-          </ListItemIcon>
-          <ListItemText>Start</ListItemText>
-        </MenuItem>,
-
-        <MenuItem
-          key="stop"
-          onClick={async () => {
-            closeMenu();
-            try {
-              await item.stop();
-              enqueueSnackbar(`Stopping VM ${item.getName()}`, { variant: 'success' });
-            } catch (e) {
-              console.error('Failed to stop VM:', e);
-              enqueueSnackbar(`Failed to stop VM ${item.getName()}.`, { variant: 'error' });
-            }
-          }}
-          disabled={status === 'Stopped' || status === 'Stopping'}
-        >
-          <ListItemIcon>
-            <Icon icon="mdi:stop" />
-          </ListItemIcon>
-          <ListItemText>Stop</ListItemText>
-        </MenuItem>,
-
-        <MenuItem
-          key="force-stop"
-          onClick={async () => {
-            closeMenu();
-            try {
-              await item.forceStop();
-              enqueueSnackbar(`Force stopping VM ${item.getName()}`, { variant: 'success' });
-            } catch (e) {
-              console.error('Failed to force stop VM:', e);
-              enqueueSnackbar(`Failed to force stop VM ${item.getName()}.`, {
-                variant: 'error',
-              });
-            }
-          }}
-          disabled={status === 'Stopped'}
-        >
-          <ListItemIcon>
-            <Icon icon="mdi:stop-circle" />
-          </ListItemIcon>
-          <ListItemText>Force Stop</ListItemText>
-        </MenuItem>,
-
-        <MenuItem
-          key="restart"
-          onClick={async () => {
-            closeMenu();
-            try {
-              await item.restart();
-              enqueueSnackbar(`Restarting VM ${item.getName()}`, { variant: 'success' });
-            } catch (e) {
-              console.error('Failed to restart VM:', e);
-              enqueueSnackbar(`Failed to restart VM ${item.getName()}.`, {
-                variant: 'error',
-              });
-            }
-          }}
-          disabled={status !== 'Running'}
-        >
-          <ListItemIcon>
-            <Icon icon="mdi:restart" />
-          </ListItemIcon>
-          <ListItemText>Restart</ListItemText>
-        </MenuItem>,
-
-        <MenuItem
-          key="pause"
-          onClick={async () => {
-            closeMenu();
-            try {
-              if (isPaused) {
-                await item.unpause();
-                enqueueSnackbar(`Unpausing VM ${item.getName()}`, { variant: 'success' });
-              } else {
-                await item.pause();
-                enqueueSnackbar(`Pausing VM ${item.getName()}`, { variant: 'success' });
-              }
-            } catch (e) {
-              console.error(`Failed to ${isPaused ? 'unpause' : 'pause'} VM:`, e);
-              enqueueSnackbar(`Failed to ${isPaused ? 'unpause' : 'pause'} VM ${item.getName()}.`, {
-                variant: 'error',
-              });
-            }
-          }}
-          disabled={status !== 'Running'}
-        >
-          <ListItemIcon>
-            <Icon icon={isPaused ? 'mdi:play-pause' : 'mdi:pause'} />
-          </ListItemIcon>
-          <ListItemText>{isPaused ? 'Unpause' : 'Pause'}</ListItemText>
-        </MenuItem>,
-      ];
-
-      if (liveMigrationEnabled) {
-        actions.push(
-          <MenuItem
-            key="migrate"
-            onClick={async () => {
-              closeMenu();
-              try {
-                await item.migrate();
-                enqueueSnackbar(`Migrating VM ${item.getName()}`, { variant: 'success' });
-              } catch (e) {
-                console.error('Failed to migrate VM:', e);
-                enqueueSnackbar(`Failed to migrate VM ${item.getName()}.`, {
-                  variant: 'error',
-                });
-              }
-            }}
-            disabled={status !== 'Running' || !item.isLiveMigratable()}
-          >
-            <ListItemIcon>
-              <Icon icon="mdi:arrow-decision" />
-            </ListItemIcon>
-            <ListItemText>Migrate</ListItemText>
-          </MenuItem>
-        );
-      }
-
-      actions.push(
-        <MenuItem
-          key="protect"
-          onClick={async () => {
-            closeMenu();
-            try {
-              await item.setDeleteProtection(!isProtected);
-              enqueueSnackbar(
-                `VM ${item.getName()} ${isProtected ? 'unprotected' : 'protected'} from deletion`,
-                { variant: 'success' }
-              );
-              triggerRefresh();
-            } catch (e) {
-              enqueueSnackbar(
-                `Failed to ${isProtected ? 'unprotect' : 'protect'} VM ${item.getName()}: ${e}`,
-                { variant: 'error' }
-              );
-            }
-          }}
-        >
-          <ListItemIcon>
-            <Icon icon={isProtected ? 'mdi:lock-open' : 'mdi:lock'} />
-          </ListItemIcon>
-          <ListItemText>{isProtected ? 'Unprotect' : 'Protect'}</ListItemText>
-        </MenuItem>
-      );
-
-      return actions;
-    },
-    [enqueueSnackbar, liveMigrationEnabled, triggerRefresh]
+    ({ row, closeMenu }: { row: { original: VirtualMachine }; closeMenu: () => void }) => [
+      <VMRowActionMenuItems
+        key="actions"
+        vm={row.original}
+        closeMenu={closeMenu}
+        liveMigrationEnabled={liveMigrationEnabled}
+        snapshotEnabled={snapshotEnabled}
+        onDoctor={openDoctor}
+        onClone={setCloneVM}
+        onSnapshot={setSnapshotVM}
+        onEdit={setEditVM}
+        onViewYaml={setViewYamlVM}
+        onDelete={setDeleteVM}
+      />,
+    ],
+    [liveMigrationEnabled, snapshotEnabled, openDoctor]
   );
 
   return (
@@ -565,6 +553,86 @@ export default function VirtualMachineList() {
         initialTab={createInitialTab}
         formComponent={VMFormWrapper}
         validate={r => !!(r?.metadata?.name && r?.metadata?.namespace)}
+      />
+
+      <VMDoctorDialog
+        open={!!doctorVM}
+        onClose={() => setDoctorVM(null)}
+        vmName={doctorVM?.getName() || ''}
+        namespace={doctorVM?.getNamespace() || ''}
+        vmiData={doctorVMI}
+        vmItem={doctorVM}
+        podName={doctorPodName}
+      />
+
+      <ConfirmDialog
+        open={!!deleteVM}
+        title={`Delete ${deleteVM?.getName() || ''}?`}
+        message={`This will permanently delete the Virtual Machine ${deleteVM?.getNamespace()}/${deleteVM?.getName()}. This action cannot be undone.`}
+        confirmLabel="Delete"
+        onCancel={() => setDeleteVM(null)}
+        onConfirm={async () => {
+          if (!deleteVM) return;
+          const name = deleteVM.getName();
+          setDeleteVM(null);
+          try {
+            await deleteVM.delete();
+            enqueueSnackbar(`Deleted ${name}`, { variant: 'success' });
+          } catch (e) {
+            enqueueSnackbar(`Failed to delete ${name}: ${safeError(e, 'vm-delete')}`, {
+              variant: 'error',
+            });
+          }
+        }}
+      />
+
+      {editVM && (
+        <ResourceEditorDialog
+          open={!!editVM}
+          onClose={() => setEditVM(null)}
+          onSave={async updatedResource => {
+            const resource = updatedResource as {
+              kind: string;
+              metadata: { name: string; namespace?: string };
+            };
+            if (!resource.kind || !resource.metadata?.name) {
+              throw new Error('Invalid resource: missing kind or metadata.name');
+            }
+            await editVM.update(
+              updatedResource as import('@kinvolk/headlamp-plugin/lib/lib/k8s/KubeObject').KubeObjectInterface
+            );
+          }}
+          item={editVM.jsonData}
+          title={editVM.getName()}
+          apiVersion="kubevirt.io/v1"
+          kind="VirtualMachine"
+        />
+      )}
+
+      {viewYamlVM && (
+        <ResourceEditorDialog
+          open={!!viewYamlVM}
+          onClose={() => setViewYamlVM(null)}
+          onSave={async () => {}}
+          item={viewYamlVM.jsonData}
+          title={`${viewYamlVM.getName()} (read-only)`}
+          apiVersion="kubevirt.io/v1"
+          kind="VirtualMachine"
+        />
+      )}
+
+      <CloneDialog
+        open={!!cloneVM}
+        onClose={() => setCloneVM(null)}
+        vmName={cloneVM?.getName() || ''}
+        namespace={cloneVM?.getNamespace() || ''}
+      />
+
+      <CreateSnapshotDialog
+        open={!!snapshotVM}
+        onClose={() => setSnapshotVM(null)}
+        vmName={snapshotVM?.getName() || ''}
+        namespace={snapshotVM?.getNamespace() || ''}
       />
     </>
   );

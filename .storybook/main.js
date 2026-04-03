@@ -5,7 +5,8 @@ const reactDomPath = path.resolve(__dirname, '../node_modules/react-dom');
 
 module.exports = {
   stories: ['../src/**/*.stories.@(js|jsx|ts|tsx)'],
-  addons: ['@storybook/addon-links', '@storybook/addon-essentials'],
+  addons: ['@storybook/addon-links'],
+  staticDirs: ['./public'],
   core: {
     disableTelemetry: true,
   },
@@ -29,7 +30,6 @@ module.exports = {
       'react-dom/test-utils': path.join(reactDomPath, 'test-utils'),
     };
 
-    // Force all CJS deps through esbuild prebundling (converts CJS → ESM)
     config.optimizeDeps = config.optimizeDeps || {};
     config.optimizeDeps.include = [
       ...(config.optimizeDeps.include || []),

@@ -7,8 +7,12 @@ import {
 } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
 import { Chip, Tooltip } from '@mui/material';
 import { useState } from 'react';
+import useFilteredList from '../../hooks/useFilteredList';
+import useResourceActions from '../../hooks/useResourceActions';
+import BulkDeleteToolbar from '../common/BulkDeleteToolbar';
 import CreateButtonWithMode from '../common/CreateButtonWithMode';
 import CreateResourceDialog from '../common/CreateResourceDialog';
+import StandardRowActions from '../common/StandardRowActions';
 import VirtualMachineExport from './VirtualMachineExport';
 import VMExportForm from './VMExportForm';
 
@@ -30,9 +34,16 @@ const INITIAL_EXPORT = {
 };
 
 export default function VirtualMachineExportList() {
-  const { items } = VirtualMachineExport.useList();
+  const { items: rawItems } = VirtualMachineExport.useList();
+  const items = useFilteredList(rawItems);
   const [createOpen, setCreateOpen] = useState(false);
   const [createInitialTab, setCreateInitialTab] = useState(0);
+  const { setEditItem, setViewYamlItem, setDeleteItem, ActionDialogs } = useResourceActions<
+    InstanceType<typeof VirtualMachineExport>
+  >({
+    apiVersion: 'export.kubevirt.io/v1beta1',
+    kind: 'VirtualMachineExport',
+  });
 
   return (
     <>
@@ -60,6 +71,30 @@ export default function VirtualMachineExportList() {
         <Table
           data={items ?? []}
           loading={items === null}
+          enableRowActions
+          enableRowSelection
+          getRowId={(exp: InstanceType<typeof VirtualMachineExport>) =>
+            exp.metadata?.uid ?? `${exp.getNamespace()}/${exp.getName()}`
+          }
+          renderRowSelectionToolbar={({ table }) => (
+            <BulkDeleteToolbar table={table} kind="Export" />
+          )}
+          renderRowActionMenuItems={({
+            row,
+            closeMenu,
+          }: {
+            row: { original: InstanceType<typeof VirtualMachineExport> };
+            closeMenu: () => void;
+          }) => [
+            <StandardRowActions
+              key="std"
+              resource={row.original}
+              closeMenu={closeMenu}
+              onEdit={setEditItem}
+              onViewYaml={setViewYamlItem}
+              onDelete={setDeleteItem}
+            />,
+          ]}
           columns={[
             {
               id: 'name',
@@ -139,6 +174,8 @@ export default function VirtualMachineExportList() {
           ]}
         />
       </SectionBox>
+
+      {ActionDialogs}
 
       <CreateResourceDialog
         open={createOpen}

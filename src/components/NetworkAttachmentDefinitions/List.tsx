@@ -8,8 +8,12 @@ import {
 } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
 import { Alert, Chip, Typography } from '@mui/material';
 import React, { useEffect, useState } from 'react';
+import useFilteredList from '../../hooks/useFilteredList';
+import useResourceActions from '../../hooks/useResourceActions';
+import BulkDeleteToolbar from '../common/BulkDeleteToolbar';
 import CreateButtonWithMode from '../common/CreateButtonWithMode';
 import CreateResourceDialog from '../common/CreateResourceDialog';
+import StandardRowActions from '../common/StandardRowActions';
 import NADForm from './NADForm';
 import NetworkAttachmentDefinition from './NetworkAttachmentDefinition';
 
@@ -49,10 +53,17 @@ const TYPE_COLORS: Record<
 };
 
 export default function NADList() {
-  const { items } = NetworkAttachmentDefinition.useList();
+  const { items: rawItems } = NetworkAttachmentDefinition.useList();
+  const items = useFilteredList(rawItems);
   const [createOpen, setCreateOpen] = useState(false);
   const [createInitialTab, setCreateInitialTab] = useState(0);
   const [multusInstalled, setMultusInstalled] = useState<boolean | null>(null);
+  const { setEditItem, setViewYamlItem, setDeleteItem, ActionDialogs } = useResourceActions<
+    InstanceType<typeof NetworkAttachmentDefinition>
+  >({
+    apiVersion: 'k8s.cni.cncf.io/v1',
+    kind: 'NetworkAttachmentDefinition',
+  });
 
   useEffect(() => {
     ApiProxy.request(
@@ -108,6 +119,30 @@ export default function NADList() {
         <Table
           data={items ?? []}
           loading={items === null}
+          enableRowActions
+          enableRowSelection
+          getRowId={(nad: InstanceType<typeof NetworkAttachmentDefinition>) =>
+            nad.metadata?.uid ?? `${nad.getNamespace()}/${nad.getName()}`
+          }
+          renderRowSelectionToolbar={({ table }) => (
+            <BulkDeleteToolbar table={table} kind="Network" />
+          )}
+          renderRowActionMenuItems={({
+            row,
+            closeMenu,
+          }: {
+            row: { original: InstanceType<typeof NetworkAttachmentDefinition> };
+            closeMenu: () => void;
+          }) => [
+            <StandardRowActions
+              key="std"
+              resource={row.original}
+              closeMenu={closeMenu}
+              onEdit={setEditItem}
+              onViewYaml={setViewYamlItem}
+              onDelete={setDeleteItem}
+            />,
+          ]}
           columns={[
             {
               id: 'name',
@@ -223,6 +258,8 @@ export default function NADList() {
           ]}
         />
       </SectionBox>
+
+      {ActionDialogs}
 
       <CreateResourceDialog
         open={createOpen}
