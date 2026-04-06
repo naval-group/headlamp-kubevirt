@@ -56,7 +56,7 @@
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
     "js-yaml": "^4.1.0",
-    "recharts": "^3.8.0"
+    "recharts": "^3.8.1"
   },
   "msw": {
     "workerDirectory": [
