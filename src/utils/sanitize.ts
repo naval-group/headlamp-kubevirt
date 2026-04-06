@@ -97,17 +97,20 @@ export function isValidMdevSelector(value: string): boolean {
  */
 export function safeError(e: unknown, context: string): string {
   console.error(`[${context}]`, e);
-  if (e instanceof Error) {
-    const msg = e.message || '';
-    // Strip API paths, stack traces, and verbose details
-    if (msg.includes('403') || msg.toLowerCase().includes('forbidden')) return 'Permission denied';
-    if (msg.includes('404') || msg.toLowerCase().includes('not found')) return 'Resource not found';
-    if (msg.includes('409') || msg.toLowerCase().includes('conflict')) return 'Resource conflict';
-    if (msg.includes('422')) return 'Invalid resource';
-    if (msg.includes('500') || msg.toLowerCase().includes('internal')) return 'Server error';
-    // Return first sentence only, capped at 120 chars
-    const first = msg.split(/[.\n]/)[0].trim();
-    return first.length > 120 ? first.slice(0, 117) + '...' : first;
+  const msg = e instanceof Error ? e.message || '' : typeof e === 'string' ? e : '';
+  if (!msg) return 'An unexpected error occurred';
+  // Strip API paths, stack traces, and verbose details
+  if (msg.includes('403') || msg.toLowerCase().includes('forbidden')) return 'Permission denied';
+  if (msg.includes('404') || msg.toLowerCase().includes('not found')) return 'Resource not found';
+  if (msg.includes('409') || msg.toLowerCase().includes('conflict')) return 'Resource conflict';
+  if (msg.includes('422') || msg.toLowerCase().includes('unprocessable')) {
+    // Extract webhook name or reason if present
+    const webhookMatch = msg.match(/admission webhook [""*]*(\S+)/i);
+    if (webhookMatch) return `Rejected by webhook: ${webhookMatch[1].replace(/[""*]/g, '')}`;
+    return 'Request rejected by validation';
   }
-  return 'An unexpected error occurred';
+  if (msg.includes('500') || msg.toLowerCase().includes('internal')) return 'Server error';
+  // Return first sentence only, capped at 120 chars
+  const first = msg.split(/[.\n]/)[0].trim();
+  return first.length > 120 ? first.slice(0, 117) + '...' : first;
 }

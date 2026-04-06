@@ -85,6 +85,21 @@ export default function MigrationList() {
               header: 'Migration Name',
               accessorFn: (migration: InstanceType<typeof VirtualMachineInstanceMigration>) =>
                 migration.getName(),
+              Cell: ({
+                row,
+              }: {
+                row: { original: InstanceType<typeof VirtualMachineInstanceMigration> };
+              }) => (
+                <Link
+                  routeName="migration"
+                  params={{
+                    name: row.original.getName(),
+                    namespace: row.original.getNamespace(),
+                  }}
+                >
+                  {row.original.getName()}
+                </Link>
+              ),
             },
             {
               id: 'namespace',
