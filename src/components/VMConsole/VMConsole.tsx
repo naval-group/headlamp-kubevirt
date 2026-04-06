@@ -235,6 +235,7 @@ function QuickActions({ vm }: { vm?: VirtualMachine }) {
 
 export interface TerminalPanelHandle {
   sendText: (text: string) => void;
+  sendStty: () => void;
 }
 
 export const TerminalPanel = React.forwardRef<
@@ -251,9 +252,21 @@ export const TerminalPanel = React.forwardRef<
   const fitAddonRef = useRef<FitAddon | null>(null);
   const xtermRef = useRef<XTerminalConnected | null>(null);
   const [terminalRef, setTerminalRef] = useState<HTMLElement | null>(null);
+  const [fontSize, setFontSize] = useState(14);
 
   const encoderRef = useRef(new TextEncoder());
   const decoderRef = useRef(new TextDecoder('utf-8'));
+
+  const changeFontSize = useCallback((delta: number) => {
+    setFontSize(prev => {
+      const next = Math.min(28, Math.max(8, prev + delta));
+      if (xtermRef.current?.xterm) {
+        xtermRef.current.xterm.options.fontSize = next;
+        fitAddonRef.current?.fit();
+      }
+      return next;
+    });
+  }, []);
 
   function send(channel: number, data: string) {
     const socket = execRef.current?.getSocket();
@@ -261,10 +274,6 @@ export const TerminalPanel = React.forwardRef<
     const encoded = encoderRef.current.encode(data);
     socket.send(encoded);
   }
-
-  useImperativeHandle(ref, () => ({
-    sendText: (text: string) => send(0, text),
-  }));
 
   function onData(xtermc: XTerminalConnected, bytes: ArrayBuffer) {
     const xterm = xtermc.xterm;
@@ -276,12 +285,27 @@ export const TerminalPanel = React.forwardRef<
     xterm.write(text);
   }
 
+  // Send stty command to sync the VM's terminal size with xterm's dimensions.
+  // Serial console (plain.kubevirt.io) has no resize channel, so stty must be
+  // triggered manually (not on connect — the console often starts at a login prompt).
+  const sendStty = useCallback(() => {
+    const xterm = xtermRef.current?.xterm;
+    if (!xterm || !xtermRef.current?.connected) return;
+    const { cols, rows } = xterm;
+    if (cols > 0 && rows > 0) {
+      send(0, `stty cols ${cols} rows ${rows}\r`);
+    }
+  }, []);
+
+  useImperativeHandle(ref, () => ({
+    sendText: (text: string) => send(0, text),
+    sendStty,
+  }));
+
   function setupTerminal(itemRef: HTMLElement, xterm: XTerminal, fitAddon: FitAddon) {
     if (!itemRef) return;
     xterm.open(itemRef);
     xterm.onData(data => send(0, data));
-    // Note: no resize event — serial console (plain.kubevirt.io) has no resize channel.
-    // Terminal width is set via stty in the guest.
     xterm.attachCustomKeyEventHandler(arg => {
       if (arg.ctrlKey && arg.type === 'keydown') {
         if (arg.code === 'KeyC') {
@@ -316,6 +340,7 @@ export const TerminalPanel = React.forwardRef<
         cursorBlink: true,
         cursorStyle: 'underline',
         scrollback: 10000,
+        fontSize,
         rows: 30,
         windowsMode: isWindows,
         allowProposedApi: true,
@@ -380,6 +405,7 @@ export const TerminalPanel = React.forwardRef<
         flex: 1,
         minHeight: 0,
         overflow: 'hidden',
+        position: 'relative',
         '& .xterm': {
           height: '100%',
           '& .xterm-viewport': {
@@ -396,6 +422,56 @@ export const TerminalPanel = React.forwardRef<
         },
       })}
     >
+      {/* Serial toolbar overlay */}
+      <Box
+        sx={{
+          position: 'absolute',
+          top: 8,
+          right: 12,
+          zIndex: 10,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 0.5,
+          bgcolor: 'rgba(0,0,0,0.6)',
+          borderRadius: 1,
+          px: 0.5,
+          py: 0.25,
+          backdropFilter: 'blur(4px)',
+        }}
+      >
+        <SerialKeysMenu onStty={sendStty} onSendText={text => send(0, text)} />
+
+        <Box sx={{ width: 1, height: 18, bgcolor: 'rgba(255,255,255,0.2)', mx: 0.25 }} />
+
+        {/* Font size controls */}
+        <Tooltip title="Decrease font size" arrow placement="bottom">
+          <IconButton
+            size="small"
+            onClick={() => changeFontSize(-1)}
+            disabled={fontSize <= 8}
+            sx={{ color: 'rgba(255,255,255,0.7)', '&:hover': { color: '#fff' }, p: 0.25 }}
+          >
+            <Icon icon="mdi:minus" width={14} />
+          </IconButton>
+        </Tooltip>
+        <Typography
+          variant="caption"
+          sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.65rem', userSelect: 'none' }}
+        >
+          {fontSize}
+        </Typography>
+        <Tooltip title="Increase font size" arrow placement="bottom">
+          <IconButton
+            size="small"
+            onClick={() => changeFontSize(1)}
+            disabled={fontSize >= 28}
+            sx={{ color: 'rgba(255,255,255,0.7)', '&:hover': { color: '#fff' }, p: 0.25 }}
+          >
+            <Icon icon="mdi:plus" width={14} />
+          </IconButton>
+        </Tooltip>
+      </Box>
+
       <Box
         sx={theme => ({
           paddingTop: compact ? 0 : theme.spacing(1),
@@ -416,6 +492,31 @@ export const TerminalPanel = React.forwardRef<
     </Box>
   );
 });
+
+// ── Shared helpers ──────────────────────────────────────────────────────
+
+/** Build and send a VNC key event (RFB message type 4). */
+function sendVncKey(socket: WebSocket, keysym: number, down: boolean) {
+  const msg = new Uint8Array(8);
+  msg[0] = 4;
+  msg[1] = down ? 1 : 0;
+  msg[4] = (keysym >> 24) & 0xff;
+  msg[5] = (keysym >> 16) & 0xff;
+  msg[6] = (keysym >> 8) & 0xff;
+  msg[7] = keysym & 0xff;
+  socket.send(msg);
+}
+
+/** Shared disabled section header styling for menus. */
+const menuSectionSx = {
+  fontSize: '0.8rem',
+  py: 0.5,
+  minHeight: 0,
+  opacity: '0.5 !important',
+  '&&': { fontSize: '0.65rem' },
+  textTransform: 'uppercase' as const,
+  letterSpacing: 0.5,
+};
 
 // ── VNC Panel ───────────────────────────────────────────────────────────
 
@@ -453,16 +554,7 @@ function VNCKeysMenu({ onSend }: { onSend: (keys: number[]) => void }) {
           paper: { sx: { bgcolor: 'rgba(30,30,30,0.95)', color: '#fff', minWidth: 200 } },
         }}
       >
-        <MenuItem
-          disabled
-          sx={{
-            ...menuItemSx,
-            opacity: '0.5 !important',
-            fontSize: '0.65rem',
-            textTransform: 'uppercase',
-            letterSpacing: 0.5,
-          }}
-        >
+        <MenuItem disabled sx={menuSectionSx}>
           Switch TTY
         </MenuItem>
         {[1, 2, 3, 4, 5, 6].map(n => (
@@ -486,16 +578,7 @@ function VNCKeysMenu({ onSend }: { onSend: (keys: number[]) => void }) {
 
         <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)', my: 0.5 }} />
 
-        <MenuItem
-          disabled
-          sx={{
-            ...menuItemSx,
-            opacity: '0.5 !important',
-            fontSize: '0.65rem',
-            textTransform: 'uppercase',
-            letterSpacing: 0.5,
-          }}
-        >
+        <MenuItem disabled sx={menuSectionSx}>
           System
         </MenuItem>
         <MenuItem onClick={() => send([0xffe3, 0xffe9, 0xffff])} sx={menuItemSx}>
@@ -510,6 +593,108 @@ function VNCKeysMenu({ onSend }: { onSend: (keys: number[]) => void }) {
           </ListItemIcon>
           <ListItemText primaryTypographyProps={{ fontSize: '0.8rem' }}>
             Ctrl+Alt+Backspace — Kill X
+          </ListItemText>
+        </MenuItem>
+      </Menu>
+    </>
+  );
+}
+
+function SerialKeysMenu({
+  onStty,
+  onSendText,
+}: {
+  onStty: () => void;
+  onSendText: (text: string) => void;
+}) {
+  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
+  const open = Boolean(anchorEl);
+
+  const menuItemSx = { fontSize: '0.8rem', py: 0.5, minHeight: 0 };
+  const iconSx = { minWidth: 28 };
+
+  return (
+    <>
+      <Tooltip title="Serial Commands" arrow placement="bottom">
+        <IconButton
+          size="small"
+          onClick={e => setAnchorEl(e.currentTarget)}
+          sx={{ color: 'rgba(255,255,255,0.7)', '&:hover': { color: '#fff' }, p: 0.5 }}
+        >
+          <Icon icon="mdi:keyboard-settings" width={16} />
+        </IconButton>
+      </Tooltip>
+      <Menu
+        anchorEl={anchorEl}
+        open={open}
+        onClose={() => setAnchorEl(null)}
+        slotProps={{
+          paper: { sx: { bgcolor: 'rgba(30,30,30,0.95)', color: '#fff', minWidth: 200 } },
+        }}
+      >
+        <MenuItem disabled sx={menuSectionSx}>
+          Terminal
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            setAnchorEl(null);
+            onStty();
+          }}
+          sx={menuItemSx}
+        >
+          <ListItemIcon sx={iconSx}>
+            <Icon icon="mdi:resize" width={16} color="rgba(255,255,255,0.7)" />
+          </ListItemIcon>
+          <ListItemText primaryTypographyProps={{ fontSize: '0.8rem' }}>
+            Resize terminal (stty)
+          </ListItemText>
+        </MenuItem>
+
+        <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)', my: 0.5 }} />
+
+        <MenuItem disabled sx={menuSectionSx}>
+          Signals
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            setAnchorEl(null);
+            onSendText('\x03');
+          }}
+          sx={menuItemSx}
+        >
+          <ListItemIcon sx={iconSx}>
+            <Icon icon="mdi:cancel" width={16} color="rgba(255,255,255,0.7)" />
+          </ListItemIcon>
+          <ListItemText primaryTypographyProps={{ fontSize: '0.8rem' }}>
+            Ctrl+C — Interrupt
+          </ListItemText>
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            setAnchorEl(null);
+            onSendText('\x04');
+          }}
+          sx={menuItemSx}
+        >
+          <ListItemIcon sx={iconSx}>
+            <Icon icon="mdi:logout" width={16} color="rgba(255,255,255,0.7)" />
+          </ListItemIcon>
+          <ListItemText primaryTypographyProps={{ fontSize: '0.8rem' }}>
+            Ctrl+D — EOF / Logout
+          </ListItemText>
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            setAnchorEl(null);
+            onSendText('\x1a');
+          }}
+          sx={menuItemSx}
+        >
+          <ListItemIcon sx={iconSx}>
+            <Icon icon="mdi:pause" width={16} color="rgba(255,255,255,0.7)" />
+          </ListItemIcon>
+          <ListItemText primaryTypographyProps={{ fontSize: '0.8rem' }}>
+            Ctrl+Z — Suspend
           </ListItemText>
         </MenuItem>
       </Menu>
@@ -938,18 +1123,8 @@ export function VNCPanel({
                 onClick={() => {
                   const socket = vncRef.current?.getSocket();
                   if (!socket || socket.readyState !== 1) return;
-                  const sendKey = (keysym: number, down: boolean) => {
-                    const msg = new Uint8Array(8);
-                    msg[0] = 4;
-                    msg[1] = down ? 1 : 0;
-                    msg[4] = (keysym >> 24) & 0xff;
-                    msg[5] = (keysym >> 16) & 0xff;
-                    msg[6] = (keysym >> 8) & 0xff;
-                    msg[7] = keysym & 0xff;
-                    socket.send(msg);
-                  };
-                  [0xffe3, 0xffe9, 0xffff].forEach(k => sendKey(k, true));
-                  [0xffff, 0xffe9, 0xffe3].forEach(k => sendKey(k, false));
+                  [0xffe3, 0xffe9, 0xffff].forEach(k => sendVncKey(socket, k, true));
+                  [0xffff, 0xffe9, 0xffe3].forEach(k => sendVncKey(socket, k, false));
                   canvasRef.current?.focus();
                 }}
                 sx={{ color: 'rgba(255,255,255,0.7)', '&:hover': { color: '#fff' }, p: 0.5 }}
@@ -963,18 +1138,8 @@ export function VNCPanel({
               onSend={keys => {
                 const socket = vncRef.current?.getSocket();
                 if (!socket || socket.readyState !== 1) return;
-                const sendKey = (keysym: number, down: boolean) => {
-                  const msg = new Uint8Array(8);
-                  msg[0] = 4;
-                  msg[1] = down ? 1 : 0;
-                  msg[4] = (keysym >> 24) & 0xff;
-                  msg[5] = (keysym >> 16) & 0xff;
-                  msg[6] = (keysym >> 8) & 0xff;
-                  msg[7] = keysym & 0xff;
-                  socket.send(msg);
-                };
-                keys.forEach(k => sendKey(k, true));
-                [...keys].reverse().forEach(k => sendKey(k, false));
+                keys.forEach(k => sendVncKey(socket, k, true));
+                [...keys].reverse().forEach(k => sendVncKey(socket, k, false));
                 canvasRef.current?.focus();
               }}
             />
@@ -1023,6 +1188,28 @@ export function VNCPanel({
                 </ToggleButton>
               </Tooltip>
             </ToggleButtonGroup>
+
+            <Box sx={{ width: 1, height: 18, bgcolor: 'rgba(255,255,255,0.2)', mx: 0.25 }} />
+
+            {/* Screenshot */}
+            <Tooltip title="Screenshot" arrow placement="bottom">
+              <IconButton
+                size="small"
+                onClick={() => {
+                  const canvas = canvasRef.current;
+                  if (!canvas) return;
+                  const link = document.createElement('a');
+                  link.download = `vnc-${item.getName()}-${new Date()
+                    .toISOString()
+                    .replace(/[:.]/g, '-')}.png`;
+                  link.href = canvas.toDataURL('image/png');
+                  link.click();
+                }}
+                sx={{ color: 'rgba(255,255,255,0.7)', '&:hover': { color: '#fff' }, p: 0.5 }}
+              >
+                <Icon icon="mdi:camera" width={16} />
+              </IconButton>
+            </Tooltip>
 
             <Box sx={{ width: 1, height: 18, bgcolor: 'rgba(255,255,255,0.2)', mx: 0.25 }} />
 
@@ -1119,45 +1306,23 @@ export function VNCPanel({
             }}
             onKeyDown={e => {
               e.preventDefault();
+              e.stopPropagation();
               const socket = vncRef.current?.getSocket();
               if (!socket || socket.readyState !== 1) return;
-              const sendKeyEvent = (keysym: number, down: boolean) => {
-                const msg = new Uint8Array(8);
-                msg[0] = 4;
-                msg[1] = down ? 1 : 0;
-                msg[2] = 0;
-                msg[3] = 0;
-                msg[4] = (keysym >> 24) & 0xff;
-                msg[5] = (keysym >> 16) & 0xff;
-                msg[6] = (keysym >> 8) & 0xff;
-                msg[7] = keysym & 0xff;
-                socket.send(msg);
-              };
               const isAltGr = e.getModifierState && e.getModifierState('AltGraph');
-              if (isAltGr) sendKeyEvent(0xfe03, true);
+              if (isAltGr) sendVncKey(socket, 0xfe03, true);
               const keysym = getKeysym(e, keyboardMode);
-              if (keysym !== null) sendKeyEvent(keysym, true);
+              if (keysym !== null) sendVncKey(socket, keysym, true);
             }}
             onKeyUp={e => {
               e.preventDefault();
+              e.stopPropagation();
               const socket = vncRef.current?.getSocket();
               if (!socket || socket.readyState !== 1) return;
-              const sendKeyEvent = (keysym: number, down: boolean) => {
-                const msg = new Uint8Array(8);
-                msg[0] = 4;
-                msg[1] = down ? 1 : 0;
-                msg[2] = 0;
-                msg[3] = 0;
-                msg[4] = (keysym >> 24) & 0xff;
-                msg[5] = (keysym >> 16) & 0xff;
-                msg[6] = (keysym >> 8) & 0xff;
-                msg[7] = keysym & 0xff;
-                socket.send(msg);
-              };
               const keysym = getKeysym(e, keyboardMode);
-              if (keysym !== null) sendKeyEvent(keysym, false);
+              if (keysym !== null) sendVncKey(socket, keysym, false);
               const isAltGr = e.getModifierState && e.getModifierState('AltGraph');
-              if (isAltGr) sendKeyEvent(0xfe03, false);
+              if (isAltGr) sendVncKey(socket, 0xfe03, false);
             }}
             onClick={() => canvasRef.current?.focus()}
           />
@@ -1207,7 +1372,13 @@ export default function VMConsole(props: VMConsoleProps) {
 
   return (
     <Dialog
-      onClose={onClose}
+      onClose={(event: object, reason: string) => {
+        // Block real Escape key presses so they reach VNC/terminal instead of closing.
+        // Allow the X button through — Headlamp's CloseButton passes {} as event
+        // with reason 'escapeKeyDown', but real Escape has a 'key' property.
+        if (reason === 'escapeKeyDown' && 'key' in event) return;
+        onClose?.();
+      }}
       withFullScreen
       onFullScreenToggled={() => {
         // Terminal fit handled internally by TerminalPanel
