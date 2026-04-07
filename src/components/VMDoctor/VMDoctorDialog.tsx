@@ -218,7 +218,10 @@ export default function VMDoctorDialog({
   return (
     <Dialog
       open={open}
-      onClose={handleClose}
+      onClose={(event: object, reason: string) => {
+        if (reason === 'escapeKeyDown' && 'key' in event) return;
+        handleClose();
+      }}
       maxWidth={false}
       fullWidth
       TransitionProps={{ unmountOnExit: true }}

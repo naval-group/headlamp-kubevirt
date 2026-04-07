@@ -34,6 +34,7 @@ import DataImportCronDetails from './components/DataImportCrons/Details';
 import DataImportCronList from './components/DataImportCrons/List';
 import InstanceTypeDetails from './components/InstanceTypes/Details';
 import InstanceTypeList from './components/InstanceTypes/List';
+import MigrationDetails from './components/Migrations/Details';
 import MigrationList from './components/Migrations/List';
 import NADDetails from './components/NetworkAttachmentDefinitions/Details';
 import NADList from './components/NetworkAttachmentDefinitions/List';
@@ -511,6 +512,9 @@ registerKubeVirtResource({
   path: 'migrations',
   icon: 'mdi:swap-horizontal',
   ListComponent: MigrationList,
+  DetailsComponent: MigrationDetails,
+  detailsRouteName: 'migration',
+  hasNamespace: true,
 });
 
 registerKubeVirtResource({
