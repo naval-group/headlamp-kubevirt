@@ -1,5 +1,6 @@
 import { Icon } from '@iconify/react';
 import { ApiProxy } from '@kinvolk/headlamp-plugin/lib';
+import { Link } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
 import {
   Alert,
   Box,
@@ -143,7 +144,7 @@ export default function RestoreDialog({
             const reason = ready?.reason || ready?.message || 'Unknown error';
             setRestorePhase('Failed');
             setRestoreDetail(String(reason));
-            enqueueSnackbar(`Restore failed: ${safeError(new Error(reason), 'restore-poll')}`, {
+            enqueueSnackbar(`Restore failed: ${safeError(reason, 'restore-poll')}`, {
               variant: 'error',
             });
           } else if (progressing?.status === 'True') {
@@ -179,9 +180,10 @@ export default function RestoreDialog({
     }
 
     setCreating(true);
-    const restoreResourceName = `restore-${snapshotName}-${Date.now()}`
-      .substring(0, 63)
-      .replace(/-+$/, '');
+    const randomSuffix = Math.random().toString(36).substring(2, 7);
+    const restoreResourceName =
+      `restore-${snapshotName}-${randomSuffix}`.substring(0, 63).replace(/-+$/, '') ||
+      `restore-${randomSuffix}`;
 
     const restoreSpec: RestoreResourceSpec = {
       apiVersion: 'snapshot.kubevirt.io/v1beta1',
@@ -305,7 +307,7 @@ export default function RestoreDialog({
                   </Typography>
                   {restoreDetail && (
                     <Typography variant="body2" color="text.secondary">
-                      {safeError(new Error(restoreDetail), 'restore-detail')}
+                      {safeError(restoreDetail, 'restore-detail')}
                     </Typography>
                   )}
                 </Box>
@@ -322,32 +324,46 @@ export default function RestoreDialog({
                   gap: 0.5,
                 }}
               >
-                <Box display="flex" justifyContent="space-between">
-                  <Typography variant="body2" color="text.secondary">
+                <Box display="flex" justifyContent="space-between" alignItems="baseline" gap={2}>
+                  <Typography variant="body2" color="text.secondary" sx={{ flexShrink: 0 }}>
                     Snapshot
                   </Typography>
-                  <Typography variant="body2" fontFamily="monospace">
+                  <Typography
+                    variant="body2"
+                    fontFamily="monospace"
+                    sx={{ textAlign: 'right', wordBreak: 'break-all' }}
+                  >
                     {snapshotName}
                   </Typography>
                 </Box>
-                <Box display="flex" justifyContent="space-between">
-                  <Typography variant="body2" color="text.secondary">
+                <Box display="flex" justifyContent="space-between" alignItems="baseline" gap={2}>
+                  <Typography variant="body2" color="text.secondary" sx={{ flexShrink: 0 }}>
                     Target VM
                   </Typography>
-                  <Typography variant="body2" fontFamily="monospace">
-                    {targetVmName}
-                  </Typography>
+                  <Link routeName="virtualmachine" params={{ name: targetVmName, namespace }}>
+                    <Typography variant="body2" fontFamily="monospace" sx={{ textAlign: 'right' }}>
+                      {targetVmName}
+                    </Typography>
+                  </Link>
                 </Box>
               </Box>
 
               {restorePhase === 'Succeeded' && (
                 <Alert
                   severity="success"
+                  variant="filled"
                   sx={{ mt: 2 }}
                   icon={<Icon icon="mdi:check-circle" width={20} />}
                 >
-                  VM <strong>{targetVmName}</strong> has been restored from snapshot{' '}
-                  <strong>{snapshotName}</strong>.
+                  VM{' '}
+                  <Link
+                    routeName="virtualmachine"
+                    params={{ name: targetVmName, namespace }}
+                    style={{ color: 'inherit', fontWeight: 700 }}
+                  >
+                    {targetVmName}
+                  </Link>{' '}
+                  has been restored from snapshot <strong>{snapshotName}</strong>.
                 </Alert>
               )}
 

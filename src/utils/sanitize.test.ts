@@ -333,8 +333,13 @@ describe('safeError', () => {
     expect(result.length).toBeLessThanOrEqual(120);
   });
 
-  it('handles non-Error values', () => {
-    expect(safeError('string error', 'test')).toBe('An unexpected error occurred');
+  it('handles string values directly', () => {
+    expect(safeError('string error', 'test')).toBe('string error');
+    expect(safeError('403 Forbidden', 'test')).toBe('Permission denied');
+    expect(safeError('404 Not Found', 'test')).toBe('Resource not found');
+  });
+
+  it('handles non-string, non-Error values', () => {
     expect(safeError(null, 'test')).toBe('An unexpected error occurred');
     expect(safeError(undefined, 'test')).toBe('An unexpected error occurred');
     expect(safeError(42, 'test')).toBe('An unexpected error occurred');
