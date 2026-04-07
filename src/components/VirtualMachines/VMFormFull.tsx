@@ -606,7 +606,39 @@ export default function VMFormFull({
     ) || false;
   const machineType = resource.spec?.template?.spec?.domain?.machine?.type || '';
   const enableAcpi = resource.spec?.template?.spec?.domain?.features?.acpi?.enabled !== false;
+  const enableTPM = !!resource.spec?.template?.spec?.domain?.devices?.tpm;
+  const enableEfiPersistent =
+    !!resource.spec?.template?.spec?.domain?.firmware?.bootloader?.efi?.persistent;
+  const isUefi = firmwareType === 'uefi';
+  const hugepages = resource.spec?.template?.spec?.domain?.memory?.hugepages?.pageSize || '';
   const timezone = resource.spec?.template?.spec?.domain?.clock?.timezone || '';
+
+  // Performance
+  const devices = resource.spec?.template?.spec?.domain?.devices;
+  const enableBlockMultiQueue = !!devices?.blockMultiQueue;
+  const enableNetMultiQueue = !!devices?.networkInterfaceMultiqueue;
+  const ioThreadsPolicy = resource.spec?.template?.spec?.domain?.ioThreadsPolicy || '';
+
+  // Devices
+  const enableSound = !!devices?.sound;
+  const enableWatchdog = !!devices?.watchdog;
+  const watchdogAction = devices?.watchdog?.action || 'reset';
+  const enableRng = !!devices?.rng;
+  const enableDownwardMetrics = !!devices?.downwardMetrics;
+
+  // Security
+  const enableSmm = !!resource.spec?.template?.spec?.domain?.features?.smm?.enabled;
+
+  // Auto-attach (all default to true when absent)
+  const autoGraphics = devices?.autoattachGraphicsDevice !== false;
+  const autoSerial = devices?.autoattachSerialConsole !== false;
+  const autoMemBalloon = devices?.autoattachMemBalloon !== false;
+  const autoPodInterface = devices?.autoattachPodInterface !== false;
+  const autoVSOCK = devices?.autoattachVSOCK !== false;
+  const autoInputDevice = devices?.autoattachInputDevice !== false;
+
+  // Scheduling
+  const priorityClassName = resource.spec?.template?.spec?.priorityClassName || '';
 
   // User Data configuration
   const userDataMode = resource.spec?.template?.spec?.volumes?.some(
@@ -1969,9 +2001,7 @@ export default function VMFormFull({
   // Advanced Details handlers
   const handleFirmwareChange = (type: 'bios' | 'uefi' | 'uefi-secure') => {
     if (type === 'bios') {
-      const newDomain = { ...resource.spec?.template?.spec?.domain };
-      delete newDomain.firmware;
-      updateDomain(newDomain);
+      updateDomain({ firmware: undefined });
     } else {
       updateDomain({
         firmware: {
@@ -2024,6 +2054,97 @@ export default function VMFormFull({
         acpi: enabled ? { enabled: true } : undefined,
       },
     });
+  };
+
+  const handleTPMChange = (enabled: boolean) => {
+    updateDomain({
+      devices: {
+        ...resource.spec?.template?.spec?.domain?.devices,
+        tpm: enabled ? { persistent: true } : undefined,
+      },
+    });
+  };
+
+  const handleEfiPersistentChange = (enabled: boolean) => {
+    const efi = resource.spec?.template?.spec?.domain?.firmware?.bootloader?.efi || {};
+    updateDomain({
+      firmware: {
+        bootloader: {
+          efi: {
+            ...efi,
+            persistent: enabled || undefined,
+          },
+        },
+      },
+    });
+  };
+
+  const handleHugepagesChange = (pageSize: string) => {
+    updateDomain({
+      memory: {
+        ...resource.spec?.template?.spec?.domain?.memory,
+        hugepages: pageSize ? { pageSize } : undefined,
+      },
+    });
+  };
+
+  // Performance handlers
+  const handleBlockMultiQueueChange = (enabled: boolean) => {
+    updateDevices({ blockMultiQueue: enabled || undefined });
+  };
+
+  const handleNetMultiQueueChange = (enabled: boolean) => {
+    updateDevices({ networkInterfaceMultiqueue: enabled || undefined });
+  };
+
+  const handleIoThreadsPolicyChange = (policy: string) => {
+    updateDomain({ ioThreadsPolicy: policy || undefined });
+  };
+
+  // Device handlers
+  const handleSoundChange = (enabled: boolean) => {
+    updateDevices({ sound: enabled ? { name: 'sound0', model: 'ich9' } : undefined });
+  };
+
+  const handleWatchdogChange = (enabled: boolean) => {
+    updateDevices({
+      watchdog: enabled ? { name: 'watchdog0', i6300esb: { action: 'reset' } } : undefined,
+    });
+  };
+
+  const handleWatchdogActionChange = (action: string) => {
+    updateDevices({
+      watchdog: { name: 'watchdog0', i6300esb: { action } },
+    });
+  };
+
+  const handleRngChange = (enabled: boolean) => {
+    updateDevices({ rng: enabled ? {} : undefined });
+  };
+
+  const handleDownwardMetricsChange = (enabled: boolean) => {
+    updateDevices({ downwardMetrics: enabled ? {} : undefined });
+  };
+
+  // Security handler
+  const handleSmmChange = (enabled: boolean) => {
+    const currentFeatures = resource.spec?.template?.spec?.domain?.features || {};
+    updateDomain({
+      features: {
+        ...currentFeatures,
+        smm: enabled ? { enabled: true } : undefined,
+      },
+    });
+  };
+
+  // Auto-attach handlers (write false to disable, remove to re-enable)
+  const handleAutoAttachChange = (field: string, enabled: boolean) => {
+    updateDevices({ [field]: enabled ? undefined : false });
+  };
+
+  // Scheduling handler
+  const handlePriorityClassChange = (className: string) => {
+    updateTemplateSpec({ priorityClassName: className || undefined });
   };
 
   const handleTimezoneChange = (tz: string) => {
@@ -4382,386 +4503,865 @@ export default function VMFormFull({
             </>
           )}
 
-          <Typography variant="subtitle2" sx={{ mb: 2 }}>
-            Virtual Hardware
-          </Typography>
-
-          {/* Firmware/BIOS */}
-          <FormControl fullWidth sx={{ mb: 2 }}>
-            <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
-              Firmware
+          <Box
+            sx={{
+              border: 1,
+              borderColor: 'divider',
+              borderRadius: 2,
+              p: 2.5,
+              mb: 3,
+              bgcolor: 'action.hover',
+            }}
+          >
+            <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 700 }}>
+              Virtual Hardware
             </Typography>
-            <Select
-              size="small"
-              value={firmwareType}
-              onChange={e =>
-                handleFirmwareChange(e.target.value as 'bios' | 'uefi' | 'uefi-secure')
-              }
-            >
-              <MenuItem value="bios">BIOS Legacy</MenuItem>
-              <MenuItem value="uefi">UEFI</MenuItem>
-              <MenuItem value="uefi-secure">UEFI with Secure Boot</MenuItem>
-            </Select>
-          </FormControl>
 
-          {/* CPU Model */}
-          <FormControl fullWidth sx={{ mb: 2 }}>
-            <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
-              CPU Model (optional)
-            </Typography>
-            <Select
-              size="small"
-              value={cpuModel}
-              onChange={e => handleCpuModelChange(e.target.value)}
-              displayEmpty
-            >
-              <MenuItem value="">Default</MenuItem>
-              <MenuItem value="host-passthrough">host-passthrough (Direct passthrough)</MenuItem>
-              <MenuItem value="host-model">host-model (Host-like model)</MenuItem>
-              <MenuItem disabled>───── Intel x86_64 ─────</MenuItem>
-              <MenuItem value="Conroe">Conroe</MenuItem>
-              <MenuItem value="Penryn">Penryn</MenuItem>
-              <MenuItem value="Nehalem">Nehalem</MenuItem>
-              <MenuItem value="Westmere">Westmere</MenuItem>
-              <MenuItem value="SandyBridge">SandyBridge</MenuItem>
-              <MenuItem value="IvyBridge">IvyBridge</MenuItem>
-              <MenuItem value="Haswell">Haswell</MenuItem>
-              <MenuItem value="Broadwell">Broadwell</MenuItem>
-              <MenuItem value="Skylake-Client">Skylake-Client</MenuItem>
-              <MenuItem value="Skylake-Server">Skylake-Server</MenuItem>
-              <MenuItem value="Cascadelake-Server">Cascadelake-Server</MenuItem>
-              <MenuItem value="Cooperlake">Cooperlake</MenuItem>
-              <MenuItem value="Icelake-Server">Icelake-Server</MenuItem>
-              <MenuItem value="Sapphirerapids">Sapphirerapids</MenuItem>
-              <MenuItem disabled>───── AMD x86_64 ─────</MenuItem>
-              <MenuItem value="Opteron_G1">Opteron G1</MenuItem>
-              <MenuItem value="Opteron_G2">Opteron G2</MenuItem>
-              <MenuItem value="Opteron_G3">Opteron G3</MenuItem>
-              <MenuItem value="Opteron_G4">Opteron G4</MenuItem>
-              <MenuItem value="Opteron_G5">Opteron G5</MenuItem>
-              <MenuItem value="EPYC">EPYC</MenuItem>
-              <MenuItem value="EPYC-Rome">EPYC-Rome</MenuItem>
-              <MenuItem value="EPYC-Milan">EPYC-Milan</MenuItem>
-              <MenuItem value="EPYC-Genoa">EPYC-Genoa</MenuItem>
-              <MenuItem disabled>───── ARM64 ─────</MenuItem>
-              <MenuItem value="cortex-a57">Cortex-A57</MenuItem>
-              <MenuItem value="cortex-a72">Cortex-A72</MenuItem>
-              <MenuItem value="cortex-a53">Cortex-A53</MenuItem>
-              <MenuItem value="max">ARM Max (latest features)</MenuItem>
-              <MenuItem disabled>───── IBM Power ─────</MenuItem>
-              <MenuItem value="POWER8">POWER8</MenuItem>
-              <MenuItem value="POWER9">POWER9</MenuItem>
-              <MenuItem value="POWER10">POWER10</MenuItem>
-              <MenuItem disabled>───── IBM s390x ─────</MenuItem>
-              <MenuItem value="z13">z13</MenuItem>
-              <MenuItem value="z14">z14</MenuItem>
-              <MenuItem value="z15">z15</MenuItem>
-            </Select>
-          </FormControl>
-
-          {/* Nested Virtualization */}
-          <Box sx={{ mb: 2 }}>
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={enableNestedVirtualization}
-                  onChange={e => handleNestedVirtualizationChange(e.target.checked)}
-                />
-              }
-              label="Enable Nested Virtualization"
-            />
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', ml: 4 }}>
-              Adds both vmx (Intel) and svm (AMD) CPU features with policy: require
-            </Typography>
-          </Box>
-
-          {/* Machine Type */}
-          <FormControl fullWidth sx={{ mb: 2 }}>
-            <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
-              Machine Type (optional)
-            </Typography>
-            <Select
-              size="small"
-              value={machineType}
-              onChange={e => handleMachineTypeChange(e.target.value)}
-              displayEmpty
-            >
-              <MenuItem value="">Default (q35)</MenuItem>
-              <MenuItem value="pc-q35-rhel9.2.0">pc-q35-rhel9.2.0</MenuItem>
-              <MenuItem value="pc-q35-rhel9.0.0">pc-q35-rhel9.0.0</MenuItem>
-              <MenuItem value="q35">q35</MenuItem>
-              <MenuItem value="pc-i440fx-rhel7.6.0">pc-i440fx-rhel7.6.0</MenuItem>
-              <MenuItem value="pc">pc (i440fx)</MenuItem>
-            </Select>
-          </FormControl>
-
-          {/* ACPI */}
-          <Box sx={{ mb: 2 }}>
-            <FormControlLabel
-              control={
-                <Checkbox checked={enableAcpi} onChange={e => handleAcpiChange(e.target.checked)} />
-              }
-              label="Enable ACPI"
-            />
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', ml: 4 }}>
-              Advanced Configuration and Power Interface - allows guest OS to communicate with
-              virtual hardware for power management (shutdown/reboot/suspend)
-            </Typography>
-          </Box>
-
-          {/* Timezone */}
-          <FormControl fullWidth sx={{ mb: 2 }}>
-            <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
-              Timezone (optional)
-            </Typography>
-            <Select
-              size="small"
-              value={timezone}
-              onChange={e => handleTimezoneChange(e.target.value)}
-              displayEmpty
-            >
-              <MenuItem value="">UTC (default)</MenuItem>
-              <MenuItem disabled>───── Americas ─────</MenuItem>
-              <MenuItem value="America/New_York">America/New_York (EST/EDT)</MenuItem>
-              <MenuItem value="America/Chicago">America/Chicago (CST/CDT)</MenuItem>
-              <MenuItem value="America/Denver">America/Denver (MST/MDT)</MenuItem>
-              <MenuItem value="America/Los_Angeles">America/Los_Angeles (PST/PDT)</MenuItem>
-              <MenuItem value="America/Toronto">America/Toronto</MenuItem>
-              <MenuItem value="America/Mexico_City">America/Mexico_City</MenuItem>
-              <MenuItem value="America/Sao_Paulo">America/Sao_Paulo</MenuItem>
-              <MenuItem value="America/Buenos_Aires">America/Buenos_Aires</MenuItem>
-              <MenuItem disabled>───── Europe ─────</MenuItem>
-              <MenuItem value="Europe/London">Europe/London (GMT/BST)</MenuItem>
-              <MenuItem value="Europe/Paris">Europe/Paris (CET/CEST)</MenuItem>
-              <MenuItem value="Europe/Berlin">Europe/Berlin</MenuItem>
-              <MenuItem value="Europe/Rome">Europe/Rome</MenuItem>
-              <MenuItem value="Europe/Madrid">Europe/Madrid</MenuItem>
-              <MenuItem value="Europe/Amsterdam">Europe/Amsterdam</MenuItem>
-              <MenuItem value="Europe/Brussels">Europe/Brussels</MenuItem>
-              <MenuItem value="Europe/Zurich">Europe/Zurich</MenuItem>
-              <MenuItem value="Europe/Stockholm">Europe/Stockholm</MenuItem>
-              <MenuItem value="Europe/Moscow">Europe/Moscow</MenuItem>
-              <MenuItem disabled>───── Asia ─────</MenuItem>
-              <MenuItem value="Asia/Dubai">Asia/Dubai</MenuItem>
-              <MenuItem value="Asia/Kolkata">Asia/Kolkata</MenuItem>
-              <MenuItem value="Asia/Shanghai">Asia/Shanghai</MenuItem>
-              <MenuItem value="Asia/Hong_Kong">Asia/Hong_Kong</MenuItem>
-              <MenuItem value="Asia/Tokyo">Asia/Tokyo</MenuItem>
-              <MenuItem value="Asia/Seoul">Asia/Seoul</MenuItem>
-              <MenuItem value="Asia/Singapore">Asia/Singapore</MenuItem>
-              <MenuItem value="Asia/Bangkok">Asia/Bangkok</MenuItem>
-              <MenuItem disabled>───── Pacific ─────</MenuItem>
-              <MenuItem value="Australia/Sydney">Australia/Sydney</MenuItem>
-              <MenuItem value="Australia/Melbourne">Australia/Melbourne</MenuItem>
-              <MenuItem value="Pacific/Auckland">Pacific/Auckland</MenuItem>
-              <MenuItem disabled>───── Africa ─────</MenuItem>
-              <MenuItem value="Africa/Cairo">Africa/Cairo</MenuItem>
-              <MenuItem value="Africa/Johannesburg">Africa/Johannesburg</MenuItem>
-            </Select>
-          </FormControl>
-
-          <Divider sx={{ my: 3 }} />
-
-          <Typography variant="subtitle2" sx={{ mb: 2 }}>
-            User Data
-          </Typography>
-
-          <FormControl component="fieldset" sx={{ mb: 3 }}>
-            <FormLabel component="legend">Mode</FormLabel>
-            <RadioGroup
-              row
-              value={userDataMode}
-              onChange={e => handleUserDataModeChange(e.target.value as 'cloudInit' | 'ignition')}
-            >
-              <FormControlLabel
-                value="cloudInit"
-                control={<Radio />}
-                label="Cloud-Init (CloudInitNoCloud)"
-              />
-              <FormControlLabel
-                value="ignition"
-                control={<Radio />}
-                label="Ignition (CloudInitConfigDrive)"
-              />
-            </RadioGroup>
-          </FormControl>
-
-          {userDataMode === 'cloudInit' && (
-            <>
-              {/* Cloud-Init User Data */}
-              <Box sx={{ mb: 3 }}>
-                <Typography variant="body2" sx={{ mb: 1, fontWeight: 500 }}>
-                  User Data
-                </Typography>
-                <FormControl component="fieldset" sx={{ mb: 1 }}>
-                  <RadioGroup
-                    row
-                    value={cloudInitUserDataType}
-                    onChange={e =>
-                      setCloudInitUserDataType(e.target.value as 'inline' | 'base64' | 'secret')
-                    }
-                  >
-                    <FormControlLabel value="inline" control={<Radio />} label="Inline" />
-                    <FormControlLabel value="base64" control={<Radio />} label="Base64" />
-                    <FormControlLabel value="secret" control={<Radio />} label="Secret" />
-                  </RadioGroup>
-                </FormControl>
-
-                {cloudInitUserDataType === 'inline' && (
-                  <TextField
-                    fullWidth
-                    multiline
-                    rows={6}
-                    value={cloudInitUserData}
-                    onChange={e => handleCloudInitUserDataChange('inline', e.target.value)}
-                    placeholder="#cloud-config&#10;users:&#10;  - name: admin&#10;    ssh_authorized_keys:&#10;      - ssh-rsa ..."
-                    inputProps={{ maxLength: 2000 }}
-                    helperText={`${cloudInitUserData.length}/2000 characters`}
-                    error={cloudInitUserData.length > 2000}
-                  />
-                )}
-
-                {cloudInitUserDataType === 'base64' && (
-                  <TextField
-                    fullWidth
-                    value={cloudInitUserData}
-                    onChange={e => handleCloudInitUserDataChange('base64', e.target.value)}
-                    placeholder="Base64-encoded user data"
-                    inputProps={{ maxLength: 2000 }}
-                    helperText={`${cloudInitUserData.length}/2000 characters`}
-                    error={cloudInitUserData.length > 2000}
-                  />
-                )}
-
-                {cloudInitUserDataType === 'secret' && (
-                  <Autocomplete
-                    fullWidth
-                    options={secrets}
-                    value={cloudInitUserDataSecret}
-                    onChange={(_, newValue) =>
-                      handleCloudInitUserDataChange('secret', newValue || '')
-                    }
-                    renderInput={params => <TextField {...params} placeholder="Select secret..." />}
-                  />
-                )}
-              </Box>
-
-              {/* Cloud-Init Network Data */}
-              <Box sx={{ mb: 3 }}>
-                <Typography variant="body2" sx={{ mb: 1, fontWeight: 500 }}>
-                  Network Data (optional)
-                </Typography>
-                <FormControl component="fieldset" sx={{ mb: 1 }}>
-                  <RadioGroup
-                    row
-                    value={cloudInitNetworkDataType}
-                    onChange={e =>
-                      setCloudInitNetworkDataType(e.target.value as 'inline' | 'base64' | 'secret')
-                    }
-                  >
-                    <FormControlLabel value="inline" control={<Radio />} label="Inline" />
-                    <FormControlLabel value="base64" control={<Radio />} label="Base64" />
-                    <FormControlLabel value="secret" control={<Radio />} label="Secret" />
-                  </RadioGroup>
-                </FormControl>
-
-                {cloudInitNetworkDataType === 'inline' && (
-                  <TextField
-                    fullWidth
-                    multiline
-                    rows={6}
-                    value={cloudInitNetworkData}
-                    onChange={e => handleCloudInitNetworkDataChange('inline', e.target.value)}
-                    placeholder="network:&#10;  version: 1&#10;  config:&#10;    - type: physical&#10;      name: eth0"
-                    inputProps={{ maxLength: 2000 }}
-                    helperText={`${cloudInitNetworkData.length}/2000 characters`}
-                    error={cloudInitNetworkData.length > 2000}
-                  />
-                )}
-
-                {cloudInitNetworkDataType === 'base64' && (
-                  <TextField
-                    fullWidth
-                    value={cloudInitNetworkData}
-                    onChange={e => handleCloudInitNetworkDataChange('base64', e.target.value)}
-                    placeholder="Base64-encoded network data"
-                    inputProps={{ maxLength: 2000 }}
-                    helperText={`${cloudInitNetworkData.length}/2000 characters`}
-                    error={cloudInitNetworkData.length > 2000}
-                  />
-                )}
-
-                {cloudInitNetworkDataType === 'secret' && (
-                  <Autocomplete
-                    fullWidth
-                    options={secrets}
-                    value={cloudInitNetworkDataSecret}
-                    onChange={(_, newValue) =>
-                      handleCloudInitNetworkDataChange('secret', newValue || '')
-                    }
-                    renderInput={params => <TextField {...params} placeholder="Select secret..." />}
-                  />
-                )}
-              </Box>
-            </>
-          )}
-
-          {userDataMode === 'ignition' && (
-            <Box sx={{ mb: 3 }}>
-              <Typography variant="body2" sx={{ mb: 1, fontWeight: 500 }}>
-                Ignition Config
+            {/* Firmware/BIOS */}
+            <FormControl fullWidth sx={{ mb: 2 }}>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ mb: 0.5, display: 'block' }}
+              >
+                Firmware
               </Typography>
-              <FormControl component="fieldset" sx={{ mb: 1 }}>
-                <RadioGroup
-                  row
-                  value={ignitionDataType}
-                  onChange={e =>
-                    setIgnitionDataType(e.target.value as 'inline' | 'base64' | 'secret')
+              <Select
+                size="small"
+                value={firmwareType}
+                onChange={e =>
+                  handleFirmwareChange(e.target.value as 'bios' | 'uefi' | 'uefi-secure')
+                }
+              >
+                <MenuItem value="bios">BIOS Legacy</MenuItem>
+                <MenuItem value="uefi">UEFI</MenuItem>
+                <MenuItem value="uefi-secure">UEFI with Secure Boot</MenuItem>
+              </Select>
+            </FormControl>
+
+            {/* Persistent UEFI variables — only shown when firmware is UEFI */}
+            {isUefi && (
+              <Box sx={{ mb: 2 }}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={enableEfiPersistent}
+                      onChange={e => handleEfiPersistentChange(e.target.checked)}
+                    />
                   }
+                  label="Persist UEFI variables"
+                />
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ display: 'block', ml: 4 }}
                 >
-                  <FormControlLabel value="inline" control={<Radio />} label="Inline" />
-                  <FormControlLabel value="base64" control={<Radio />} label="Base64" />
-                  <FormControlLabel value="secret" control={<Radio />} label="Secret" />
-                </RadioGroup>
-              </FormControl>
+                  Saves EFI variable store to a persistent volume — preserves boot order, Secure
+                  Boot keys, and other UEFI settings across reboots
+                </Typography>
+              </Box>
+            )}
 
-              {ignitionDataType === 'inline' && (
-                <TextField
-                  fullWidth
-                  multiline
-                  rows={8}
-                  value={ignitionData}
-                  onChange={e => handleIgnitionDataChange('inline', e.target.value)}
-                  placeholder='{"ignition": {"version": "3.3.0"}, "passwd": {"users": [...]}}'
-                  inputProps={{ maxLength: 2000 }}
-                  helperText={`${ignitionData.length}/2000 characters`}
-                  error={ignitionData.length > 2000}
-                />
-              )}
+            {/* CPU Model */}
+            <FormControl fullWidth sx={{ mb: 2 }}>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ mb: 0.5, display: 'block' }}
+              >
+                CPU Model (optional)
+              </Typography>
+              <Select
+                size="small"
+                value={cpuModel}
+                onChange={e => handleCpuModelChange(e.target.value)}
+                displayEmpty
+              >
+                <MenuItem value="">Default</MenuItem>
+                <MenuItem value="host-passthrough">host-passthrough (Direct passthrough)</MenuItem>
+                <MenuItem value="host-model">host-model (Host-like model)</MenuItem>
+                <MenuItem disabled>───── Intel x86_64 ─────</MenuItem>
+                <MenuItem value="Conroe">Conroe</MenuItem>
+                <MenuItem value="Penryn">Penryn</MenuItem>
+                <MenuItem value="Nehalem">Nehalem</MenuItem>
+                <MenuItem value="Westmere">Westmere</MenuItem>
+                <MenuItem value="SandyBridge">SandyBridge</MenuItem>
+                <MenuItem value="IvyBridge">IvyBridge</MenuItem>
+                <MenuItem value="Haswell">Haswell</MenuItem>
+                <MenuItem value="Broadwell">Broadwell</MenuItem>
+                <MenuItem value="Skylake-Client">Skylake-Client</MenuItem>
+                <MenuItem value="Skylake-Server">Skylake-Server</MenuItem>
+                <MenuItem value="Cascadelake-Server">Cascadelake-Server</MenuItem>
+                <MenuItem value="Cooperlake">Cooperlake</MenuItem>
+                <MenuItem value="Icelake-Server">Icelake-Server</MenuItem>
+                <MenuItem value="Sapphirerapids">Sapphirerapids</MenuItem>
+                <MenuItem disabled>───── AMD x86_64 ─────</MenuItem>
+                <MenuItem value="Opteron_G1">Opteron G1</MenuItem>
+                <MenuItem value="Opteron_G2">Opteron G2</MenuItem>
+                <MenuItem value="Opteron_G3">Opteron G3</MenuItem>
+                <MenuItem value="Opteron_G4">Opteron G4</MenuItem>
+                <MenuItem value="Opteron_G5">Opteron G5</MenuItem>
+                <MenuItem value="EPYC">EPYC</MenuItem>
+                <MenuItem value="EPYC-Rome">EPYC-Rome</MenuItem>
+                <MenuItem value="EPYC-Milan">EPYC-Milan</MenuItem>
+                <MenuItem value="EPYC-Genoa">EPYC-Genoa</MenuItem>
+                <MenuItem disabled>───── ARM64 ─────</MenuItem>
+                <MenuItem value="cortex-a57">Cortex-A57</MenuItem>
+                <MenuItem value="cortex-a72">Cortex-A72</MenuItem>
+                <MenuItem value="cortex-a53">Cortex-A53</MenuItem>
+                <MenuItem value="max">ARM Max (latest features)</MenuItem>
+                <MenuItem disabled>───── IBM Power ─────</MenuItem>
+                <MenuItem value="POWER8">POWER8</MenuItem>
+                <MenuItem value="POWER9">POWER9</MenuItem>
+                <MenuItem value="POWER10">POWER10</MenuItem>
+                <MenuItem disabled>───── IBM s390x ─────</MenuItem>
+                <MenuItem value="z13">z13</MenuItem>
+                <MenuItem value="z14">z14</MenuItem>
+                <MenuItem value="z15">z15</MenuItem>
+              </Select>
+            </FormControl>
 
-              {ignitionDataType === 'base64' && (
-                <TextField
-                  fullWidth
-                  value={ignitionData}
-                  onChange={e => handleIgnitionDataChange('base64', e.target.value)}
-                  placeholder="Base64-encoded Ignition config"
-                  inputProps={{ maxLength: 2000 }}
-                  helperText={`${ignitionData.length}/2000 characters`}
-                  error={ignitionData.length > 2000}
-                />
-              )}
-
-              {ignitionDataType === 'secret' && (
-                <Autocomplete
-                  fullWidth
-                  options={secrets}
-                  value={ignitionDataSecret}
-                  onChange={(_, newValue) => handleIgnitionDataChange('secret', newValue || '')}
-                  renderInput={params => <TextField {...params} placeholder="Select secret..." />}
-                />
-              )}
+            {/* Nested Virtualization */}
+            <Box sx={{ mb: 2 }}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={enableNestedVirtualization}
+                    onChange={e => handleNestedVirtualizationChange(e.target.checked)}
+                  />
+                }
+                label="Enable Nested Virtualization"
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', ml: 4 }}>
+                Adds both vmx (Intel) and svm (AMD) CPU features with policy: require
+              </Typography>
             </Box>
-          )}
+          </Box>
+
+          {/* ── User Data ── */}
+          <Box
+            sx={{
+              border: 1,
+              borderColor: 'divider',
+              borderRadius: 2,
+              p: 2.5,
+              mb: 3,
+              bgcolor: 'action.hover',
+            }}
+          >
+            <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 700 }}>
+              User Data
+            </Typography>
+
+            <FormControl component="fieldset" sx={{ mb: 3 }}>
+              <FormLabel component="legend">Mode</FormLabel>
+              <RadioGroup
+                row
+                value={userDataMode}
+                onChange={e => handleUserDataModeChange(e.target.value as 'cloudInit' | 'ignition')}
+              >
+                <FormControlLabel
+                  value="cloudInit"
+                  control={<Radio />}
+                  label="Cloud-Init (CloudInitNoCloud)"
+                />
+                <FormControlLabel
+                  value="ignition"
+                  control={<Radio />}
+                  label="Ignition (CloudInitConfigDrive)"
+                />
+              </RadioGroup>
+            </FormControl>
+
+            {userDataMode === 'cloudInit' && (
+              <>
+                {/* Cloud-Init User Data */}
+                <Box sx={{ mb: 3 }}>
+                  <Typography variant="body2" sx={{ mb: 1, fontWeight: 500 }}>
+                    User Data
+                  </Typography>
+                  <FormControl component="fieldset" sx={{ mb: 1 }}>
+                    <RadioGroup
+                      row
+                      value={cloudInitUserDataType}
+                      onChange={e =>
+                        setCloudInitUserDataType(e.target.value as 'inline' | 'base64' | 'secret')
+                      }
+                    >
+                      <FormControlLabel value="inline" control={<Radio />} label="Inline" />
+                      <FormControlLabel value="base64" control={<Radio />} label="Base64" />
+                      <FormControlLabel value="secret" control={<Radio />} label="Secret" />
+                    </RadioGroup>
+                  </FormControl>
+
+                  {cloudInitUserDataType === 'inline' && (
+                    <TextField
+                      fullWidth
+                      multiline
+                      rows={6}
+                      value={cloudInitUserData}
+                      onChange={e => handleCloudInitUserDataChange('inline', e.target.value)}
+                      placeholder="#cloud-config&#10;users:&#10;  - name: admin&#10;    ssh_authorized_keys:&#10;      - ssh-rsa ..."
+                      inputProps={{ maxLength: 2000 }}
+                      helperText={`${cloudInitUserData.length}/2000 characters`}
+                      error={cloudInitUserData.length > 2000}
+                    />
+                  )}
+
+                  {cloudInitUserDataType === 'base64' && (
+                    <TextField
+                      fullWidth
+                      value={cloudInitUserData}
+                      onChange={e => handleCloudInitUserDataChange('base64', e.target.value)}
+                      placeholder="Base64-encoded user data"
+                      inputProps={{ maxLength: 2000 }}
+                      helperText={`${cloudInitUserData.length}/2000 characters`}
+                      error={cloudInitUserData.length > 2000}
+                    />
+                  )}
+
+                  {cloudInitUserDataType === 'secret' && (
+                    <Autocomplete
+                      fullWidth
+                      options={secrets}
+                      value={cloudInitUserDataSecret}
+                      onChange={(_, newValue) =>
+                        handleCloudInitUserDataChange('secret', newValue || '')
+                      }
+                      renderInput={params => (
+                        <TextField {...params} placeholder="Select secret..." />
+                      )}
+                    />
+                  )}
+                </Box>
+
+                {/* Cloud-Init Network Data */}
+                <Box sx={{ mb: 3 }}>
+                  <Typography variant="body2" sx={{ mb: 1, fontWeight: 500 }}>
+                    Network Data (optional)
+                  </Typography>
+                  <FormControl component="fieldset" sx={{ mb: 1 }}>
+                    <RadioGroup
+                      row
+                      value={cloudInitNetworkDataType}
+                      onChange={e =>
+                        setCloudInitNetworkDataType(
+                          e.target.value as 'inline' | 'base64' | 'secret'
+                        )
+                      }
+                    >
+                      <FormControlLabel value="inline" control={<Radio />} label="Inline" />
+                      <FormControlLabel value="base64" control={<Radio />} label="Base64" />
+                      <FormControlLabel value="secret" control={<Radio />} label="Secret" />
+                    </RadioGroup>
+                  </FormControl>
+
+                  {cloudInitNetworkDataType === 'inline' && (
+                    <TextField
+                      fullWidth
+                      multiline
+                      rows={6}
+                      value={cloudInitNetworkData}
+                      onChange={e => handleCloudInitNetworkDataChange('inline', e.target.value)}
+                      placeholder="network:&#10;  version: 1&#10;  config:&#10;    - type: physical&#10;      name: eth0"
+                      inputProps={{ maxLength: 2000 }}
+                      helperText={`${cloudInitNetworkData.length}/2000 characters`}
+                      error={cloudInitNetworkData.length > 2000}
+                    />
+                  )}
+
+                  {cloudInitNetworkDataType === 'base64' && (
+                    <TextField
+                      fullWidth
+                      value={cloudInitNetworkData}
+                      onChange={e => handleCloudInitNetworkDataChange('base64', e.target.value)}
+                      placeholder="Base64-encoded network data"
+                      inputProps={{ maxLength: 2000 }}
+                      helperText={`${cloudInitNetworkData.length}/2000 characters`}
+                      error={cloudInitNetworkData.length > 2000}
+                    />
+                  )}
+
+                  {cloudInitNetworkDataType === 'secret' && (
+                    <Autocomplete
+                      fullWidth
+                      options={secrets}
+                      value={cloudInitNetworkDataSecret}
+                      onChange={(_, newValue) =>
+                        handleCloudInitNetworkDataChange('secret', newValue || '')
+                      }
+                      renderInput={params => (
+                        <TextField {...params} placeholder="Select secret..." />
+                      )}
+                    />
+                  )}
+                </Box>
+              </>
+            )}
+
+            {userDataMode === 'ignition' && (
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="body2" sx={{ mb: 1, fontWeight: 500 }}>
+                  Ignition Config
+                </Typography>
+                <FormControl component="fieldset" sx={{ mb: 1 }}>
+                  <RadioGroup
+                    row
+                    value={ignitionDataType}
+                    onChange={e =>
+                      setIgnitionDataType(e.target.value as 'inline' | 'base64' | 'secret')
+                    }
+                  >
+                    <FormControlLabel value="inline" control={<Radio />} label="Inline" />
+                    <FormControlLabel value="base64" control={<Radio />} label="Base64" />
+                    <FormControlLabel value="secret" control={<Radio />} label="Secret" />
+                  </RadioGroup>
+                </FormControl>
+
+                {ignitionDataType === 'inline' && (
+                  <TextField
+                    fullWidth
+                    multiline
+                    rows={8}
+                    value={ignitionData}
+                    onChange={e => handleIgnitionDataChange('inline', e.target.value)}
+                    placeholder='{"ignition": {"version": "3.3.0"}, "passwd": {"users": [...]}}'
+                    inputProps={{ maxLength: 2000 }}
+                    helperText={`${ignitionData.length}/2000 characters`}
+                    error={ignitionData.length > 2000}
+                  />
+                )}
+
+                {ignitionDataType === 'base64' && (
+                  <TextField
+                    fullWidth
+                    value={ignitionData}
+                    onChange={e => handleIgnitionDataChange('base64', e.target.value)}
+                    placeholder="Base64-encoded Ignition config"
+                    inputProps={{ maxLength: 2000 }}
+                    helperText={`${ignitionData.length}/2000 characters`}
+                    error={ignitionData.length > 2000}
+                  />
+                )}
+
+                {ignitionDataType === 'secret' && (
+                  <Autocomplete
+                    fullWidth
+                    options={secrets}
+                    value={ignitionDataSecret}
+                    onChange={(_, newValue) => handleIgnitionDataChange('secret', newValue || '')}
+                    renderInput={params => <TextField {...params} placeholder="Select secret..." />}
+                  />
+                )}
+              </Box>
+            )}
+          </Box>
+
+          {/* ── Hardware Configuration ── */}
+          <Box
+            sx={{
+              border: 1,
+              borderColor: 'divider',
+              borderRadius: 2,
+              p: 2.5,
+              mb: 3,
+              bgcolor: 'action.hover',
+            }}
+          >
+            <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 700 }}>
+              Hardware Configuration
+            </Typography>
+
+            {/* Machine Type */}
+            <FormControl fullWidth sx={{ mb: 2 }}>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ mb: 0.5, display: 'block' }}
+              >
+                Machine Type (optional)
+              </Typography>
+              <Select
+                size="small"
+                value={machineType}
+                onChange={e => handleMachineTypeChange(e.target.value)}
+                displayEmpty
+              >
+                <MenuItem value="">Default (q35)</MenuItem>
+                <MenuItem value="pc-q35-rhel9.2.0">pc-q35-rhel9.2.0</MenuItem>
+                <MenuItem value="pc-q35-rhel9.0.0">pc-q35-rhel9.0.0</MenuItem>
+                <MenuItem value="q35">q35</MenuItem>
+                <MenuItem value="pc-i440fx-rhel7.6.0">pc-i440fx-rhel7.6.0</MenuItem>
+                <MenuItem value="pc">pc (i440fx)</MenuItem>
+              </Select>
+            </FormControl>
+
+            {/* ACPI */}
+            <Box sx={{ mb: 2 }}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={enableAcpi}
+                    onChange={e => handleAcpiChange(e.target.checked)}
+                  />
+                }
+                label="Enable ACPI"
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', ml: 4 }}>
+                Advanced Configuration and Power Interface - allows guest OS to communicate with
+                virtual hardware for power management (shutdown/reboot/suspend)
+              </Typography>
+            </Box>
+
+            {/* vTPM (Persistent TPM) */}
+            <Box sx={{ mb: 2 }}>
+              <FormControlLabel
+                control={
+                  <Checkbox checked={enableTPM} onChange={e => handleTPMChange(e.target.checked)} />
+                }
+                label="Enable vTPM (persistent)"
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', ml: 4 }}>
+                Adds a virtual Trusted Platform Module backed by a persistent volume — required for
+                Windows 11, BitLocker, and measured boot. State survives reboots and migrations.
+              </Typography>
+            </Box>
+
+            {/* Hugepages */}
+            <FormControl fullWidth sx={{ mb: 2 }}>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ mb: 0.5, display: 'block' }}
+              >
+                Hugepages (optional)
+              </Typography>
+              <Select
+                size="small"
+                value={hugepages}
+                onChange={e => handleHugepagesChange(e.target.value)}
+                displayEmpty
+              >
+                <MenuItem value="">None (default 4Ki pages)</MenuItem>
+                <MenuItem value="2Mi">2Mi — standard hugepages, good for most workloads</MenuItem>
+                <MenuItem value="1Gi">
+                  1Gi — large hugepages, best for memory-intensive VMs
+                </MenuItem>
+              </Select>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ mt: 0.5, display: 'block' }}
+              >
+                Pre-allocates large memory pages for the VM — reduces TLB misses and improves
+                performance. Requires hugepages to be configured on the host nodes.
+              </Typography>
+            </FormControl>
+          </Box>
+
+          {/* ── Performance ── */}
+          <Box
+            sx={{
+              border: 1,
+              borderColor: 'divider',
+              borderRadius: 2,
+              p: 2.5,
+              mb: 3,
+              bgcolor: 'action.hover',
+            }}
+          >
+            <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 700 }}>
+              Performance
+            </Typography>
+
+            {/* Block Multi-Queue */}
+            <Box sx={{ mb: 1 }}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={enableBlockMultiQueue}
+                    onChange={e => handleBlockMultiQueueChange(e.target.checked)}
+                  />
+                }
+                label="Block multi-queue"
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', ml: 4 }}>
+                Multiple I/O queues for virtio disks — improves throughput on multi-CPU VMs with
+                heavy disk I/O
+              </Typography>
+            </Box>
+
+            {/* Network Interface Multi-Queue */}
+            <Box sx={{ mb: 1 }}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={enableNetMultiQueue}
+                    onChange={e => handleNetMultiQueueChange(e.target.checked)}
+                  />
+                }
+                label="Network multi-queue"
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', ml: 4 }}>
+                Multiple queues for virtio-net — improves network throughput on multi-CPU VMs
+              </Typography>
+            </Box>
+
+            {/* I/O Threads Policy */}
+            <FormControl fullWidth sx={{ mb: 2 }}>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ mb: 0.5, display: 'block' }}
+              >
+                I/O Threads Policy (optional)
+              </Typography>
+              <Select
+                size="small"
+                value={ioThreadsPolicy}
+                onChange={e => handleIoThreadsPolicyChange(e.target.value)}
+                displayEmpty
+              >
+                <MenuItem value="">None (default)</MenuItem>
+                <MenuItem value="auto">
+                  Auto — one thread per disk, shared when exceeding CPU count
+                </MenuItem>
+                <MenuItem value="shared">Shared — single thread for all disks</MenuItem>
+              </Select>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ mt: 0.5, display: 'block' }}
+              >
+                Dedicates threads for disk I/O, reducing CPU contention with the vCPU threads
+              </Typography>
+            </FormControl>
+          </Box>
+
+          {/* ── Devices ── */}
+          <Box
+            sx={{
+              border: 1,
+              borderColor: 'divider',
+              borderRadius: 2,
+              p: 2.5,
+              mb: 3,
+              bgcolor: 'action.hover',
+            }}
+          >
+            <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 700 }}>
+              Devices
+            </Typography>
+
+            {/* Sound Device */}
+            <Box sx={{ mb: 1 }}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={enableSound}
+                    onChange={e => handleSoundChange(e.target.checked)}
+                  />
+                }
+                label="Sound device (ICH9)"
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', ml: 4 }}>
+                Emulates an Intel HDA sound card — needed for desktop/VDI workloads
+              </Typography>
+            </Box>
+
+            {/* Watchdog */}
+            <Box sx={{ mb: 1 }}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={enableWatchdog}
+                    onChange={e => handleWatchdogChange(e.target.checked)}
+                  />
+                }
+                label="Watchdog (i6300esb)"
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', ml: 4 }}>
+                Hardware watchdog timer — automatically acts if the guest OS stops responding
+              </Typography>
+            </Box>
+            {enableWatchdog && (
+              <FormControl fullWidth sx={{ mb: 2, ml: 4, maxWidth: 'calc(100% - 32px)' }}>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ mb: 0.5, display: 'block' }}
+                >
+                  Watchdog Action
+                </Typography>
+                <Select
+                  size="small"
+                  value={watchdogAction}
+                  onChange={e => handleWatchdogActionChange(e.target.value)}
+                >
+                  <MenuItem value="reset">Reset — reboot the VM</MenuItem>
+                  <MenuItem value="poweroff">Poweroff — force power off</MenuItem>
+                  <MenuItem value="shutdown">Shutdown — graceful ACPI shutdown</MenuItem>
+                </Select>
+              </FormControl>
+            )}
+
+            {/* RNG Device */}
+            <Box sx={{ mb: 1 }}>
+              <FormControlLabel
+                control={
+                  <Checkbox checked={enableRng} onChange={e => handleRngChange(e.target.checked)} />
+                }
+                label="Virtio RNG"
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', ml: 4 }}>
+                Virtual random number generator — provides fast entropy from the host to the guest
+              </Typography>
+            </Box>
+
+            {/* Downward Metrics */}
+            <Box sx={{ mb: 2 }}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={enableDownwardMetrics}
+                    onChange={e => handleDownwardMetricsChange(e.target.checked)}
+                  />
+                }
+                label="Downward metrics"
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', ml: 4 }}>
+                Exposes host metrics (CPU load, memory) to the guest via virtio-serial
+              </Typography>
+            </Box>
+          </Box>
+
+          {/* ── Security ── */}
+          <Box
+            sx={{
+              border: 1,
+              borderColor: 'divider',
+              borderRadius: 2,
+              p: 2.5,
+              mb: 3,
+              bgcolor: 'action.hover',
+            }}
+          >
+            <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 700 }}>
+              Security
+            </Typography>
+
+            {/* SMM */}
+            <Box sx={{ mb: 2 }}>
+              <FormControlLabel
+                control={
+                  <Checkbox checked={enableSmm} onChange={e => handleSmmChange(e.target.checked)} />
+                }
+                label="System Management Mode (SMM)"
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', ml: 4 }}>
+                Required for UEFI Secure Boot — enables the System Management Mode firmware
+                interface
+              </Typography>
+            </Box>
+          </Box>
+
+          {/* ── Auto-Attach ── */}
+          <Box
+            sx={{
+              border: 1,
+              borderColor: 'divider',
+              borderRadius: 2,
+              p: 2.5,
+              mb: 3,
+              bgcolor: 'action.hover',
+            }}
+          >
+            <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 700 }}>
+              Auto-Attach Devices
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+              These devices are attached by default. Disable to remove them from the VM.
+            </Typography>
+
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0, mb: 2 }}>
+              <Box sx={{ minWidth: 220 }}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={autoGraphics}
+                      onChange={e =>
+                        handleAutoAttachChange('autoattachGraphicsDevice', e.target.checked)
+                      }
+                    />
+                  }
+                  label="Graphics (VNC)"
+                />
+              </Box>
+              <Box sx={{ minWidth: 220 }}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={autoSerial}
+                      onChange={e =>
+                        handleAutoAttachChange('autoattachSerialConsole', e.target.checked)
+                      }
+                    />
+                  }
+                  label="Serial console"
+                />
+              </Box>
+              <Box sx={{ minWidth: 220 }}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={autoMemBalloon}
+                      onChange={e =>
+                        handleAutoAttachChange('autoattachMemBalloon', e.target.checked)
+                      }
+                    />
+                  }
+                  label="Memory balloon"
+                />
+              </Box>
+              <Box sx={{ minWidth: 220 }}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={autoPodInterface}
+                      onChange={e =>
+                        handleAutoAttachChange('autoattachPodInterface', e.target.checked)
+                      }
+                    />
+                  }
+                  label="Pod network"
+                />
+              </Box>
+              <Box sx={{ minWidth: 220 }}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={autoVSOCK}
+                      onChange={e => handleAutoAttachChange('autoattachVSOCK', e.target.checked)}
+                    />
+                  }
+                  label="VSOCK"
+                />
+              </Box>
+              <Box sx={{ minWidth: 220 }}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={autoInputDevice}
+                      onChange={e =>
+                        handleAutoAttachChange('autoattachInputDevice', e.target.checked)
+                      }
+                    />
+                  }
+                  label="Input device"
+                />
+              </Box>
+            </Box>
+          </Box>
+
+          {/* ── Scheduling ── */}
+          <Box
+            sx={{
+              border: 1,
+              borderColor: 'divider',
+              borderRadius: 2,
+              p: 2.5,
+              mb: 3,
+              bgcolor: 'action.hover',
+            }}
+          >
+            <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 700 }}>
+              Scheduling
+            </Typography>
+
+            {/* Priority Class */}
+            <FormControl fullWidth sx={{ mb: 2 }}>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ mb: 0.5, display: 'block' }}
+              >
+                Priority Class (optional)
+              </Typography>
+              <Select
+                size="small"
+                value={priorityClassName}
+                onChange={e => handlePriorityClassChange(e.target.value)}
+                displayEmpty
+              >
+                <MenuItem value="">None (default)</MenuItem>
+                <MenuItem value="system-cluster-critical">system-cluster-critical</MenuItem>
+                <MenuItem value="system-node-critical">system-node-critical</MenuItem>
+              </Select>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ mt: 0.5, display: 'block' }}
+              >
+                Kubernetes scheduling priority — higher priority VMs are scheduled first and less
+                likely to be evicted
+              </Typography>
+            </FormControl>
+
+            {/* Timezone */}
+            <FormControl fullWidth sx={{ mb: 2 }}>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ mb: 0.5, display: 'block' }}
+              >
+                Timezone (optional)
+              </Typography>
+              <Select
+                size="small"
+                value={timezone}
+                onChange={e => handleTimezoneChange(e.target.value)}
+                displayEmpty
+              >
+                <MenuItem value="">UTC (default)</MenuItem>
+                <MenuItem disabled>───── Americas ─────</MenuItem>
+                <MenuItem value="America/New_York">America/New_York (EST/EDT)</MenuItem>
+                <MenuItem value="America/Chicago">America/Chicago (CST/CDT)</MenuItem>
+                <MenuItem value="America/Denver">America/Denver (MST/MDT)</MenuItem>
+                <MenuItem value="America/Los_Angeles">America/Los_Angeles (PST/PDT)</MenuItem>
+                <MenuItem value="America/Toronto">America/Toronto</MenuItem>
+                <MenuItem value="America/Mexico_City">America/Mexico_City</MenuItem>
+                <MenuItem value="America/Sao_Paulo">America/Sao_Paulo</MenuItem>
+                <MenuItem value="America/Buenos_Aires">America/Buenos_Aires</MenuItem>
+                <MenuItem disabled>───── Europe ─────</MenuItem>
+                <MenuItem value="Europe/London">Europe/London (GMT/BST)</MenuItem>
+                <MenuItem value="Europe/Paris">Europe/Paris (CET/CEST)</MenuItem>
+                <MenuItem value="Europe/Berlin">Europe/Berlin</MenuItem>
+                <MenuItem value="Europe/Rome">Europe/Rome</MenuItem>
+                <MenuItem value="Europe/Madrid">Europe/Madrid</MenuItem>
+                <MenuItem value="Europe/Amsterdam">Europe/Amsterdam</MenuItem>
+                <MenuItem value="Europe/Brussels">Europe/Brussels</MenuItem>
+                <MenuItem value="Europe/Zurich">Europe/Zurich</MenuItem>
+                <MenuItem value="Europe/Stockholm">Europe/Stockholm</MenuItem>
+                <MenuItem value="Europe/Moscow">Europe/Moscow</MenuItem>
+                <MenuItem disabled>───── Asia ─────</MenuItem>
+                <MenuItem value="Asia/Dubai">Asia/Dubai</MenuItem>
+                <MenuItem value="Asia/Kolkata">Asia/Kolkata</MenuItem>
+                <MenuItem value="Asia/Shanghai">Asia/Shanghai</MenuItem>
+                <MenuItem value="Asia/Hong_Kong">Asia/Hong_Kong</MenuItem>
+                <MenuItem value="Asia/Tokyo">Asia/Tokyo</MenuItem>
+                <MenuItem value="Asia/Seoul">Asia/Seoul</MenuItem>
+                <MenuItem value="Asia/Singapore">Asia/Singapore</MenuItem>
+                <MenuItem value="Asia/Bangkok">Asia/Bangkok</MenuItem>
+                <MenuItem disabled>───── Pacific ─────</MenuItem>
+                <MenuItem value="Australia/Sydney">Australia/Sydney</MenuItem>
+                <MenuItem value="Australia/Melbourne">Australia/Melbourne</MenuItem>
+                <MenuItem value="Pacific/Auckland">Pacific/Auckland</MenuItem>
+                <MenuItem disabled>───── Africa ─────</MenuItem>
+                <MenuItem value="Africa/Cairo">Africa/Cairo</MenuItem>
+                <MenuItem value="Africa/Johannesburg">Africa/Johannesburg</MenuItem>
+              </Select>
+            </FormControl>
+          </Box>
         </AccordionDetails>
       </Accordion>
 
