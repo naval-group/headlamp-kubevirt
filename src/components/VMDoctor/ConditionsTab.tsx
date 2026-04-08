@@ -1,7 +1,10 @@
 import { Icon } from '@iconify/react';
 import { ApiProxy } from '@kinvolk/headlamp-plugin/lib';
-import { Box, Card, CardContent, Chip, Tooltip, Typography } from '@mui/material';
+import { Box, Card, CardContent, Chip, IconButton, Tooltip, Typography } from '@mui/material';
+import { useSnackbar } from 'notistack';
 import React, { useEffect, useState } from 'react';
+import { safeError } from '../../utils/sanitize';
+import ConfirmDialog from '../common/ConfirmDialog';
 import VirtualMachine from '../VirtualMachines/VirtualMachine';
 
 interface ConditionsTabProps {
@@ -29,6 +32,7 @@ interface ConditionGroup {
   color: string;
   phase?: string;
   conditions: K8sCondition[];
+  actions?: React.ReactNode;
 }
 
 function statusIcon(status: string, type: string): { icon: string; color: string } {
@@ -142,6 +146,7 @@ function ConditionCard({ group }: { group: ConditionGroup }) {
             />
           )}
           <Box flex={1} />
+          {group.actions}
           <Chip
             label={`${healthyCount}/${total}`}
             size="small"
@@ -182,16 +187,62 @@ export default function ConditionsTab({
     Array<{ name: string; conditions: K8sCondition[] }>
   >([]);
   const [loading, setLoading] = useState(true);
+  const [podDeleteConfirm, setPodDeleteConfirm] = useState<'delete' | 'force' | null>(null);
+  const { enqueueSnackbar } = useSnackbar();
+
+  const handleDeletePod = async (force: boolean) => {
+    setPodDeleteConfirm(null);
+    if (!currentPodName) return;
+    try {
+      const opts = force
+        ? {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ gracePeriodSeconds: 0 }),
+            isJSON: false,
+          }
+        : { method: 'DELETE', isJSON: false };
+      await ApiProxy.request(`/api/v1/namespaces/${namespace}/pods/${currentPodName}`, opts);
+      enqueueSnackbar(`${force ? 'Force deleted' : 'Deleted'} pod ${currentPodName}`, {
+        variant: 'success',
+      });
+    } catch (e) {
+      enqueueSnackbar(`Failed to delete pod: ${safeError(e, 'deletePod')}`, { variant: 'error' });
+    }
+  };
+
+  const [currentPodName, setCurrentPodName] = useState(podName);
 
   useEffect(() => {
     if (!vmName || !namespace) return;
     let cancelled = false;
 
     const fetchConditions = async () => {
+      // Discover current virt-launcher pod (may change after delete/restart)
+      let activePodName = currentPodName;
+      try {
+        const podList = await ApiProxy.request(
+          `/api/v1/namespaces/${namespace}/pods?labelSelector=vm.kubevirt.io%2Fname%3D${encodeURIComponent(
+            vmName
+          )}`
+        );
+        const activePod = (podList?.items || []).find(
+          (p: any) => !p.metadata.deletionTimestamp && p.status?.phase !== 'Succeeded'
+        );
+        if (activePod) {
+          activePodName = activePod.metadata.name;
+          if (!cancelled) setCurrentPodName(activePodName);
+        }
+      } catch {
+        /* keep previous */
+      }
+
       // Fetch pod conditions
-      if (podName) {
+      if (activePodName) {
         try {
-          const pod = await ApiProxy.request(`/api/v1/namespaces/${namespace}/pods/${podName}`);
+          const pod = await ApiProxy.request(
+            `/api/v1/namespaces/${namespace}/pods/${activePodName}`
+          );
           if (!cancelled) {
             setPodConditions(pod?.status?.conditions || []);
             setPodPhase(pod?.status?.phase || '');
@@ -264,11 +315,34 @@ export default function ConditionsTab({
       conditions: vmiConditions,
     },
     {
-      source: `Pod (${podName || 'N/A'})`,
+      source: `Pod (${currentPodName || 'N/A'})`,
       icon: 'mdi:cube-outline',
       color: '#66bb6a',
       phase: podPhase,
       conditions: podConditions,
+      actions: currentPodName ? (
+        <>
+          <Tooltip title="Delete pod" arrow>
+            <IconButton
+              size="small"
+              onClick={() => setPodDeleteConfirm('delete')}
+              aria-label="Delete pod"
+            >
+              <Icon icon="mdi:delete-outline" width={16} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Force delete pod (gracePeriodSeconds=0)" arrow>
+            <IconButton
+              size="small"
+              onClick={() => setPodDeleteConfirm('force')}
+              aria-label="Force delete pod"
+              sx={{ color: '#ef5350' }}
+            >
+              <Icon icon="mdi:delete-alert" width={16} />
+            </IconButton>
+          </Tooltip>
+        </>
+      ) : undefined,
     },
   ];
 
@@ -352,6 +426,19 @@ export default function ConditionsTab({
           <ConditionCard key={group.source} group={group} />
         ))}
       </Box>
+
+      <ConfirmDialog
+        open={!!podDeleteConfirm}
+        title={podDeleteConfirm === 'force' ? 'Force Delete Pod' : 'Delete Pod'}
+        message={
+          podDeleteConfirm === 'force'
+            ? `Force delete pod "${currentPodName}"? This sets gracePeriodSeconds=0, immediately killing the pod. The VM will be rescheduled by KubeVirt.`
+            : `Delete pod "${currentPodName}"? KubeVirt will attempt to gracefully shut down and reschedule the VM.`
+        }
+        confirmLabel={podDeleteConfirm === 'force' ? 'Force Delete' : 'Delete'}
+        onConfirm={() => handleDeletePod(podDeleteConfirm === 'force')}
+        onCancel={() => setPodDeleteConfirm(null)}
+      />
     </Box>
   );
 }

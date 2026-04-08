@@ -24,6 +24,7 @@ import { useParams } from 'react-router-dom';
 import useFeatureGate from '../../hooks/useFeatureGate';
 import useVMActions from '../../hooks/useVMActions';
 import { formatDuration } from '../../utils/formatDuration';
+import { safeError } from '../../utils/sanitize';
 import { shortAccessModes } from '../../utils/volumeDialog';
 import DataVolume from '../BootableVolumes/DataVolume';
 import ConfirmDialog from '../common/ConfirmDialog';
@@ -180,6 +181,7 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
   const params = useParams<{ namespace: string; name: string }>();
   const { name = params.name, namespace = params.namespace } = props;
   const { t } = useTranslation('glossary');
+  const { enqueueSnackbar } = useSnackbar();
   const [showConsole, setShowConsole] = useState(false);
   const [consoleTab, setConsoleTab] = useState<'vnc' | 'terminal'>('vnc');
   const [showSnapshotDialog, setShowSnapshotDialog] = useState(false);
@@ -194,6 +196,7 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
 
   const [podName, setPodName] = useState<string | null>(null);
   const [vmiData, setVmiData] = useState<VMIData | null>(null);
+  const [podDeleteConfirm, setPodDeleteConfirm] = useState<'delete' | 'force' | null>(null);
 
   // Fetch migrations for this VM to find active migration
   const { items: allMigrations } = VirtualMachineInstanceMigration.useList({ namespace });
@@ -210,6 +213,27 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
   const liveMigrationEnabled = useFeatureGate('LiveMigration');
   const volumeMigrationEnabled = useFeatureGate('VolumeMigration');
 
+  const handleDeletePod = async (force: boolean) => {
+    setPodDeleteConfirm(null);
+    if (!podName) return;
+    try {
+      const opts = force
+        ? {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ gracePeriodSeconds: 0 }),
+            isJSON: false,
+          }
+        : { method: 'DELETE', isJSON: false };
+      await ApiProxy.request(`/api/v1/namespaces/${namespace}/pods/${podName}`, opts);
+      enqueueSnackbar(`${force ? 'Force deleted' : 'Deleted'} pod ${podName}`, {
+        variant: 'success',
+      });
+    } catch (e) {
+      enqueueSnackbar(`Failed to delete pod: ${safeError(e, 'deletePod')}`, { variant: 'error' });
+    }
+  };
+
   useEffect(() => {
     const fetchPodName = async () => {
       try {
@@ -221,6 +245,8 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
     };
 
     fetchPodName();
+    const interval = setInterval(fetchPodName, 10000);
+    return () => clearInterval(interval);
   }, [name, namespace]);
 
   useEffect(() => {
@@ -759,15 +785,36 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
             {
               name: 'Pod',
               value: podName ? (
-                <Link
-                  routeName="pod"
-                  params={{
-                    name: podName,
-                    namespace: item.getNamespace(),
-                  }}
-                >
-                  {podName}
-                </Link>
+                <Box display="flex" alignItems="center" gap={1}>
+                  <Link
+                    routeName="pod"
+                    params={{
+                      name: podName,
+                      namespace: item.getNamespace(),
+                    }}
+                  >
+                    {podName}
+                  </Link>
+                  <SimpleStyledTooltip title="Delete pod">
+                    <IconButton
+                      size="small"
+                      onClick={() => setPodDeleteConfirm('delete')}
+                      aria-label="Delete pod"
+                    >
+                      <Icon icon="mdi:delete-outline" width={16} />
+                    </IconButton>
+                  </SimpleStyledTooltip>
+                  <SimpleStyledTooltip title="Force delete pod (gracePeriodSeconds=0)">
+                    <IconButton
+                      size="small"
+                      onClick={() => setPodDeleteConfirm('force')}
+                      aria-label="Force delete pod"
+                      sx={{ color: '#ef5350' }}
+                    >
+                      <Icon icon="mdi:delete-alert" width={16} />
+                    </IconButton>
+                  </SimpleStyledTooltip>
+                </Box>
               ) : (
                 'N/A'
               ),
@@ -1839,6 +1886,18 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
           pendingChanges={getPendingChanges(vmItem, vmiData)}
         />
       )}
+      <ConfirmDialog
+        open={!!podDeleteConfirm}
+        title={podDeleteConfirm === 'force' ? 'Force Delete Pod' : 'Delete Pod'}
+        message={
+          podDeleteConfirm === 'force'
+            ? `Force delete pod "${podName}"? This sets gracePeriodSeconds=0, immediately killing the pod. The VM will be rescheduled by KubeVirt.`
+            : `Delete pod "${podName}"? KubeVirt will attempt to gracefully shut down and reschedule the VM.`
+        }
+        confirmLabel={podDeleteConfirm === 'force' ? 'Force Delete' : 'Delete'}
+        onConfirm={() => handleDeletePod(podDeleteConfirm === 'force')}
+        onCancel={() => setPodDeleteConfirm(null)}
+      />
     </>
   );
 }
