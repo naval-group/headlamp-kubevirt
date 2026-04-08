@@ -17,6 +17,7 @@ import {
 } from '@mui/material';
 import React, { useState } from 'react';
 import { KubeListResponse, PrometheusQueryResult } from '../../types';
+import { discoverPrometheus } from '../../utils/prometheus';
 import VirtualMachineInstanceMigration from '../Migrations/VirtualMachineInstanceMigration';
 import VirtualMachine from '../VirtualMachines/VirtualMachine';
 
@@ -92,48 +93,13 @@ export default function VirtualizationOverview() {
   React.useEffect(() => {
     const fetchPrometheusMetrics = async () => {
       try {
-        // Find Prometheus service and build its proxy URL dynamically
-        const svcResp = (await ApiProxy.request('/api/v1/services').catch(
-          () => null
-        )) as KubeListResponse<{
-          metadata: { name: string; namespace: string };
-          spec: { ports: Array<{ port: number }> };
-        }> | null;
-        const promSvc = svcResp?.items?.find(
-          (svc: {
-            metadata: { name: string; namespace: string };
-            spec: { ports: Array<{ port: number }> };
-          }) => {
-            const name = svc.metadata?.name || '';
-            const ports = svc.spec?.ports || [];
-            // Look for a service that exposes port 9090 and has "prometheus" in the name
-            return (
-              name.includes('prometheus') && ports.some((p: { port: number }) => p.port === 9090)
-            );
-          }
-        );
+        // Find Prometheus service dynamically
+        const prom = await discoverPrometheus();
+        setPrometheusInstalled(prom.installed);
+        setPrometheusAvailable(prom.available);
+        if (!prom.available) return;
 
-        if (!promSvc) {
-          setPrometheusInstalled(false);
-          setPrometheusAvailable(false);
-          return;
-        }
-
-        setPrometheusInstalled(true);
-        const promNamespace = promSvc.metadata.namespace;
-        const promName = promSvc.metadata.name;
-        const promBaseUrl = `/api/v1/namespaces/${promNamespace}/services/${promName}:9090/proxy`;
-
-        // Verify Prometheus is actually reachable (not just that the service exists)
-        const healthCheck = await ApiProxy.request(`${promBaseUrl}/api/v1/query?query=up`).catch(
-          () => null
-        );
-        if (!healthCheck?.data) {
-          setPrometheusAvailable(false);
-          return;
-        }
-
-        setPrometheusAvailable(true);
+        const promBaseUrl = prom.baseUrl;
 
         // Build namespace filter — sanitize to prevent PromQL injection
         const sanitizedNs = selectedNamespace.replace(/[\\}"]/g, '');
