@@ -22,6 +22,7 @@ import {
   YAxis,
 } from 'recharts';
 import { ChartTooltipProps } from '../../types';
+import { discoverPrometheus } from '../../utils/prometheus';
 import { sanitizePromQL } from '../../utils/sanitize';
 import VirtualMachine from '../VirtualMachines/VirtualMachine';
 
@@ -91,42 +92,14 @@ export default function MetricsDashboardTab({
     const fetchMetrics = async () => {
       try {
         // Find Prometheus
-        const svcResp = (await ApiProxy.request('/api/v1/services').catch(() => null)) as Record<
-          string,
-          unknown
-        > | null;
-        const svcItems = (svcResp?.items || []) as Array<Record<string, unknown>>;
-        const promSvc = svcItems.find(svc => {
-          const meta = svc.metadata as Record<string, unknown> | undefined;
-          const spec = svc.spec as Record<string, unknown> | undefined;
-          const name = (meta?.name as string) || '';
-          const ports = (spec?.ports || []) as Array<{ port: number }>;
-          return name.includes('prometheus') && ports.some(p => p.port === 9090);
-        });
-
-        if (!promSvc) {
-          if (!cancelled) {
-            setPrometheusAvailable(false);
-            setLoading(false);
-          }
+        const prom = await discoverPrometheus();
+        if (!cancelled) setPrometheusAvailable(prom.available);
+        if (!prom.available) {
+          if (!cancelled) setLoading(false);
           return;
         }
 
-        const promMeta = promSvc.metadata as Record<string, unknown>;
-        const promBaseUrl = `/api/v1/namespaces/${promMeta.namespace}/services/${promMeta.name}:9090/proxy`;
-
-        const healthCheck = await ApiProxy.request(`${promBaseUrl}/api/v1/query?query=up`).catch(
-          () => null
-        );
-        if (!healthCheck?.data) {
-          if (!cancelled) {
-            setPrometheusAvailable(false);
-            setLoading(false);
-          }
-          return;
-        }
-
-        if (!cancelled) setPrometheusAvailable(true);
+        const promBaseUrl = prom.baseUrl;
 
         const now = Math.floor(Date.now() / 1000);
         const rangeSeconds = getTimeRangeSeconds(timeRange);

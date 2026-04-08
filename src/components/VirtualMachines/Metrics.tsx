@@ -22,6 +22,7 @@ import {
   YAxis,
 } from 'recharts';
 import { ChartTooltipProps } from '../../types';
+import { discoverPrometheus } from '../../utils/prometheus';
 import VirtualMachine from './VirtualMachine';
 
 interface MetricsProps {
@@ -88,40 +89,12 @@ export default function VMMetrics({ vmName, namespace, vmiData, vmItem }: Metric
     const fetchMetrics = async () => {
       try {
         // Find Prometheus service dynamically
-        const svcResp = (await ApiProxy.request('/api/v1/services').catch(() => null)) as Record<
-          string,
-          unknown
-        > | null;
-        const svcItems = (svcResp?.items || []) as Array<Record<string, unknown>>;
-        const promSvc = svcItems.find(svc => {
-          const meta = svc.metadata as Record<string, unknown> | undefined;
-          const spec = svc.spec as Record<string, unknown> | undefined;
-          const name = (meta?.name as string) || '';
-          const ports = (spec?.ports || []) as Array<{ port: number }>;
-          return name.includes('prometheus') && ports.some(p => p.port === 9090);
-        });
+        const prom = await discoverPrometheus();
+        setPrometheusInstalled(prom.installed);
+        setPrometheusAvailable(prom.available);
+        if (!prom.available) return;
 
-        if (!promSvc) {
-          setPrometheusInstalled(false);
-          setPrometheusAvailable(false);
-          return;
-        }
-
-        setPrometheusInstalled(true);
-
-        const promMeta = promSvc.metadata as Record<string, unknown>;
-        const promBaseUrl = `/api/v1/namespaces/${promMeta.namespace}/services/${promMeta.name}:9090/proxy`;
-
-        // Verify Prometheus is actually reachable
-        const healthCheck = await ApiProxy.request(`${promBaseUrl}/api/v1/query?query=up`).catch(
-          () => null
-        );
-        if (!healthCheck?.data) {
-          setPrometheusAvailable(false);
-          return;
-        }
-
-        setPrometheusAvailable(true);
+        const promBaseUrl = prom.baseUrl;
 
         const now = Math.floor(Date.now() / 1000);
         const rangeSeconds = getTimeRangeSeconds(timeRange);

@@ -24,6 +24,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { discoverPrometheus } from '../../utils/prometheus';
 import { sanitizePromQL } from '../../utils/sanitize';
 
 type ChartDataPoint = { time: string; [key: string]: string | number };
@@ -99,33 +100,11 @@ const SystemHealthSection = React.memo(function SystemHealthSection({
     const fetchHealthCharts = async () => {
       try {
         // Find Prometheus service
-        const svcResp = (await ApiProxy.request('/api/v1/services').catch(() => null)) as {
-          items?: Array<{
-            metadata: { name: string; namespace: string };
-            spec: { ports: Array<{ port: number }> };
-          }>;
-        } | null;
-        const promSvc = svcResp?.items?.find(svc => {
-          const svcName = svc.metadata?.name || '';
-          const ports = svc.spec?.ports || [];
-          return svcName.includes('prometheus') && ports.some(p => p.port === 9090);
-        });
+        const prom = await discoverPrometheus();
+        setHealthPromAvailable(prom.available);
+        if (!prom.available) return;
 
-        if (!promSvc) {
-          setHealthPromAvailable(false);
-          return;
-        }
-
-        const promBase = `/api/v1/namespaces/${promSvc.metadata.namespace}/services/${promSvc.metadata.name}:9090/proxy`;
-
-        const health = await ApiProxy.request(`${promBase}/api/v1/query?query=up`).catch(
-          () => null
-        );
-        if (!health?.data) {
-          setHealthPromAvailable(false);
-          return;
-        }
-        setHealthPromAvailable(true);
+        const promBase = prom.baseUrl;
 
         const now = Math.floor(Date.now() / 1000);
         const rangeSeconds = getTimeRangeSeconds(healthTimeRange);
