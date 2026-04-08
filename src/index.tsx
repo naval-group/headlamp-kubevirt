@@ -39,6 +39,7 @@ import MigrationList from './components/Migrations/List';
 import NADDetails from './components/NetworkAttachmentDefinitions/Details';
 import NADList from './components/NetworkAttachmentDefinitions/List';
 import VirtualizationOverview from './components/Overview/Overview';
+import { getPluginLib, registerOwnerLinksProcessor } from './components/OwnerLinks';
 import PreferenceDetails from './components/Preferences/Details';
 import PreferenceList from './components/Preferences/List';
 import VirtualMachineCloneDetails from './components/VirtualMachineClone/Details';
@@ -602,3 +603,39 @@ registerRoute({
   ),
   exact: true,
 });
+
+// CDI detail route — redirects to Headlamp's custom resource detail page.
+// This enables the "Controlled by: CDI" link on CronJobs owned by the CDI operator.
+function CDIRedirect() {
+  const lib = getPluginLib();
+  const history = lib?.ReactRouter?.useHistory();
+  const url = lib?.Router?.createRouteURL('customresource', {
+    crd: 'cdis.cdi.kubevirt.io',
+    namespace: '-',
+    crName: 'cdi',
+  });
+
+  useEffect(() => {
+    if (url && history) history.replace(url);
+  }, [url, history]);
+
+  if (!url) {
+    return <Box p={4}>Unable to resolve CDI custom resource page.</Box>;
+  }
+  return null;
+}
+
+registerRoute({
+  path: '/kubevirt/cdi/:namespace/:name',
+  sidebar: 'kubevirt-settings',
+  component: () => (
+    <ErrorBoundary>
+      <CDIRedirect />
+    </ErrorBoundary>
+  ),
+  exact: true,
+  name: 'cdi',
+});
+
+// Add clickable links for KubeVirt owner references on native resource pages
+registerOwnerLinksProcessor();
