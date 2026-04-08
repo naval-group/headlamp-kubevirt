@@ -29,6 +29,7 @@ import {
   YAxis,
 } from 'recharts';
 import { ChartTooltipProps } from '../../types';
+import { discoverPrometheus } from '../../utils/prometheus';
 import { safeError, sanitizePromQL } from '../../utils/sanitize';
 
 interface PrometheusQuerierProps {
@@ -356,19 +357,9 @@ export default function PrometheusQuerier({ vmName, namespace }: PrometheusQueri
   } | null>(null);
 
   useEffect(() => {
-    ApiProxy.request('/api/v1/services')
-      .then((svcResp: any) => {
-        const svcItems = svcResp?.items || [];
-        const promSvc = svcItems.find((svc: any) => {
-          const name = svc.metadata?.name || '';
-          const ports = svc.spec?.ports || [];
-          return name.includes('prometheus') && ports.some((p: any) => p.port === 9090);
-        });
-        if (promSvc) {
-          setPromBaseUrl(
-            `/api/v1/namespaces/${promSvc.metadata.namespace}/services/${promSvc.metadata.name}:9090/proxy`
-          );
-        }
+    discoverPrometheus()
+      .then(prom => {
+        if (prom.available) setPromBaseUrl(prom.baseUrl);
       })
       .catch(() => {});
   }, []);
