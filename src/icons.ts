@@ -12,5 +12,7 @@
  */
 import { addCollection } from '@iconify/react';
 import mdiIcons from './mdi-icons.json';
+import simpleIcons from './simple-icons.json';
 
 addCollection(mdiIcons);
+addCollection(simpleIcons);
