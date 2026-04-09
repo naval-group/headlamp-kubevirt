@@ -42,16 +42,24 @@ export default function PodLogsTab({ podName, namespace }: PodLogsTabProps) {
     let cancelled = false;
 
     ApiProxy.request(`/api/v1/namespaces/${namespace}/pods/${podName}`)
-      .then((pod: any) => {
-        if (cancelled) return;
-        const allContainers: string[] = [];
-        (pod?.spec?.initContainers || []).forEach((c: any) => allContainers.push(c.name));
-        (pod?.spec?.containers || []).forEach((c: any) => allContainers.push(c.name));
-        setContainers(allContainers);
-        if (!allContainers.includes(selectedContainer) && allContainers.length > 0) {
-          setSelectedContainer(allContainers[0]);
+      .then(
+        (pod: {
+          spec?: { initContainers?: Array<{ name: string }>; containers?: Array<{ name: string }> };
+        }) => {
+          if (cancelled) return;
+          const allContainers: string[] = [];
+          (pod?.spec?.initContainers || []).forEach((c: { name: string }) =>
+            allContainers.push(c.name)
+          );
+          (pod?.spec?.containers || []).forEach((c: { name: string }) =>
+            allContainers.push(c.name)
+          );
+          setContainers(allContainers);
+          if (!allContainers.includes(selectedContainer) && allContainers.length > 0) {
+            setSelectedContainer(allContainers[0]);
+          }
         }
-      })
+      )
       .catch(() => {
         if (!cancelled) setContainers([]);
       });
@@ -75,7 +83,7 @@ export default function PodLogsTab({ podName, namespace }: PodLogsTabProps) {
   usePolling(
     async cancelled => {
       try {
-        const resp: any = await ApiProxy.request(
+        const resp: string | { text?: () => Promise<string> } = await ApiProxy.request(
           `/api/v1/namespaces/${namespace}/pods/${podName}/log?container=${selectedContainer}&tailLines=${tailLines}`,
           { isJSON: false }
         );
@@ -86,7 +94,7 @@ export default function PodLogsTab({ podName, namespace }: PodLogsTabProps) {
           setError(null);
           setLoading(false);
         }
-      } catch (e: any) {
+      } catch (e: unknown) {
         if (!cancelled()) {
           setError(`Failed to fetch logs for ${selectedContainer}: ${safeError(e, 'podLogs')}`);
           setLoading(false);

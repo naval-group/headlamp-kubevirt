@@ -285,6 +285,98 @@ export interface PrometheusQueryResult {
   };
 }
 
+// ─── VirtualMachineInstance (VMI) ───────────────────────────────────
+
+/** Runtime network interface from VMI status (guest-agent reported) */
+export interface VMIStatusNetworkInterface {
+  name?: string;
+  interfaceName?: string;
+  mac?: string;
+  ipAddress?: string;
+  ipAddresses?: string[];
+  linkState?: string;
+  queueCount?: number;
+}
+
+/** Runtime volume status from VMI status */
+export interface VMIVolumeStatus {
+  name: string;
+  target?: string;
+  size?: number;
+  persistentVolumeClaimInfo?: {
+    claimName: string;
+    capacity?: { storage?: string };
+    accessModes?: string[];
+  };
+}
+
+/** Subset of VirtualMachineInstance used across views */
+export interface VMIData {
+  [key: string]: unknown;
+  spec?: {
+    domain?: {
+      cpu?: VMCPUTopology;
+      resources?: VMResources;
+    };
+    volumes?: Array<{
+      name: string;
+      dataVolume?: { name: string };
+      persistentVolumeClaim?: { claimName: string };
+    }>;
+  };
+  status?: {
+    phase?: string;
+    nodeName?: string;
+    currentCPUTopology?: VMCPUTopology;
+    memory?: {
+      guestCurrent?: string;
+      guestRequested?: string;
+    };
+    guestOSInfo?: {
+      prettyName?: string;
+      kernelRelease?: string;
+    };
+    interfaces?: VMIStatusNetworkInterface[];
+    volumeStatus?: VMIVolumeStatus[];
+    migrationState?: {
+      completed?: boolean;
+      migrationUid?: string;
+      mode?: string;
+      startTimestamp?: string;
+      endTimestamp?: string;
+      sourceNode?: string;
+      targetNode?: string;
+    };
+  };
+}
+
+// ─── Kubernetes Service (subset) ────────────────────────────────────
+
+/** Minimal K8s Service shape for fields actually accessed */
+export interface KubeServiceSubset {
+  metadata?: { name?: string; namespace?: string };
+  spec?: {
+    selector?: Record<string, string>;
+    ports?: Array<{ port?: number; targetPort?: number | string; protocol?: string }>;
+  };
+  data?: Record<string, string>;
+  items?: Array<{ metadata: { name: string } }>;
+}
+
+// ─── DataVolume Template storage ────────────────────────────────────
+
+/** Storage block used when building DataVolumeTemplate specs in forms */
+export interface DVTStorageSpec {
+  resources: {
+    requests: {
+      storage: string;
+    };
+  };
+  storageClassName?: string;
+  accessModes?: string[];
+  volumeMode?: 'Filesystem' | 'Block';
+}
+
 // ─── Recharts tooltip ───────────────────────────────────────────────
 
 export interface ChartTooltipProps {

@@ -18,6 +18,7 @@ import {
 import React, { useState } from 'react';
 import { KubeListResponse, PrometheusQueryResult } from '../../types';
 import { discoverPrometheus } from '../../utils/prometheus';
+import { sanitizePromQL } from '../../utils/sanitize';
 import VirtualMachineInstanceMigration from '../Migrations/VirtualMachineInstanceMigration';
 import VirtualMachine from '../VirtualMachines/VirtualMachine';
 
@@ -101,9 +102,9 @@ export default function VirtualizationOverview() {
 
         const promBaseUrl = prom.baseUrl;
 
-        // Build namespace filter — sanitize to prevent PromQL injection
-        const sanitizedNs = selectedNamespace.replace(/[\\}"]/g, '');
-        const nsFilter = selectedNamespace === 'all' ? '' : `namespace="${sanitizedNs}"`;
+        // Build namespace filter — use shared sanitizer to prevent PromQL injection
+        const nsFilter =
+          selectedNamespace === 'all' ? '' : `namespace="${sanitizePromQL(selectedNamespace)}"`;
 
         const promQuery = (query: string) =>
           ApiProxy.request(`${promBaseUrl}/api/v1/query?query=${encodeURIComponent(query)}`).catch(
@@ -205,8 +206,8 @@ export default function VirtualizationOverview() {
 
         // Phase 3: Process all results and merge paired data
         const mergePair = <A extends string, B extends string>(
-          respA: any,
-          respB: any,
+          respA: PrometheusQueryResult | undefined,
+          respB: PrometheusQueryResult | undefined,
           keyA: A,
           keyB: B
         ): ({ name: string } & Record<A, number> & Record<B, number>)[] => {

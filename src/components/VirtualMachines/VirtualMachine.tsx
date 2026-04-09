@@ -2,6 +2,7 @@ import { ApiProxy } from '@kinvolk/headlamp-plugin/lib';
 import { StreamArgs, StreamResultsCb } from '@kinvolk/headlamp-plugin/lib/ApiProxy';
 import { KubeObject } from '@kinvolk/headlamp-plugin/lib/K8s/cluster';
 import { KubeCondition, VMVolume } from '../../types';
+import { findCondition } from '../../utils/statusColors';
 import VirtualMachineInstance from '../VirtualMachineInstance/VirtualMachineInstance';
 
 class VirtualMachine extends KubeObject {
@@ -73,8 +74,7 @@ class VirtualMachine extends KubeObject {
   }
 
   isPaused(): boolean {
-    const conditions = this.status?.conditions || [];
-    const pausedCondition = conditions.find((c: KubeCondition) => c.type === 'Paused');
+    const pausedCondition = findCondition<KubeCondition>(this.status?.conditions, 'Paused');
     return pausedCondition?.status === 'True';
   }
 
@@ -101,14 +101,18 @@ class VirtualMachine extends KubeObject {
   }
 
   isLiveMigratable(): boolean {
-    const conditions = this.status?.conditions || [];
-    const migratableCondition = conditions.find((c: KubeCondition) => c.type === 'LiveMigratable');
+    const migratableCondition = findCondition<KubeCondition>(
+      this.status?.conditions,
+      'LiveMigratable'
+    );
     return migratableCondition?.status === 'True';
   }
 
   getLiveMigratableReason(): string {
-    const conditions = this.status?.conditions || [];
-    const migratableCondition = conditions.find((c: KubeCondition) => c.type === 'LiveMigratable');
+    const migratableCondition = findCondition<KubeCondition>(
+      this.status?.conditions,
+      'LiveMigratable'
+    );
     return migratableCondition?.message || migratableCondition?.reason || '-';
   }
 

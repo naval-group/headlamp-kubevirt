@@ -20,24 +20,22 @@ import {
 } from '@mui/material';
 import React, { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { ExportVolume, KubeCondition } from '../../types';
+import { ExportVolume, KubeCondition, KubeServiceSubset } from '../../types';
 import VirtualMachineExport from './VirtualMachineExport';
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type KubeService = Record<string, any>;
 
 /**
  * Replaces the internal service hostname in a URL with localhost:<port>.
  * e.g. https://virt-export-xxx.default.svc/volumes/disk.img → https://localhost:8443/volumes/disk.img
  */
 function rewriteUrl(url: string, localPort: string): string {
+  const port = /^\d{1,5}$/.test(localPort) ? localPort : '8443';
   try {
     const parsed = new URL(url);
     parsed.hostname = 'localhost';
-    parsed.port = localPort;
+    parsed.port = port;
     return parsed.toString();
   } catch {
-    return url.replace(/https?:\/\/[^/]+/, `https://localhost:${localPort}`);
+    return url.replace(/https?:\/\/[^/]+/, `https://localhost:${port}`);
   }
 }
 
@@ -73,7 +71,7 @@ function DownloadAccess({ serviceName, namespace, volumes, tokenSecretRef }: Dow
   const [portForwardActive, setPortForwardActive] = useState(false);
   const [portForwardId, setPortForwardId] = useState('');
   const [portForwardError, setPortForwardError] = useState('');
-  const [serviceResource, setServiceResource] = useState<KubeService | null>(null);
+  const [serviceResource, setServiceResource] = useState<KubeServiceSubset | null>(null);
   const [podName, setPodName] = useState('');
   const [exportToken, setExportToken] = useState('');
   const cluster = K8s.useCluster();
@@ -82,7 +80,7 @@ function DownloadAccess({ serviceName, namespace, volumes, tokenSecretRef }: Dow
   React.useEffect(() => {
     if (!tokenSecretRef || !namespace) return;
     ApiProxy.request(`/api/v1/namespaces/${namespace}/secrets/${tokenSecretRef}`)
-      .then((secret: KubeService) => {
+      .then((secret: KubeServiceSubset) => {
         const token = secret?.data?.token;
         if (token) {
           setExportToken(atob(token));
@@ -95,7 +93,7 @@ function DownloadAccess({ serviceName, namespace, volumes, tokenSecretRef }: Dow
   React.useEffect(() => {
     if (!serviceName || !namespace) return;
     ApiProxy.request(`/api/v1/namespaces/${namespace}/services/${serviceName}`)
-      .then((svc: KubeService) => {
+      .then((svc: KubeServiceSubset) => {
         setServiceResource(svc);
         // Find the pod backing this service using its selector
         const selector = svc.spec?.selector;
@@ -108,7 +106,7 @@ function DownloadAccess({ serviceName, namespace, volumes, tokenSecretRef }: Dow
               labelSelector
             )}`
           )
-            .then((response: KubeService) => {
+            .then((response: KubeServiceSubset) => {
               const pods = response?.items || [];
               if (pods.length > 0) {
                 setPodName(pods[0].metadata.name);

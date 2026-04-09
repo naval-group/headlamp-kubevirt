@@ -42,7 +42,7 @@ interface MemoryDumpTabProps {
   vmName: string;
   namespace: string;
   vmItem?: VirtualMachine | null;
-  vmiData?: Record<string, any> | null;
+  vmiData?: Record<string, unknown> | null;
   hasAgent?: boolean;
 }
 
@@ -314,10 +314,13 @@ export default function MemoryDumpTab({
   );
 
   const hotplugEnabled = isFeatureGateEnabled('HotplugVolumes');
-  const vmiPhase = vmiData?.status?.phase;
+  const vmiStatusObj = vmiData?.status as
+    | { phase?: string; guestOSInfo?: { kernelRelease?: string } }
+    | undefined;
+  const vmiPhase = vmiStatusObj?.phase;
   const isRunning = vmiPhase === 'Running';
 
-  const kernelRelease = vmiData?.status?.guestOSInfo?.kernelRelease;
+  const kernelRelease = vmiStatusObj?.guestOSInfo?.kernelRelease;
   const hasKernelInfo = hasAgent && !!kernelRelease;
 
   const vmMemory =
@@ -329,8 +332,10 @@ export default function MemoryDumpTab({
   // Fetch storage classes
   useEffect(() => {
     ApiProxy.request('/apis/storage.k8s.io/v1/storageclasses')
-      .then((res: any) => {
-        const classes = (res?.items || []).map((sc: any) => sc.metadata.name);
+      .then((res: { items?: Array<{ metadata: { name: string } }> }) => {
+        const classes = (res?.items || []).map(
+          (sc: { metadata: { name: string } }) => sc.metadata.name
+        );
         setStorageClasses(classes);
         const virtSC = classes.find((c: string) => c.includes('virtualization'));
         setSelectedSC(virtSC || classes[0] || '');
@@ -438,23 +443,24 @@ export default function MemoryDumpTab({
     }
     const podName = `vol3-${selectedDump}`;
     ApiProxy.request(`/api/v1/namespaces/${namespace}/pods/${podName}`)
-      .then((pod: any) => {
-        const phase = pod?.status?.phase;
-        // Detect the main container name from the pod spec (handles old 'volatility3' and new 'vol3')
-        const containers = pod?.spec?.containers || [];
-        const mainContainer = containers[0]?.name || 'vol3';
-        setAnalysisPodName(podName);
-        setAnalysisPodContainer(mainContainer);
-        if (phase === 'Running') {
-          setAnalysisPodStatus('running');
-          setShowAnalysisTerminal(true);
-        } else if (phase === 'Pending') {
-          setAnalysisPodStatus('waiting');
-          pollAnalysisPod(podName);
-        } else if (phase === 'Succeeded' || phase === 'Failed') {
-          setAnalysisPodStatus('failed');
+      .then(
+        (pod: { status?: { phase?: string }; spec?: { containers?: Array<{ name: string }> } }) => {
+          const phase = pod?.status?.phase;
+          const containers = pod?.spec?.containers || [];
+          const mainContainer = containers[0]?.name || 'vol3';
+          setAnalysisPodName(podName);
+          setAnalysisPodContainer(mainContainer);
+          if (phase === 'Running') {
+            setAnalysisPodStatus('running');
+            setShowAnalysisTerminal(true);
+          } else if (phase === 'Pending') {
+            setAnalysisPodStatus('waiting');
+            pollAnalysisPod(podName);
+          } else if (phase === 'Succeeded' || phase === 'Failed') {
+            setAnalysisPodStatus('failed');
+          }
         }
-      })
+      )
       .catch(() => {
         setAnalysisPodName(null);
         setAnalysisPodContainer('vol3');
@@ -477,10 +483,17 @@ export default function MemoryDumpTab({
           const initStatuses = pod?.status?.initContainerStatuses || [];
           const containerStatuses = pod?.status?.containerStatuses || [];
           const allStatuses = [...initStatuses, ...containerStatuses];
-          const waitingReason = allStatuses.find((s: any) => s?.state?.waiting)?.state?.waiting
-            ?.reason;
-          const readyInit = initStatuses.filter(
-            (s: any) => s?.state?.terminated?.exitCode === 0
+          type ContainerStatus = {
+            state?: {
+              waiting?: { reason?: string };
+              terminated?: { exitCode?: number; reason?: string };
+            };
+          };
+          const waitingReason = (allStatuses as ContainerStatus[]).find(
+            (s: ContainerStatus) => s?.state?.waiting
+          )?.state?.waiting?.reason;
+          const readyInit = (initStatuses as ContainerStatus[]).filter(
+            (s: ContainerStatus) => s?.state?.terminated?.exitCode === 0
           ).length;
           const totalInit = initStatuses.length;
 
@@ -578,8 +591,9 @@ export default function MemoryDumpTab({
         body: JSON.stringify(pvc),
         headers: { 'Content-Type': 'application/json' },
       });
-    } catch (e: any) {
-      if (!e?.message?.includes('409') && !e?.message?.includes('already exists')) {
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (!msg.includes('409') && !msg.includes('already exists')) {
         enqueueSnackbar(`Failed to create PVC: ${safeError(e, 'createPVC')}`, { variant: 'error' });
         setLoading(false);
         return;
@@ -616,7 +630,7 @@ export default function MemoryDumpTab({
       setPolling(true);
       setShowNewDumpForm(false);
       setSelectedDump(pvcName);
-    } catch (e: any) {
+    } catch (e: unknown) {
       enqueueSnackbar(`Failed to trigger memory dump: ${safeError(e, 'triggerDump')}`, {
         variant: 'error',
       });
@@ -633,7 +647,7 @@ export default function MemoryDumpTab({
       enqueueSnackbar('Memory dump association removed', { variant: 'success' });
       setDumpStatus(null);
       await fetchDumpPVCs(null);
-    } catch (e: any) {
+    } catch (e: unknown) {
       enqueueSnackbar(`Failed to remove dump association: ${safeError(e, 'removeDumpAssoc')}`, {
         variant: 'error',
       });
@@ -724,7 +738,7 @@ export default function MemoryDumpTab({
       }
 
       await fetchDumpPVCs();
-    } catch (e: any) {
+    } catch (e: unknown) {
       enqueueSnackbar(`Failed to delete PVC: ${safeError(e, 'deletePVC')}`, { variant: 'error' });
     } finally {
       setDeletingPVC(null);
@@ -739,8 +753,18 @@ export default function MemoryDumpTab({
 
     // Build pod spec matching vol3-poc pattern
     const forensic = getForensicSettings();
-    const initContainers: any[] = [];
-    const volumes: any[] = [
+    const initContainers: Array<{
+      name: string;
+      image: string;
+      imagePullPolicy: string;
+      command: string[];
+      volumeMounts: Array<{ name: string; mountPath: string }>;
+    }> = [];
+    const volumes: Array<{
+      name: string;
+      persistentVolumeClaim?: { claimName: string; readOnly?: boolean };
+      emptyDir?: Record<string, never>;
+    }> = [
       {
         name: 'memdump',
         persistentVolumeClaim: {
@@ -753,7 +777,7 @@ export default function MemoryDumpTab({
         emptyDir: {},
       },
     ];
-    const volumeMounts: any[] = [
+    const volumeMounts: Array<{ name: string; mountPath: string; readOnly?: boolean }> = [
       {
         name: 'memdump',
         mountPath: '/dump',
@@ -826,10 +850,10 @@ export default function MemoryDumpTab({
       setAnalysisPodContainer('vol3');
       enqueueSnackbar('Analysis pod created, waiting for it to start...', { variant: 'info' });
       pollAnalysisPod(podName);
-    } catch (e: any) {
-      if (e?.message?.includes('409') || e?.message?.includes('already exists')) {
+    } catch (e: unknown) {
+      const errMsg = e instanceof Error ? e.message : String(e);
+      if (errMsg.includes('409') || errMsg.includes('already exists')) {
         setAnalysisPodName(podName);
-        // Pod already exists — detect its container name
         try {
           const existing = await ApiProxy.request(
             `/api/v1/namespaces/${namespace}/pods/${podName}`
@@ -906,7 +930,7 @@ export default function MemoryDumpTab({
           return prev;
         });
       }, 120000);
-    } catch (e: any) {
+    } catch (e: unknown) {
       enqueueSnackbar(`Failed to delete analysis pod: ${safeError(e, 'deleteAnalysisPod')}`, {
         variant: 'error',
       });

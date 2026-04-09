@@ -1,5 +1,6 @@
 import { KubeObject } from '@kinvolk/headlamp-plugin/lib/K8s/cluster';
 import { DataImportCronImport, KubeCondition } from '../../types';
+import { findCondition } from '../../utils/statusColors';
 
 class DataImportCron extends KubeObject {
   get spec() {
@@ -88,14 +89,15 @@ class DataImportCron extends KubeObject {
   }
 
   isUpToDate(): boolean {
-    const conditions = this.status?.conditions || [];
-    const upToDateCondition = conditions.find((c: KubeCondition) => c.type === 'UpToDate');
+    const upToDateCondition = findCondition<KubeCondition>(this.status?.conditions, 'UpToDate');
     return upToDateCondition?.status === 'True';
   }
 
   isProgressing(): boolean {
-    const conditions = this.status?.conditions || [];
-    const progressingCondition = conditions.find((c: KubeCondition) => c.type === 'Progressing');
+    const progressingCondition = findCondition<KubeCondition>(
+      this.status?.conditions,
+      'Progressing'
+    );
     return progressingCondition?.status === 'True';
   }
 

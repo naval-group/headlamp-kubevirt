@@ -19,10 +19,11 @@ import {
 } from '@mui/material';
 import { useSnackbar } from 'notistack';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { DataVolumeTemplate, KubeCondition, VMVolume } from '../../types';
 import { getGuestfsSettings } from '../../utils/pluginSettings';
 import { safeError } from '../../utils/sanitize';
 import { humanSize } from '../../utils/size';
-import { getInspectorStatusColor } from '../../utils/statusColors';
+import { findCondition, getInspectorStatusColor } from '../../utils/statusColors';
 import VirtualMachineInstance from '../VirtualMachineInstance/VirtualMachineInstance';
 import VirtualMachine from '../VirtualMachines/VirtualMachine';
 import { TerminalPanel, TerminalPanelHandle } from '../VMConsole/VMConsole';
@@ -184,8 +185,8 @@ export default function GuestfsTab({ vmName, namespace, vmItem }: GuestfsTabProp
   useEffect(() => {
     if (!vmItem) return;
     const spec = vmItem.jsonData?.spec?.template?.spec;
-    const volumes: any[] = spec?.volumes || [];
-    const dvTemplates: any[] = vmItem.jsonData?.spec?.dataVolumeTemplates || [];
+    const volumes: VMVolume[] = spec?.volumes || [];
+    const dvTemplates: DataVolumeTemplate[] = vmItem.jsonData?.spec?.dataVolumeTemplates || [];
     const extracted: VMDisk[] = [];
 
     for (const vol of volumes) {
@@ -264,7 +265,7 @@ export default function GuestfsTab({ vmName, namespace, vmItem }: GuestfsTabProp
             if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
           } else if (phase === 'Failed' || phase === 'Unknown') {
             const reason =
-              vmi?.status?.conditions?.find((c: any) => c.type === 'Ready')?.message || phase;
+              findCondition<KubeCondition>(vmi?.status?.conditions, 'Ready')?.message || phase;
             setVmiStatus('failed');
             setVmiDetail(reason || '');
             if (pollRef.current) clearInterval(pollRef.current);
@@ -308,7 +309,12 @@ export default function GuestfsTab({ vmName, namespace, vmItem }: GuestfsTabProp
           )}`
         );
         if (abortController.signal.aborted) return;
-        const vmis = (vmiRes?.items || []).filter((v: any) => !v.metadata.deletionTimestamp);
+        const vmis = (vmiRes?.items || []).filter(
+          (v: {
+            metadata: { name: string; deletionTimestamp?: string };
+            status?: { phase?: string };
+          }) => !v.metadata.deletionTimestamp
+        );
         if (vmis.length > 0) {
           const existing = vmis[0];
           setVmiName(existing.metadata.name);
@@ -359,9 +365,16 @@ export default function GuestfsTab({ vmName, namespace, vmItem }: GuestfsTabProp
     }
 
     // Build disk and volume arrays for all selected PVCs
-    const diskSpecs: any[] = [{ name: 'boot', disk: { bus: 'virtio' } }];
+    const diskSpecs: Array<{ name: string; disk?: { bus: string }; serial?: string }> = [
+      { name: 'boot', disk: { bus: 'virtio' } },
+    ];
     const inspectorImage = getGuestfsSettings().image || INSPECTOR_IMAGE;
-    const volumeSpecs: any[] = [{ name: 'boot', containerDisk: { image: inspectorImage } }];
+    const volumeSpecs: Array<{
+      name: string;
+      containerDisk?: { image: string };
+      persistentVolumeClaim?: { claimName: string };
+      cloudInitNoCloud?: { userData: string };
+    }> = [{ name: 'boot', containerDisk: { image: inspectorImage } }];
 
     selectedDisks.forEach((pvcName, i) => {
       const diskName = `disk-${i}`;
@@ -462,8 +475,9 @@ export default function GuestfsTab({ vmName, namespace, vmItem }: GuestfsTabProp
       setVmiStatus('pending');
       enqueueSnackbar('Inspector VM created, waiting for it to start...', { variant: 'info' });
       pollVMI(name);
-    } catch (e: any) {
-      if (e?.status === 409 || e?.message?.includes('already exists')) {
+    } catch (e: unknown) {
+      const errObj = e as { status?: number; message?: string };
+      if (errObj?.status === 409 || errObj?.message?.includes('already exists')) {
         setVmiName(name);
         setVmiStatus('pending');
         pollVMI(name);

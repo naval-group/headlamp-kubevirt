@@ -172,13 +172,50 @@ function VMRowActionMenuItems({
   );
 }
 
+const EMPTY_VM = {
+  apiVersion: 'kubevirt.io/v1',
+  kind: 'VirtualMachine',
+  metadata: {
+    name: '',
+    namespace: 'default',
+  },
+  spec: {
+    runStrategy: 'Always',
+    template: {
+      metadata: {},
+      spec: {
+        domain: {
+          devices: {
+            disks: [
+              {
+                name: 'cloudinitdisk',
+                disk: { bus: 'virtio' },
+              },
+            ],
+            interfaces: [{ name: 'default', masquerade: {} }],
+          },
+          resources: { requests: { memory: '2Gi' } },
+          cpu: { cores: 2 },
+        },
+        networks: [{ name: 'default', pod: {} }],
+        volumes: [
+          {
+            name: 'cloudinitdisk',
+            cloudInitNoCloud: { userData: '#cloud-config\n' },
+          },
+        ],
+      },
+    },
+  },
+};
+
 export default function VirtualMachineList() {
   const { enqueueSnackbar } = useSnackbar();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [createInitialTab, setCreateInitialTab] = useState(0);
   const [customLabelColumns, setCustomLabelColumns] = useState<LabelColumn[]>([]);
   const [doctorVM, setDoctorVM] = useState<VirtualMachine | null>(null);
-  const [doctorVMI, setDoctorVMI] = useState<any>(null);
+  const [doctorVMI, setDoctorVMI] = useState<Record<string, unknown> | null>(null);
   const [doctorPodName, setDoctorPodName] = useState('');
   const [deleteVM, setDeleteVM] = useState<VirtualMachine | null>(null);
   const [editVM, setEditVM] = useState<VirtualMachine | null>(null);
@@ -191,43 +228,6 @@ export default function VirtualMachineList() {
 
   const liveMigrationEnabled = useFeatureGate('LiveMigration');
   const snapshotEnabled = useFeatureGate('Snapshot');
-
-  const emptyVM = {
-    apiVersion: 'kubevirt.io/v1',
-    kind: 'VirtualMachine',
-    metadata: {
-      name: '',
-      namespace: 'default',
-    },
-    spec: {
-      runStrategy: 'Always',
-      template: {
-        metadata: {},
-        spec: {
-          domain: {
-            devices: {
-              disks: [
-                {
-                  name: 'cloudinitdisk',
-                  disk: { bus: 'virtio' },
-                },
-              ],
-              interfaces: [{ name: 'default', masquerade: {} }],
-            },
-            resources: { requests: { memory: '2Gi' } },
-            cpu: { cores: 2 },
-          },
-          networks: [{ name: 'default', pod: {} }],
-          volumes: [
-            {
-              name: 'cloudinitdisk',
-              cloudInitNoCloud: { userData: '#cloud-config\n' },
-            },
-          ],
-        },
-      },
-    },
-  };
 
   // Fetch VMs (all namespaces, filtered client-side for smooth switching)
   const { items: rawVmItems } = VirtualMachine.useList();
@@ -257,7 +257,12 @@ export default function VirtualMachineList() {
 
   // Build MRT columns
   const columns = useMemo(() => {
-    const cols: any[] = [
+    const cols: Array<{
+      id: string;
+      header: string;
+      accessorFn: (vm: VirtualMachine) => string;
+      Cell?: (props: { row: { original: VirtualMachine } }) => React.ReactNode;
+    }> = [
       {
         id: 'name',
         header: 'Name',
@@ -471,7 +476,7 @@ export default function VirtualMachineList() {
       ]);
       if (vmiResult.status === 'fulfilled') vmi = vmiResult.value;
       if (podResult.status === 'fulfilled') {
-        const pod = (podResult.value?.items || []).find((p: any) =>
+        const pod = (podResult.value?.items || []).find((p: { metadata?: { name?: string } }) =>
           p.metadata?.name?.startsWith('virt-launcher-')
         );
         if (pod) podName = pod.metadata.name;
@@ -549,7 +554,7 @@ export default function VirtualMachineList() {
         onClose={() => setCreateDialogOpen(false)}
         title="Create Virtual Machine"
         resourceClass={VirtualMachine}
-        initialResource={emptyVM}
+        initialResource={EMPTY_VM}
         initialTab={createInitialTab}
         formComponent={VMFormWrapper}
         validate={r => !!(r?.metadata?.name && r?.metadata?.namespace)}

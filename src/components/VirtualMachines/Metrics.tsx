@@ -21,14 +21,14 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { ChartTooltipProps } from '../../types';
+import { ChartTooltipProps, VMIData } from '../../types';
 import { discoverPrometheus } from '../../utils/prometheus';
 import VirtualMachine from './VirtualMachine';
 
 interface MetricsProps {
   vmName: string;
   namespace: string;
-  vmiData?: Record<string, any> | null;
+  vmiData?: VMIData | null;
   vmItem?: VirtualMachine | null;
 }
 

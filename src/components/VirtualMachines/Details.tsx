@@ -23,6 +23,7 @@ import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import useFeatureGate from '../../hooks/useFeatureGate';
 import useVMActions from '../../hooks/useVMActions';
+import { VMIData, VMIStatusNetworkInterface, VMIVolumeStatus } from '../../types';
 import { formatDuration } from '../../utils/formatDuration';
 import { safeError } from '../../utils/sanitize';
 import { shortAccessModes } from '../../utils/volumeDialog';
@@ -49,71 +50,8 @@ import VirtualMachine from './VirtualMachine';
 import VMFormWrapper from './VMFormWrapper';
 import { getVMStatusConfig } from './VMStatusChip';
 
-/** Runtime interface info from VMI status (not the spec-level VMInterface) */
-interface VMIStatusInterface {
-  name?: string;
-  interfaceName?: string;
-  mac?: string;
-  ipAddress?: string;
-  ipAddresses?: string[];
-  linkState?: string;
-  queueCount?: number;
-}
-
-/** Runtime volume status from VMI status */
-interface VMIVolumeStatus {
-  name: string;
-  target?: string;
-  size?: number;
-  persistentVolumeClaimInfo?: {
-    claimName: string;
-    capacity?: { storage?: string };
-    accessModes?: string[];
-  };
-}
-
-/** Subset of VirtualMachineInstance used in the details view */
-interface VMIData {
-  spec?: {
-    domain?: {
-      cpu?: { sockets?: number; cores?: number; threads?: number };
-      resources?: { requests?: { memory?: string }; limits?: { memory?: string } };
-    };
-    volumes?: Array<{
-      name: string;
-      dataVolume?: { name: string };
-      persistentVolumeClaim?: { claimName: string };
-    }>;
-  };
-  status?: {
-    phase?: string;
-    nodeName?: string;
-    currentCPUTopology?: {
-      sockets?: number;
-      cores?: number;
-      threads?: number;
-    };
-    memory?: {
-      guestCurrent?: string;
-      guestRequested?: string;
-    };
-    guestOSInfo?: {
-      prettyName?: string;
-      kernelRelease?: string;
-    };
-    interfaces?: VMIStatusInterface[];
-    volumeStatus?: VMIVolumeStatus[];
-    migrationState?: {
-      completed?: boolean;
-      migrationUid?: string;
-      mode?: string;
-      startTimestamp?: string;
-      endTimestamp?: string;
-      sourceNode?: string;
-      targetNode?: string;
-    };
-  };
-}
+/** Local alias for backward compat with references in this file */
+type VMIStatusInterface = VMIStatusNetworkInterface;
 
 /**
  * Compare VM spec (desired) vs running VMI (actual) and return
@@ -334,9 +272,12 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
   interface K8sPod {
     metadata: {
       name: string;
+      namespace?: string;
+      creationTimestamp?: string;
       labels?: Record<string, string>;
       ownerReferences?: { name: string }[];
     };
+    spec?: { nodeName?: string };
     status?: { phase?: string; containerStatuses?: { ready: boolean }[] };
   }
   const [cdiPods, setCdiPods] = useState<K8sPod[]>([]);
@@ -944,8 +885,7 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                               columns={[
                                 {
                                   label: 'Pod',
-                                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                  getter: (pod: any) => (
+                                  getter: (pod: K8sPod) => (
                                     <Link
                                       routeName="pod"
                                       params={{
@@ -959,8 +899,7 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                                 },
                                 {
                                   label: 'Phase',
-                                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                  getter: (pod: any) => {
+                                  getter: (pod: K8sPod) => {
                                     const phase = pod.status?.phase || 'Unknown';
                                     const color =
                                       phase === 'Running'
@@ -982,13 +921,11 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                                 },
                                 {
                                   label: 'Node',
-                                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                  getter: (pod: any) => pod.spec?.nodeName || 'Pending',
+                                  getter: (pod: K8sPod) => pod.spec?.nodeName || 'Pending',
                                 },
                                 {
                                   label: 'Age',
-                                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                  getter: (pod: any) => {
+                                  getter: (pod: K8sPod) => {
                                     const created = pod.metadata?.creationTimestamp;
                                     if (!created) return '-';
                                     const diff = Date.now() - new Date(created).getTime();

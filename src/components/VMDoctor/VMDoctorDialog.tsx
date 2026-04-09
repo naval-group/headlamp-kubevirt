@@ -38,7 +38,7 @@ interface VMDoctorDialogProps {
   onClose: () => void;
   vmName: string;
   namespace: string;
-  vmiData?: Record<string, any> | null;
+  vmiData?: Record<string, unknown> | null;
   vmItem?: VirtualMachine | null;
   podName: string;
 }
@@ -85,11 +85,31 @@ export default function VMDoctorDialog({
         ).catch(() => ({ items: [] })),
       ]);
       const runningPods = (volRes?.items || [])
-        .filter((p: any) => !p.metadata.deletionTimestamp && p.status?.phase === 'Running')
-        .map((p: any) => p.metadata.name);
+        .filter(
+          (p: {
+            metadata: { name: string; deletionTimestamp?: string };
+            status?: { phase?: string };
+          }) => !p.metadata.deletionTimestamp && p.status?.phase === 'Running'
+        )
+        .map(
+          (p: {
+            metadata: { name: string; deletionTimestamp?: string };
+            status?: { phase?: string };
+          }) => p.metadata.name
+        );
       const runningVMIs = (guestfsVmiRes?.items || [])
-        .filter((v: any) => !v.metadata.deletionTimestamp && v.status?.phase === 'Running')
-        .map((v: any) => v.metadata.name);
+        .filter(
+          (v: {
+            metadata: { name: string; deletionTimestamp?: string };
+            status?: { phase?: string };
+          }) => !v.metadata.deletionTimestamp && v.status?.phase === 'Running'
+        )
+        .map(
+          (v: {
+            metadata: { name: string; deletionTimestamp?: string };
+            status?: { phase?: string };
+          }) => v.metadata.name
+        );
       const allRunning = [...runningPods, ...runningVMIs];
       if (allRunning.length > 0) {
         setAnalysisPods(allRunning);
@@ -127,7 +147,10 @@ export default function VMDoctorDialog({
     onClose();
   };
 
-  const vmiPhase = vmiData?.status?.phase || 'Stopped';
+  const vmiStatusObj = vmiData?.status as
+    | { phase?: string; conditions?: Array<{ type: string; status: string }> }
+    | undefined;
+  const vmiPhase = vmiStatusObj?.phase || 'Stopped';
   const vmStatus = vmItem?.status?.printableStatus || vmiPhase;
   const isVMShell = activeTab === TAB_VM_SHELL;
   const isPodShell = activeTab === TAB_POD_SHELL;
@@ -140,8 +163,8 @@ export default function VMDoctorDialog({
 
   const isRunning = vmiPhase === 'Running';
   const hasPod = !!podName;
-  const hasAgent = (vmiData?.status?.conditions || []).some(
-    (c: any) => c.type === 'AgentConnected' && c.status === 'True'
+  const hasAgent = (vmiStatusObj?.conditions || []).some(
+    (c: { type: string; status: string }) => c.type === 'AgentConnected' && c.status === 'True'
   );
 
   const tabs: TabDef[] = [

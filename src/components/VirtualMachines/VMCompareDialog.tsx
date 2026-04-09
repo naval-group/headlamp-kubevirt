@@ -33,7 +33,7 @@ const EXCLUDED_ANNOTATIONS = [
   'kubevirt.io/storage-observed-api-version',
 ];
 
-function flatten(obj: any, prefix = ''): Record<string, string> {
+function flatten(obj: unknown, prefix = ''): Record<string, string> {
   const result: Record<string, string> = {};
   if (obj === null || obj === undefined) {
     result[prefix] = String(obj);
@@ -50,13 +50,14 @@ function flatten(obj: any, prefix = ''): Record<string, string> {
     return result;
   }
   if (typeof obj === 'object') {
-    const keys = Object.keys(obj);
+    const rec = obj as Record<string, unknown>;
+    const keys = Object.keys(rec);
     if (keys.length === 0) {
       result[prefix] = '{}';
     } else {
       keys.forEach(key => {
         const newPrefix = prefix ? `${prefix}.${key}` : key;
-        Object.assign(result, flatten(obj[key], newPrefix));
+        Object.assign(result, flatten(rec[key], newPrefix));
       });
     }
     return result;
@@ -65,7 +66,7 @@ function flatten(obj: any, prefix = ''): Record<string, string> {
   return result;
 }
 
-function buildDiffRows(objects: any[], prefix: string): FlatEntry[] {
+function buildDiffRows(objects: unknown[], prefix: string): FlatEntry[] {
   const flats = objects.map(obj => flatten(obj));
   const allKeys = new Set(flats.flatMap(f => Object.keys(f)));
   const sorted = Array.from(allKeys).sort();
@@ -79,7 +80,7 @@ function buildDiffRows(objects: any[], prefix: string): FlatEntry[] {
     .filter(r => r.diff);
 }
 
-function buildMetaObject(vm: VirtualMachine): Record<string, any> {
+function buildMetaObject(vm: VirtualMachine): Record<string, unknown> {
   const annotations = Object.entries(vm.metadata?.annotations || {}).filter(
     ([k]) => !EXCLUDED_ANNOTATIONS.includes(k)
   );

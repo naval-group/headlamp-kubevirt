@@ -1,5 +1,6 @@
 import { KubeObject } from '@kinvolk/headlamp-plugin/lib/K8s/cluster';
 import { KubeCondition } from '../../types';
+import { findCondition } from '../../utils/statusColors';
 
 class DataSource extends KubeObject {
   get spec() {
@@ -47,14 +48,12 @@ class DataSource extends KubeObject {
   }
 
   isReady(): boolean {
-    const conditions = this.status?.conditions || [];
-    const readyCondition = conditions.find((c: KubeCondition) => c.type === 'Ready');
+    const readyCondition = findCondition<KubeCondition>(this.status?.conditions, 'Ready');
     return readyCondition?.status === 'True';
   }
 
   getReadyMessage(): string {
-    const conditions = this.status?.conditions || [];
-    const readyCondition = conditions.find((c: KubeCondition) => c.type === 'Ready');
+    const readyCondition = findCondition<KubeCondition>(this.status?.conditions, 'Ready');
     return readyCondition?.message || '-';
   }
 

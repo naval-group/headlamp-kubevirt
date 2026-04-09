@@ -10,7 +10,7 @@ import VirtualMachine from '../VirtualMachines/VirtualMachine';
 interface ConditionsTabProps {
   vmName: string;
   namespace: string;
-  vmiData?: Record<string, any> | null;
+  vmiData?: Record<string, unknown> | null;
   vmItem?: VirtualMachine | null;
   podName: string;
 }
@@ -227,7 +227,10 @@ export default function ConditionsTab({
           )}`
         );
         const activePod = (podList?.items || []).find(
-          (p: any) => !p.metadata.deletionTimestamp && p.status?.phase !== 'Succeeded'
+          (p: {
+            metadata: { name: string; deletionTimestamp?: string };
+            status?: { phase?: string };
+          }) => !p.metadata.deletionTimestamp && p.status?.phase !== 'Succeeded'
         );
         if (activePod) {
           activePodName = activePod.metadata.name;
@@ -259,19 +262,33 @@ export default function ConditionsTab({
         );
         if (!cancelled) {
           // Find DVs belonging to this VM (by owner reference or naming convention)
-          const vmDvs = (dvList?.items || []).filter((dv: any) => {
-            const owners = dv.metadata?.ownerReferences || [];
-            const ownedByVM = owners.some(
-              (o: any) => o.name === vmName && o.kind === 'VirtualMachine'
-            );
-            const nameMatch = dv.metadata?.name?.startsWith(vmName + '-');
-            return ownedByVM || nameMatch;
-          });
+          const vmDvs = (dvList?.items || []).filter(
+            (dv: {
+              metadata?: { name?: string; ownerReferences?: Array<{ name: string; kind: string }> };
+              status?: { conditions?: K8sCondition[] };
+            }) => {
+              const owners = dv.metadata?.ownerReferences || [];
+              const ownedByVM = owners.some(
+                (o: { name: string; kind: string }) =>
+                  o.name === vmName && o.kind === 'VirtualMachine'
+              );
+              const nameMatch = dv.metadata?.name?.startsWith(vmName + '-');
+              return ownedByVM || nameMatch;
+            }
+          );
           setDvConditions(
-            vmDvs.map((dv: any) => ({
-              name: dv.metadata?.name || 'unknown',
-              conditions: dv.status?.conditions || [],
-            }))
+            vmDvs.map(
+              (dv: {
+                metadata?: {
+                  name?: string;
+                  ownerReferences?: Array<{ name: string; kind: string }>;
+                };
+                status?: { conditions?: K8sCondition[] };
+              }) => ({
+                name: dv.metadata?.name || 'unknown',
+                conditions: dv.status?.conditions || [],
+              })
+            )
           );
         }
       } catch {
@@ -294,9 +311,10 @@ export default function ConditionsTab({
   }
 
   const vmConditions: K8sCondition[] = vmItem?.status?.conditions || [];
-  const vmiConditions: K8sCondition[] = vmiData?.status?.conditions || [];
+  const vmiStatus = vmiData?.status as { conditions?: K8sCondition[]; phase?: string } | undefined;
+  const vmiConditions: K8sCondition[] = vmiStatus?.conditions || [];
   const vmPhase = vmItem?.status?.printableStatus || 'Unknown';
-  const vmiPhase = vmiData?.status?.phase || 'Stopped';
+  const vmiPhase = vmiStatus?.phase || 'Stopped';
 
   // Build groups
   const groups: ConditionGroup[] = [

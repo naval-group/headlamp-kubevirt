@@ -1,6 +1,8 @@
 import * as ApiProxy from '@kinvolk/headlamp-plugin/lib/ApiProxy';
 import { StreamArgs, StreamResultsCb } from '@kinvolk/headlamp-plugin/lib/ApiProxy';
 import { KubeObject } from '@kinvolk/headlamp-plugin/lib/K8s/cluster';
+import { KubeCondition } from '../../types';
+import { findCondition } from '../../utils/statusColors';
 
 class VirtualMachineInstance extends KubeObject {
   get spec() {
@@ -13,7 +15,7 @@ class VirtualMachineInstance extends KubeObject {
 
   getLastStateChangeTimestamp() {
     return new Date(
-      this.status?.conditions?.find(c => c.type === 'Ready')?.lastTransitionTime || 0
+      findCondition<KubeCondition>(this.status?.conditions, 'Ready')?.lastTransitionTime || 0
     );
   }
 

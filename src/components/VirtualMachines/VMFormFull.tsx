@@ -36,6 +36,7 @@ import {
 } from '@mui/material';
 import { useSnackbar } from 'notistack';
 import React, { useState } from 'react';
+import { DVTStorageSpec } from '../../types';
 import DataSource from '../BootableVolumes/DataSource';
 import CopyCodeBlock from '../common/CopyCodeBlock';
 import MandatoryTextField, { mandatoryFieldSx } from '../common/MandatoryTextField';
@@ -86,6 +87,7 @@ interface AdditionalDisk {
   name: string;
   sourceType:
     | 'empty'
+    | 'blank'
     | 'containerDisk'
     | 'persistentVolumeClaim'
     | 'snapshot'
@@ -1045,8 +1047,7 @@ export default function VMFormFull({
     if (!source) return;
 
     const storageClass = source.getStorageClass();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const storage: Record<string, any> = {
+    const storage: DVTStorageSpec = {
       resources: {
         requests: {
           storage: source.getSize(),
@@ -1084,8 +1085,7 @@ export default function VMFormFull({
       (d: KubeResourceBuilder) => d.spec?.sourceRef || d.metadata?.name?.endsWith('-boot-volume')
     );
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const storage: Record<string, any> = {
+    const storage: DVTStorageSpec = {
       resources: {
         requests: {
           storage: size || '30Gi',
@@ -1363,6 +1363,7 @@ export default function VMFormFull({
   const getSourceTypeLabel = (sourceType: AdditionalDisk['sourceType']): string => {
     const labels: Record<AdditionalDisk['sourceType'], string> = {
       empty: 'Empty Disk',
+      blank: 'DataVolume (Blank)',
       containerDisk: 'Container Disk',
       persistentVolumeClaim: 'PVC',
       snapshot: 'PVC Snapshot',
@@ -1453,7 +1454,7 @@ export default function VMFormFull({
     const dataVolumeTemplates = resource.spec?.dataVolumeTemplates || [];
 
     // Check if this source type needs DataVolumeTemplate
-    const needsDVT = ['clone', 'snapshot', 'dataVolume'].includes(diskFormData.sourceType);
+    const needsDVT = ['clone', 'snapshot', 'dataVolume', 'blank'].includes(diskFormData.sourceType);
 
     if (diskEditIndex !== null) {
       // Edit existing disk - TODO: handle DVT updates
@@ -1534,6 +1535,10 @@ export default function VMFormFull({
     switch (disk.sourceType) {
       case 'empty':
         return { ...base, emptyDisk: { capacity: disk.size } };
+      case 'blank': {
+        const vmN = resource.metadata?.name || '';
+        return { ...base, dataVolume: { name: vmN ? `${vmN}-${disk.name}` : disk.name } };
+      }
       case 'containerDisk':
         return { ...base, containerDisk: { image: disk.sourceDetail } };
       case 'persistentVolumeClaim':
@@ -1541,18 +1546,18 @@ export default function VMFormFull({
       case 'dataVolumeExisting':
         return { ...base, dataVolume: { name: disk.sourceDetail } };
       case 'dataVolume':
-        // DataVolume import - volume references the DVT by disk name
-        return { ...base, dataVolume: { name: disk.name } };
+      case 'clone':
+      case 'snapshot': {
+        // These use DataVolumeTemplate — prefix with VM name to avoid collisions
+        const vmN2 = resource.metadata?.name || '';
+        return { ...base, dataVolume: { name: vmN2 ? `${vmN2}-${disk.name}` : disk.name } };
+      }
       case 'configMap':
         return { ...base, configMap: { name: disk.sourceDetail } };
       case 'secret':
         return { ...base, secret: { secretName: disk.sourceDetail } };
       case 'serviceAccount':
         return { ...base, serviceAccount: { serviceAccountName: disk.sourceDetail } };
-      case 'clone':
-      case 'snapshot':
-        // These use DataVolumeTemplate, so volume references the DataVolume
-        return { ...base, dataVolume: { name: disk.name } };
       case 'ephemeral':
         // Ephemeral uses existing PVC that gets deleted with VM
         return {
@@ -1570,10 +1575,12 @@ export default function VMFormFull({
     }
   };
 
-  // Helper to build DataVolumeTemplate for clone/snapshot/ephemeral
+  // Helper to build DataVolumeTemplate for clone/snapshot/blank
   const buildDataVolumeTemplate = (disk: AdditionalDisk): KubeResourceBuilder => {
+    const vmName = resource.metadata?.name || '';
+    const dvtName = vmName ? `${vmName}-${disk.name}` : disk.name;
     const base: KubeResourceBuilder = {
-      metadata: { name: disk.name },
+      metadata: { name: dvtName },
       spec: {
         storage: {
           resources: {
@@ -1584,6 +1591,7 @@ export default function VMFormFull({
           ...(disk.storageClass &&
             disk.storageClass !== '-' && { storageClassName: disk.storageClass }),
           accessModes: [disk.accessMode || 'ReadWriteOnce'],
+          volumeMode: disk.volumeMode || 'Filesystem',
         },
       },
     };
@@ -1602,6 +1610,10 @@ export default function VMFormFull({
           name: disk.sourceDetail,
           namespace: disk.sourceNamespace || namespace,
         },
+      };
+    } else if (disk.sourceType === 'blank') {
+      base.spec.source = {
+        blank: {},
       };
     } else if (disk.sourceType === 'dataVolume') {
       // Import DataVolume from URL/registry/blank/upload
@@ -3288,13 +3300,14 @@ export default function VMFormFull({
                       }
                       displayEmpty
                     >
-                      <MenuItem value="empty">Empty Disk</MenuItem>
-                      <MenuItem value="containerDisk">Container Disk</MenuItem>
+                      <MenuItem value="dataVolume">DataVolume (Import New)</MenuItem>
+                      <MenuItem value="dataVolumeExisting">DataVolume (Use Existing)</MenuItem>
+                      <MenuItem value="blank">DataVolume (Blank)</MenuItem>
                       <MenuItem value="persistentVolumeClaim">PVC (Use Existing)</MenuItem>
                       <MenuItem value="snapshot">PVC Snapshot (Restore)</MenuItem>
                       <MenuItem value="clone">Clone PVC (Copy)</MenuItem>
-                      <MenuItem value="dataVolume">DataVolume (Import New)</MenuItem>
-                      <MenuItem value="dataVolumeExisting">DataVolume (Use Existing)</MenuItem>
+                      <MenuItem value="containerDisk">Container Disk</MenuItem>
+                      <MenuItem value="empty">Empty Disk</MenuItem>
                       <MenuItem value="ephemeral">Ephemeral</MenuItem>
                       <MenuItem value="hostDisk">Host Disk</MenuItem>
                     </Select>
@@ -3701,7 +3714,7 @@ export default function VMFormFull({
                   </Grid>
                 )}
 
-                {diskFormData.sourceType === 'empty' && (
+                {(diskFormData.sourceType === 'empty' || diskFormData.sourceType === 'blank') && (
                   <>
                     <Grid item xs={4}>
                       <Typography
@@ -3773,9 +3786,7 @@ export default function VMFormFull({
                 </Grid>
 
                 {/* Storage-related fields for types that create new storage */}
-                {['empty', 'snapshot', 'clone', 'dataVolume', 'ephemeral'].includes(
-                  diskFormData.sourceType
-                ) && (
+                {['blank', 'snapshot', 'clone', 'dataVolume'].includes(diskFormData.sourceType) && (
                   <>
                     <Grid item xs={6}>
                       <Typography

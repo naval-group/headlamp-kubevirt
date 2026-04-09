@@ -52,9 +52,9 @@ export default function ConsoleLogTab({ podName, namespace }: ConsoleLogTabProps
           setError(null);
           setLoading(false);
         }
-      } catch (e: any) {
+      } catch (e: unknown) {
         if (!cancelled) {
-          const msg = e?.message || String(e);
+          const msg = e instanceof Error ? e.message : String(e);
           if (msg.includes('not found') || msg.includes('container') || msg.includes('404')) {
             setError(
               'guest-console-log container not found. Serial console logging may not be enabled for this VM.'

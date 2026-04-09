@@ -1,4 +1,5 @@
 import { KubeObject } from '@kinvolk/headlamp-plugin/lib/K8s/cluster';
+import { DataVolumeSource, DataVolumeStorage } from '../../types';
 
 export default class DataVolume extends KubeObject {
   static kind = 'DataVolume';
@@ -15,13 +16,29 @@ export default class DataVolume extends KubeObject {
     return 'datavolume';
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  get spec(): any {
+  get spec():
+    | {
+        source?: DataVolumeSource;
+        storage?: DataVolumeStorage;
+        contentType?: string;
+        sourceRef?: { kind: string; name: string; namespace?: string };
+        pvc?: {
+          accessModes?: string[];
+          resources?: { requests?: { storage?: string } };
+          storageClassName?: string;
+        };
+      }
+    | undefined {
     return this.jsonData?.spec;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  get status(): any {
+  get status():
+    | {
+        phase?: string;
+        progress?: string;
+        conditions?: Array<{ type: string; status: string; reason?: string; message?: string }>;
+      }
+    | undefined {
     return this.jsonData?.status;
   }
 

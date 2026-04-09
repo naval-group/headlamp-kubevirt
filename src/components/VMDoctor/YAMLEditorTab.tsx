@@ -28,8 +28,14 @@ interface YAMLEditorTabProps {
   vmName: string;
   namespace: string;
   vmItem?: VirtualMachine | null;
-  vmiData?: Record<string, any> | null;
+  vmiData?: Record<string, unknown> | null;
   podName: string;
+}
+
+type K8sResource = Record<string, unknown>;
+
+function resourceName(r: K8sResource): string | undefined {
+  return (r.metadata as { name?: string } | undefined)?.name;
 }
 
 type ResourceKind = 'vm' | 'vmi' | 'pod' | 'dv';
@@ -82,8 +88,8 @@ export default function YAMLEditorTab({
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [resourceKind, setResourceKind] = useState<ResourceKind>('vm');
-  const [podData, setPodData] = useState<Record<string, any> | null>(null);
-  const [dvList, setDvList] = useState<Record<string, any>[]>([]);
+  const [podData, setPodData] = useState<Record<string, unknown> | null>(null);
+  const [dvList, setDvList] = useState<Record<string, unknown>[]>([]);
   const [selectedDV, setSelectedDV] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -95,7 +101,7 @@ export default function YAMLEditorTab({
     }
     let cancelled = false;
     ApiProxy.request(`/api/v1/namespaces/${namespace}/pods/${podName}`)
-      .then((data: any) => {
+      .then((data: Record<string, unknown>) => {
         if (!cancelled) setPodData(data);
       })
       .catch(() => {
@@ -114,19 +120,22 @@ export default function YAMLEditorTab({
     }
     let cancelled = false;
     ApiProxy.request(`/apis/cdi.kubevirt.io/v1beta1/namespaces/${namespace}/datavolumes`)
-      .then((resp: any) => {
+      .then((resp: { items?: Array<Record<string, unknown>> }) => {
         if (cancelled) return;
-        const vmDvs = (resp?.items || []).filter((dv: any) => {
-          const owners = dv.metadata?.ownerReferences || [];
+        const vmDvs = (resp?.items || []).filter((dv: Record<string, unknown>) => {
+          const meta = dv.metadata as
+            | { name?: string; ownerReferences?: Array<{ name: string; kind: string }> }
+            | undefined;
+          const owners = meta?.ownerReferences || [];
           const ownedByVM = owners.some(
-            (o: any) => o.name === vmName && o.kind === 'VirtualMachine'
+            (o: { name: string; kind: string }) => o.name === vmName && o.kind === 'VirtualMachine'
           );
-          const nameMatch = dv.metadata?.name?.startsWith(vmName + '-');
+          const nameMatch = meta?.name?.startsWith(vmName + '-');
           return ownedByVM || nameMatch;
         });
         setDvList(vmDvs);
         if (vmDvs.length > 0 && !selectedDV) {
-          setSelectedDV(vmDvs[0].metadata?.name || '');
+          setSelectedDV(resourceName(vmDvs[0]) || '');
         }
       })
       .catch(() => {
@@ -138,7 +147,7 @@ export default function YAMLEditorTab({
   }, [vmName, namespace]);
 
   // Determine current resource data
-  const getCurrentResource = (): Record<string, any> | null => {
+  const getCurrentResource = (): Record<string, unknown> | null => {
     switch (resourceKind) {
       case 'vm':
         return vmItem?.jsonData || null;
@@ -147,7 +156,7 @@ export default function YAMLEditorTab({
       case 'pod':
         return podData;
       case 'dv':
-        return dvList.find(dv => dv.metadata?.name === selectedDV) || null;
+        return dvList.find(dv => resourceName(dv) === selectedDV) || null;
     }
   };
 
@@ -188,9 +197,13 @@ export default function YAMLEditorTab({
     if (!vmItem || isReadOnly) return;
     setSaving(true);
     try {
-      const parsed = yaml.load(yamlContent, { schema: yaml.JSON_SCHEMA }) as Record<string, any>;
-      const ns = parsed.metadata?.namespace || vmItem.getNamespace();
-      const name = parsed.metadata?.name || vmItem.getName();
+      const parsed = yaml.load(yamlContent, { schema: yaml.JSON_SCHEMA }) as Record<
+        string,
+        unknown
+      >;
+      const meta = parsed.metadata as { namespace?: string; name?: string } | undefined;
+      const ns = meta?.namespace || vmItem.getNamespace();
+      const name = meta?.name || vmItem.getName();
       await ApiProxy.request(`/apis/kubevirt.io/v1/namespaces/${ns}/virtualmachines/${name}`, {
         method: 'PUT',
         body: JSON.stringify(parsed),
@@ -219,7 +232,7 @@ export default function YAMLEditorTab({
   const handleRefresh = async () => {
     setLoading(true);
     try {
-      let data: Record<string, any> | null = null;
+      let data: Record<string, unknown> | null = null;
       switch (resourceKind) {
         case 'pod':
           if (podName) {
@@ -233,7 +246,7 @@ export default function YAMLEditorTab({
               `/apis/cdi.kubevirt.io/v1beta1/namespaces/${namespace}/datavolumes/${selectedDV}`
             );
             if (data) {
-              setDvList(prev => prev.map(dv => (dv.metadata?.name === selectedDV ? data! : dv)));
+              setDvList(prev => prev.map(dv => (resourceName(dv) === selectedDV ? data! : dv)));
             }
           }
           break;
@@ -265,7 +278,7 @@ export default function YAMLEditorTab({
         : resourceKind === 'pod'
         ? podName
         : resourceKind === 'vmi'
-        ? vmiData?.metadata?.name || vmName
+        ? resourceName(vmiData || {}) || vmName
         : vmItem?.getName() || vmName;
     a.download = `${resName}-${resourceKind}.yaml`;
     a.click();
@@ -325,8 +338,8 @@ export default function YAMLEditorTab({
             sx={{ minWidth: 200 }}
           >
             {dvList.map(dv => (
-              <MenuItem key={dv.metadata?.name} value={dv.metadata?.name}>
-                {dv.metadata?.name}
+              <MenuItem key={resourceName(dv)} value={resourceName(dv)}>
+                {resourceName(dv)}
               </MenuItem>
             ))}
           </Select>
@@ -406,7 +419,9 @@ export default function YAMLEditorTab({
           {resourceKind === 'vmi' && 'VMI is a runtime resource — switch to VM to edit.'}
           {resourceKind === 'pod' && 'Pod is managed by KubeVirt — view only.'}
           {resourceKind === 'dv' &&
-            `DataVolume: ${selectedDV || dvList[0]?.metadata?.name || ''} — view only.`}
+            `DataVolume: ${
+              selectedDV || (dvList[0] ? resourceName(dvList[0]) : '') || ''
+            } — view only.`}
         </Typography>
       )}
 

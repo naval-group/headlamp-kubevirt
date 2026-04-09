@@ -3,12 +3,13 @@ import { ApiProxy } from '@kinvolk/headlamp-plugin/lib';
 import { SimpleTable } from '@kinvolk/headlamp-plugin/lib/components/common';
 import { Alert, Box, Card, CardContent, Chip, LinearProgress, Typography } from '@mui/material';
 import React, { useEffect, useState } from 'react';
+import { VMIData, VMIStatusNetworkInterface } from '../../types';
 import VirtualMachine from '../VirtualMachines/VirtualMachine';
 
 interface GuestInfoTabProps {
   vmName: string;
   namespace: string;
-  vmiData?: Record<string, any> | null;
+  vmiData?: VMIData | null;
   vmItem?: VirtualMachine | null;
 }
 
@@ -273,15 +274,15 @@ export default function GuestInfoTab({ vmName, namespace, vmiData }: GuestInfoTa
               columns={[
                 {
                   label: 'Name',
-                  getter: (iface: Record<string, any>) => iface.name || '-',
+                  getter: (iface: VMIStatusNetworkInterface) => iface.name || '-',
                 },
                 {
                   label: 'Interface',
-                  getter: (iface: Record<string, any>) => iface.interfaceName || '-',
+                  getter: (iface: VMIStatusNetworkInterface) => iface.interfaceName || '-',
                 },
                 {
                   label: 'MAC',
-                  getter: (iface: Record<string, any>) => (
+                  getter: (iface: VMIStatusNetworkInterface) => (
                     <Typography variant="body2" fontFamily="monospace" fontSize="0.85rem">
                       {iface.mac || '-'}
                     </Typography>
@@ -289,7 +290,7 @@ export default function GuestInfoTab({ vmName, namespace, vmiData }: GuestInfoTa
                 },
                 {
                   label: 'IP Addresses',
-                  getter: (iface: Record<string, any>) => {
+                  getter: (iface: VMIStatusNetworkInterface) => {
                     const ips = (iface.ipAddresses || []).filter(
                       (ip: string) => !ip.startsWith('fe80::')
                     );

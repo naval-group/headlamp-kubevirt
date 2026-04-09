@@ -5,6 +5,7 @@ import { Box, Chip, Tab, Tabs, Typography } from '@mui/material';
 import React, { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import usePolling from '../../hooks/usePolling';
+import { VMIData } from '../../types';
 import { getVMIPhaseColor } from '../../utils/statusColors';
 import VirtualMachine from '../VirtualMachines/VirtualMachine';
 import ConsoleLogTab from './ConsoleLogTab';
@@ -17,7 +18,7 @@ export default function VMDoctor() {
   const { namespace, name } = useParams<{ namespace: string; name: string }>();
   const [activeTab, setActiveTab] = useState(0);
   const [vmItem] = VirtualMachine.useGet(name, namespace);
-  const [vmiData, setVmiData] = useState<Record<string, any> | null>(null);
+  const [vmiData, setVmiData] = useState<VMIData | null>(null);
   const [podName, setPodName] = useState<string>('');
 
   // Poll VMI data

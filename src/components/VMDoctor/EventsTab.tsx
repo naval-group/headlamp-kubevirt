@@ -67,7 +67,7 @@ export default function EventsTab({ vmName, namespace }: EventsTabProps) {
               namespace
             )}/pods?labelSelector=${encodeURIComponent(`vm.kubevirt.io/name=${vmName}`)}`
           )
-            .then(async (podResp: any) => {
+            .then(async (podResp: { items?: Array<{ metadata: { name: string } }> }) => {
               const podName = podResp?.items?.[0]?.metadata?.name;
               if (!podName) return { items: [] };
               return ApiProxy.request(

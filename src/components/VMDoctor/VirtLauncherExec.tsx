@@ -106,7 +106,9 @@ export default function VirtLauncherExec({ podName, namespace, hasAgent }: VirtL
   // virsh domain = namespace_vmName — derive VM name from pod name
   const vmNameMatch = podName.match(/^virt-launcher-(.+)-[a-z0-9]+$/);
   const vmName = vmNameMatch ? vmNameMatch[1] : '';
-  const domain = vmName ? `${namespace}_${vmName}` : '';
+  // Validate domain contains only safe characters (alphanumeric, dash, underscore, dot)
+  const rawDomain = vmName ? `${namespace}_${vmName}` : '';
+  const domain = /^[a-zA-Z0-9._-]+$/.test(rawDomain) ? rawDomain : '';
 
   if (!podName) {
     return (

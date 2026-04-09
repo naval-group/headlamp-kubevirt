@@ -48,7 +48,7 @@ interface ChartPanel {
   id: string;
   col: number; // which column (0-based)
   preset: MetricPreset;
-  chartData: Array<Record<string, any>>;
+  chartData: Array<Record<string, string | number | null>>;
   seriesKeys: string[];
   seriesCount: number;
   loading: boolean;
@@ -401,11 +401,15 @@ export default function PrometheusQuerier({ vmName, namespace }: PrometheusQueri
           const resultData = resp.data.result;
           if (resultData.length > 0) {
             const timestampSet = new Set<number>();
-            resultData.forEach((r: any) => {
+            type PromResult = {
+              metric: Record<string, string>;
+              values?: Array<[number, string]>;
+            };
+            resultData.forEach((r: PromResult) => {
               (r.values || []).forEach(([ts]: [number, string]) => timestampSet.add(ts));
             });
             const timestamps = Array.from(timestampSet).sort();
-            const keys = resultData.map((r: any) => {
+            const keys = resultData.map((r: PromResult) => {
               const labels = r.metric || {};
               const meaningful = Object.entries(labels)
                 .filter(([k]) => !NOISE_LABELS.has(k))
@@ -417,13 +421,15 @@ export default function PrometheusQuerier({ vmName, namespace }: PrometheusQueri
                 labels.drive || labels.interface || labels.state || labels.__name__ || preset.label
               );
             });
-            const valueMaps = resultData.map((r: any) => {
+            const valueMaps = resultData.map((r: PromResult) => {
               const map = new Map<number, number>();
               (r.values || []).forEach(([ts, v]: [number, string]) => map.set(ts, parseFloat(v)));
               return map;
             });
             const data = timestamps.map(ts => {
-              const point: Record<string, any> = { time: new Date(ts * 1000).toLocaleTimeString() };
+              const point: Record<string, string | number | null> = {
+                time: new Date(ts * 1000).toLocaleTimeString(),
+              };
               keys.forEach((key: string, i: number) => {
                 point[key] = valueMaps[i].get(ts) ?? null;
               });
@@ -446,7 +452,7 @@ export default function PrometheusQuerier({ vmName, namespace }: PrometheusQueri
           loading: false,
           error: 'No data returned',
         };
-      } catch (e: any) {
+      } catch (e: unknown) {
         return {
           chartData: [],
           seriesKeys: [],

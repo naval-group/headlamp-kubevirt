@@ -24,6 +24,7 @@ import { useSnackbar } from 'notistack';
 import { useEffect, useRef, useState } from 'react';
 import { KubeListResponse, VMDisk, VMVolume } from '../../types';
 import { safeError } from '../../utils/sanitize';
+import { findCondition } from '../../utils/statusColors';
 import {
   ACCESS_MODES,
   ClaimPropertySet,
@@ -408,7 +409,7 @@ export default function MigrateVolumeDialog({
   // Pre-flight checks for volume migration
   const conditions: Array<{ type: string; status: string; reason?: string; message?: string }> =
     vm.status?.conditions || [];
-  const liveMigratable = conditions.find(c => c.type === 'LiveMigratable');
+  const liveMigratable = findCondition(conditions, 'LiveMigratable');
   const isLiveMigratable = liveMigratable?.status === 'True';
   const migratableReason = liveMigratable?.reason || '';
   const migratableMessage = liveMigratable?.message || '';

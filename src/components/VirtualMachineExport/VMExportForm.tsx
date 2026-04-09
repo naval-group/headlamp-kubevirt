@@ -36,7 +36,7 @@ const SOURCE_KIND_CONFIG: Record<
     listEndpoint: ns => `/apis/kubevirt.io/v1/namespaces/${ns}/virtualmachines`,
   },
   VirtualMachineSnapshot: {
-    apiGroup: 'snapshot.kubevirt.io/v1beta1',
+    apiGroup: 'snapshot.kubevirt.io',
     label: 'VM Snapshot',
     listEndpoint: ns =>
       `/apis/snapshot.kubevirt.io/v1beta1/namespaces/${ns}/virtualmachinesnapshots`,

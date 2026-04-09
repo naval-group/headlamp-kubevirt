@@ -22,7 +22,7 @@ export default function useVMActions(
   const { enqueueSnackbar } = useSnackbar();
 
   const exec = useCallback(
-    async (action: () => Promise<any>, successMsg: string, context: string) => {
+    async (action: () => Promise<void>, successMsg: string, context: string) => {
       try {
         await action();
         enqueueSnackbar(successMsg, { variant: 'success' });

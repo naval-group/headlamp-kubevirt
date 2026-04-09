@@ -10,6 +10,7 @@ import { useState } from 'react';
 import useFilteredList from '../../hooks/useFilteredList';
 import useResourceActions from '../../hooks/useResourceActions';
 import { KubeCondition } from '../../types';
+import { findCondition } from '../../utils/statusColors';
 import BulkDeleteToolbar from '../common/BulkDeleteToolbar';
 import CreateButtonWithMode from '../common/CreateButtonWithMode';
 import CreateResourceDialog from '../common/CreateResourceDialog';
@@ -218,11 +219,9 @@ export default function DataSourceList() {
               id: 'status',
               header: 'Status',
               accessorFn: (ds: InstanceType<typeof DataSource>) => {
-                const conditions = ds.status?.conditions || [];
-                const readyCondition = conditions.find((c: KubeCondition) => c.type === 'Ready');
-                const runningCondition = conditions.find(
-                  (c: KubeCondition) => c.type === 'Running'
-                );
+                const conditions = ds.status?.conditions;
+                const readyCondition = findCondition<KubeCondition>(conditions, 'Ready');
+                const runningCondition = findCondition<KubeCondition>(conditions, 'Running');
 
                 if (readyCondition?.status === 'True') return 'Ready';
                 if (runningCondition?.status === 'True') return 'Running';
@@ -230,11 +229,9 @@ export default function DataSourceList() {
                 return 'Unknown';
               },
               Cell: ({ row }: { row: { original: InstanceType<typeof DataSource> } }) => {
-                const conditions = row.original.status?.conditions || [];
-                const readyCondition = conditions.find((c: KubeCondition) => c.type === 'Ready');
-                const runningCondition = conditions.find(
-                  (c: KubeCondition) => c.type === 'Running'
-                );
+                const conditions = row.original.status?.conditions;
+                const readyCondition = findCondition<KubeCondition>(conditions, 'Ready');
+                const runningCondition = findCondition<KubeCondition>(conditions, 'Running');
 
                 if (readyCondition?.status === 'True') {
                   return <Chip label="Ready" size="small" color="success" />;
