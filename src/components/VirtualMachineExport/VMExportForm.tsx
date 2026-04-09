@@ -14,7 +14,9 @@ import {
 import React, { useState } from 'react';
 import useResourceEditor from '../../hooks/useResourceEditor';
 import { KubeListResponse } from '../../types';
+import { TOOLTIPS } from '../../utils/tooltips';
 import FormSection from '../common/FormSection';
+import InfoTooltip from '../common/InfoTooltip';
 import MandatoryTextField, { mandatoryFieldSx } from '../common/MandatoryTextField';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -224,7 +226,8 @@ export default function VMExportForm({
 
       <FormSection icon="mdi:timer-outline" title="TTL Duration" color="migration" noGrid>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          How long the export should remain available before being automatically cleaned up.
+          How long the export should remain available before being automatically cleaned up.{' '}
+          <InfoTooltip text={TOOLTIPS.exportTtl} />
         </Typography>
 
         <RadioGroup

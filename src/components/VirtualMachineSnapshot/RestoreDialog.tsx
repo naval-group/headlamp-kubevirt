@@ -24,6 +24,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { KubeCondition } from '../../types';
 import { safeError } from '../../utils/sanitize';
 import { findCondition } from '../../utils/statusColors';
+import { TOOLTIPS } from '../../utils/tooltips';
+import InfoTooltip from '../common/InfoTooltip';
 
 interface RestoreDialogProps {
   open: boolean;
@@ -390,7 +392,8 @@ export default function RestoreDialog({
                     label={
                       <Box>
                         <Typography variant="body2">
-                          Restore to the same VM (<strong>{vmName}</strong>)
+                          Restore to the same VM (<strong>{vmName}</strong>){' '}
+                          <InfoTooltip text={TOOLTIPS.restoreToSameVM} />
                         </Typography>
                         <Typography variant="caption" color="text.secondary">
                           Overwrites the current VM disks and configuration
@@ -403,7 +406,9 @@ export default function RestoreDialog({
                     control={<Radio size="small" />}
                     label={
                       <Box>
-                        <Typography variant="body2">Restore to a new VM</Typography>
+                        <Typography variant="body2">
+                          Restore to a new VM <InfoTooltip text={TOOLTIPS.restoreToNewVM} />
+                        </Typography>
                         <Typography variant="caption" color="text.secondary">
                           Creates a new VM from the snapshot (same configuration)
                         </Typography>

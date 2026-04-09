@@ -29,6 +29,7 @@ import {
 } from '@mui/material';
 import { useSnackbar } from 'notistack';
 import { useEffect, useRef, useState } from 'react';
+import InfoTooltip from '../components/common/InfoTooltip';
 import ResourceEditorDialog from '../components/ResourceEditorDialog';
 import { INSPECTOR_IMAGE } from '../components/VMDoctor/constants';
 import { LiveUpdateConfig, MigrationConfig, NetworkConfig, PermittedHostDevices } from '../types';
@@ -57,6 +58,7 @@ import {
   isValidK8sName,
   safeError,
 } from '../utils/sanitize';
+import { TOOLTIPS } from '../utils/tooltips';
 import CDI from './CDI';
 import KubeVirt from './KubeVirt';
 import type { MediatedDevice, PciDevice } from './Settings/FeatureGatesSection';
@@ -1491,7 +1493,7 @@ export default function KubeVirtSettings() {
             <Card variant="outlined" sx={{ mb: 2 }}>
               <CardContent>
                 <Typography variant="body1" fontWeight={500} mb={1}>
-                  Memory Overcommit
+                  Memory Overcommit <InfoTooltip text={TOOLTIPS.memoryOvercommit} />
                 </Typography>
                 <Typography variant="body2" color="text.secondary" mb={2}>
                   Percentage of memory to allocate beyond physical capacity (100% = no overcommit)
@@ -1531,7 +1533,7 @@ export default function KubeVirtSettings() {
             <Card variant="outlined" sx={{ mb: 2 }}>
               <CardContent>
                 <Typography variant="body1" fontWeight={500} mb={1}>
-                  Eviction Strategy
+                  Eviction Strategy <InfoTooltip text={TOOLTIPS.evictionStrategy} />
                 </Typography>
                 <Typography variant="body2" color="text.secondary" mb={2}>
                   Behavior when a node needs to be drained

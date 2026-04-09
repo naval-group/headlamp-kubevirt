@@ -37,8 +37,10 @@ import {
 import { useSnackbar } from 'notistack';
 import React, { useState } from 'react';
 import { DVTStorageSpec } from '../../types';
+import { TOOLTIPS } from '../../utils/tooltips';
 import DataSource from '../BootableVolumes/DataSource';
 import CopyCodeBlock from '../common/CopyCodeBlock';
+import InfoTooltip from '../common/InfoTooltip';
 import MandatoryTextField, { mandatoryFieldSx } from '../common/MandatoryTextField';
 import CatalogButton from '../DataImportCrons/CatalogButton';
 import ImageCatalogPicker, { CatalogSelection } from '../DataImportCrons/ImageCatalogPicker';
@@ -2819,7 +2821,15 @@ export default function VMFormFull({
               value={resourceMode}
               onChange={e => handleResourceModeChange(e.target.value as 'instanceType' | 'custom')}
             >
-              <FormControlLabel value="instanceType" control={<Radio />} label="Instance Type" />
+              <FormControlLabel
+                value="instanceType"
+                control={<Radio />}
+                label={
+                  <>
+                    Instance Type <InfoTooltip text={TOOLTIPS.instanceType} />
+                  </>
+                }
+              />
               <FormControlLabel value="custom" control={<Radio />} label="Custom" />
             </RadioGroup>
           </FormControl>
@@ -3794,7 +3804,7 @@ export default function VMFormFull({
                         color="text.secondary"
                         sx={{ mb: 0.5, display: 'block' }}
                       >
-                        Storage Class (optional)
+                        Storage Class (optional) <InfoTooltip text={TOOLTIPS.storageClass} />
                       </Typography>
                       <Autocomplete
                         fullWidth
@@ -3820,7 +3830,7 @@ export default function VMFormFull({
                         color="text.secondary"
                         sx={{ mb: 0.5, display: 'block' }}
                       >
-                        Access Mode
+                        Access Mode <InfoTooltip text={TOOLTIPS.accessModeRWO} />
                       </Typography>
                       <FormControl fullWidth size="small">
                         <Select
@@ -3848,7 +3858,7 @@ export default function VMFormFull({
                         color="text.secondary"
                         sx={{ mb: 0.5, display: 'block' }}
                       >
-                        Volume Mode
+                        Volume Mode <InfoTooltip text={TOOLTIPS.volumeModeFilesystem} />
                       </Typography>
                       <FormControl fullWidth size="small">
                         <Select
@@ -3876,7 +3886,12 @@ export default function VMFormFull({
                             }
                           />
                         }
-                        label="Thick Provisioning (Preallocation)"
+                        label={
+                          <>
+                            Thick Provisioning (Preallocation){' '}
+                            <InfoTooltip text={TOOLTIPS.preallocation} />
+                          </>
+                        }
                       />
                     </Grid>
                   </>
@@ -4475,7 +4490,11 @@ export default function VMFormFull({
                 onChange={e => handleEvictionStrategyChange(e.target.checked)}
               />
             }
-            label="Enable Live Migration on eviction"
+            label={
+              <>
+                Enable Live Migration on eviction <InfoTooltip text={TOOLTIPS.evictionStrategy} />
+              </>
+            }
             sx={{ mb: 2 }}
           />
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', ml: 4 }}>
@@ -4499,7 +4518,9 @@ export default function VMFormFull({
           {!editMode && (
             <>
               <FormControl component="fieldset" sx={{ mb: 3 }}>
-                <FormLabel component="legend">Start VM after creation</FormLabel>
+                <FormLabel component="legend">
+                  Start VM after creation <InfoTooltip text={TOOLTIPS.runStrategyAlways} />
+                </FormLabel>
                 <RadioGroup
                   row
                   value={runStrategy}
@@ -4560,7 +4581,11 @@ export default function VMFormFull({
                       onChange={e => handleEfiPersistentChange(e.target.checked)}
                     />
                   }
-                  label="Persist UEFI variables"
+                  label={
+                    <>
+                      Persist UEFI variables <InfoTooltip text={TOOLTIPS.persistUefiVars} />
+                    </>
+                  }
                 />
                 <Typography
                   variant="caption"
@@ -4674,12 +4699,21 @@ export default function VMFormFull({
                 <FormControlLabel
                   value="cloudInit"
                   control={<Radio />}
-                  label="Cloud-Init (CloudInitNoCloud)"
+                  label={
+                    <>
+                      Cloud-Init (CloudInitNoCloud) <InfoTooltip text={TOOLTIPS.cloudInitNoCloud} />
+                    </>
+                  }
                 />
                 <FormControlLabel
                   value="ignition"
                   control={<Radio />}
-                  label="Ignition (CloudInitConfigDrive)"
+                  label={
+                    <>
+                      Ignition (CloudInitConfigDrive){' '}
+                      <InfoTooltip text={TOOLTIPS.cloudInitConfigDrive} />
+                    </>
+                  }
                 />
               </RadioGroup>
             </FormControl>
@@ -5231,7 +5265,11 @@ export default function VMFormFull({
                       }
                     />
                   }
-                  label="Memory balloon"
+                  label={
+                    <>
+                      Memory balloon <InfoTooltip text={TOOLTIPS.memoryBalloon} />
+                    </>
+                  }
                 />
               </Box>
               <Box sx={{ minWidth: 220 }}>
@@ -5244,7 +5282,11 @@ export default function VMFormFull({
                       }
                     />
                   }
-                  label="Pod network"
+                  label={
+                    <>
+                      Pod network <InfoTooltip text={TOOLTIPS.networkPod} />
+                    </>
+                  }
                 />
               </Box>
               <Box sx={{ minWidth: 220 }}>
@@ -5255,7 +5297,11 @@ export default function VMFormFull({
                       onChange={e => handleAutoAttachChange('autoattachVSOCK', e.target.checked)}
                     />
                   }
-                  label="VSOCK"
+                  label={
+                    <>
+                      VSOCK <InfoTooltip text={TOOLTIPS.vsock} />
+                    </>
+                  }
                 />
               </Box>
               <Box sx={{ minWidth: 220 }}>
@@ -5268,7 +5314,11 @@ export default function VMFormFull({
                       }
                     />
                   }
-                  label="Input device"
+                  label={
+                    <>
+                      Input device <InfoTooltip text={TOOLTIPS.inputDevice} />
+                    </>
+                  }
                 />
               </Box>
             </Box>

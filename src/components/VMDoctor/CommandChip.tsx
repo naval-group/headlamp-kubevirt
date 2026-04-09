@@ -1,10 +1,28 @@
+import './command-tooltip.css';
 import { Icon } from '@iconify/react';
-import { Box, IconButton, Tooltip, Typography } from '@mui/material';
+import {
+  Box,
+  IconButton,
+  styled,
+  Tooltip,
+  tooltipClasses,
+  TooltipProps,
+  Typography,
+} from '@mui/material';
 import React, { useState } from 'react';
+
+const CommandTooltip = styled(({ className, ...props }: TooltipProps) => (
+  <Tooltip {...props} placement="left" arrow classes={{ popper: className }} />
+))(() => ({
+  [`& .${tooltipClasses.tooltip}`]: {
+    className: 'command-tooltip',
+  },
+}));
 
 export interface CommandDef {
   label: string;
   command: string;
+  description?: string;
   requiresAgent?: boolean;
 }
 
@@ -24,7 +42,7 @@ export default function CommandChip({ cmd, onExec, disabled = false }: CommandCh
     setTimeout(() => setCopied(false), 1500);
   };
 
-  return (
+  const chip = (
     <Box
       sx={{
         display: 'flex',
@@ -74,4 +92,10 @@ export default function CommandChip({ cmd, onExec, disabled = false }: CommandCh
       )}
     </Box>
   );
+
+  if (cmd.description) {
+    return <CommandTooltip title={cmd.description}>{chip}</CommandTooltip>;
+  }
+
+  return chip;
 }

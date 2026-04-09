@@ -16,6 +16,8 @@ import {
 import { useSnackbar } from 'notistack';
 import { useEffect, useMemo, useState } from 'react';
 import { isValidK8sName, safeError } from '../../utils/sanitize';
+import { TOOLTIPS } from '../../utils/tooltips';
+import InfoTooltip from '../common/InfoTooltip';
 
 interface CreateSnapshotDialogProps {
   open: boolean;
@@ -151,7 +153,11 @@ export default function CreateSnapshotDialog({
             </Select>
           </FormControl>
           <TextField
-            label="Failure Deadline"
+            label={
+              <>
+                Failure Deadline <InfoTooltip text={TOOLTIPS.snapshotFailureDeadline} />
+              </>
+            }
             value={failureDeadline}
             onChange={e => setFailureDeadline(e.target.value)}
             fullWidth

@@ -24,6 +24,7 @@ import { getGuestfsSettings } from '../../utils/pluginSettings';
 import { safeError } from '../../utils/sanitize';
 import { humanSize } from '../../utils/size';
 import { findCondition, getInspectorStatusColor } from '../../utils/statusColors';
+import ConfirmDialog from '../common/ConfirmDialog';
 import VirtualMachineInstance from '../VirtualMachineInstance/VirtualMachineInstance';
 import VirtualMachine from '../VirtualMachines/VirtualMachine';
 import { TerminalPanel, TerminalPanelHandle } from '../VMConsole/VMConsole';
@@ -74,17 +75,31 @@ function getInspectorCommands(
       category: 'Discover',
       hint: 'Identify partitions, then set root partition above',
       commands: [
-        { label: 'All devices', command: 'lsblk' },
+        {
+          label: 'All devices',
+          command: 'lsblk',
+          description: 'List all block devices and partitions visible to the inspector pod',
+        },
         ...attachedDisks.map(d => ({
           label: `Partitions (${shortName(d.pvcName)})`,
           command: `fdisk -l /dev/${d.dev}`,
+          description: 'Partition table: sizes, types, and sector layout for this disk',
         })),
         ...attachedDisks.map(d => ({
           label: `Block IDs (${shortName(d.pvcName)})`,
           command: `blkid /dev/${d.dev}*`,
+          description: 'Filesystem UUIDs, labels, and types for all partitions on this disk',
         })),
-        { label: 'Partition labels', command: 'ls -la /dev/disk/by-partlabel/ 2>/dev/null' },
-        { label: 'Disk by-id', command: 'ls -la /dev/disk/by-id/' },
+        {
+          label: 'Partition labels',
+          command: 'ls -la /dev/disk/by-partlabel/ 2>/dev/null',
+          description: 'GPT partition labels — useful for identifying partitions by name',
+        },
+        {
+          label: 'Disk by-id',
+          command: 'ls -la /dev/disk/by-id/',
+          description: 'Persistent device identifiers — stable names that survive reboots',
+        },
       ],
     },
     {
@@ -94,46 +109,105 @@ function getInspectorCommands(
         {
           label: 'Mount (RO)',
           command: `mount -o ro ${p} /mnt/disk && echo "Mounted ${p} at /mnt/disk"`,
+          description:
+            'Mount the selected partition read-only at /mnt/disk — safe, no changes to data',
         },
         {
           label: 'Mount (RW)',
           command: `mount ${p} /mnt/disk && echo "Mounted ${p} at /mnt/disk"`,
+          description:
+            'Mount the selected partition read-write at /mnt/disk — allows modifications',
         },
         {
           label: 'List btrfs subvols',
           command: `d=$(mktemp -d); mount -o ro ${p} $d 2>/dev/null && for e in $d/*/; do i=$(stat -c %i "$e" 2>/dev/null); [ "$i" = "256" ] && echo "  subvol: $(basename $e)"; done; umount $d 2>/dev/null; rmdir $d`,
+          description: 'Detect btrfs subvolumes on the partition (Fedora CoreOS, openSUSE)',
         },
         {
           label: 'Mount subvol=root',
           command: `mount -o subvol=root ${p} /mnt/disk && echo "Mounted ${p} subvol=root at /mnt/disk"`,
+          description: "Mount the 'root' btrfs subvolume — needed for Fedora CoreOS and similar",
         },
-        { label: 'Unmount', command: 'umount /mnt/disk' },
-        { label: 'Chroot', command: 'chroot /mnt/disk /bin/sh' },
+        {
+          label: 'Unmount',
+          command: 'umount /mnt/disk',
+          description: 'Unmount /mnt/disk before switching partitions or detaching',
+        },
+        {
+          label: 'Chroot',
+          command: 'chroot /mnt/disk /bin/sh',
+          description: 'Enter the mounted filesystem as root — run commands as if booted from it',
+        },
       ],
     },
     {
       category: 'Browse',
       hint: 'After mounting — standard shell commands',
       commands: [
-        { label: 'List /', command: 'ls -la /mnt/disk/' },
-        { label: 'List /etc', command: 'ls -la /mnt/disk/etc/' },
-        { label: 'Cat passwd', command: 'cat /mnt/disk/etc/passwd' },
-        { label: 'OS Release', command: 'cat /mnt/disk/etc/os-release' },
-        { label: 'Find configs', command: 'find /mnt/disk/etc -name "*.conf" | head -50' },
-        { label: 'Disk usage', command: 'du -sh /mnt/disk/*' },
+        {
+          label: 'List /',
+          command: 'ls -la /mnt/disk/',
+          description: 'Show all top-level directories on the mounted filesystem',
+        },
+        {
+          label: 'List /etc',
+          command: 'ls -la /mnt/disk/etc/',
+          description: 'Show configuration files — useful for checking system settings',
+        },
+        {
+          label: 'Cat passwd',
+          command: 'cat /mnt/disk/etc/passwd',
+          description: 'Show user accounts defined in the guest OS',
+        },
+        {
+          label: 'OS Release',
+          command: 'cat /mnt/disk/etc/os-release',
+          description: 'Show the OS name, version, and variant',
+        },
+        {
+          label: 'Find configs',
+          command: 'find /mnt/disk/etc -name "*.conf" | head -50',
+          description: 'Search for all .conf files in /etc — find configuration files quickly',
+        },
+        {
+          label: 'Disk usage',
+          command: 'du -sh /mnt/disk/*',
+          description: 'Show how much space each top-level directory uses',
+        },
       ],
     },
     {
       category: 'Inspect',
       commands: [
-        { label: 'SSH Keys', command: 'cat /mnt/disk/root/.ssh/authorized_keys' },
-        { label: 'Bash History', command: 'cat /mnt/disk/root/.bash_history' },
-        { label: 'Shadow File', command: 'cat /mnt/disk/etc/shadow' },
-        { label: 'Auth Log', command: 'tail -200 /mnt/disk/var/log/auth.log' },
-        { label: 'Crontabs', command: 'ls -laR /mnt/disk/var/spool/cron/' },
+        {
+          label: 'SSH Keys',
+          command: 'cat /mnt/disk/root/.ssh/authorized_keys',
+          description: 'Show authorized SSH public keys for root — verify access configuration',
+        },
+        {
+          label: 'Bash History',
+          command: 'cat /mnt/disk/root/.bash_history',
+          description: "Show root's command history — useful for debugging and auditing",
+        },
+        {
+          label: 'Shadow File',
+          command: 'cat /mnt/disk/etc/shadow',
+          description: 'Show password hashes — verify accounts have passwords set (or locked)',
+        },
+        {
+          label: 'Auth Log',
+          command: 'tail -200 /mnt/disk/var/log/auth.log',
+          description: 'Recent authentication events: logins, failures, sudo usage',
+        },
+        {
+          label: 'Crontabs',
+          command: 'ls -laR /mnt/disk/var/spool/cron/',
+          description: 'Scheduled tasks — check for unexpected or malicious cron jobs',
+        },
         {
           label: 'Last logins',
           command: 'last -f /mnt/disk/var/log/wtmp 2>/dev/null || echo "No wtmp"',
+          description: 'Login history from wtmp — who logged in, when, and from where',
         },
       ],
     },
@@ -149,6 +223,7 @@ export default function GuestfsTab({ vmName, namespace, vmItem }: GuestfsTabProp
   const [vmiName, setVmiName] = useState<string | null>(null);
   const [vmiStatus, setVmiStatus] = useState<InspectorStatus>('idle');
   const [vmiDetail, setVmiDetail] = useState('');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const [terminalStatus, setTerminalStatus] = useState<'disconnected' | 'connecting' | 'connected'>(
     'disconnected'
@@ -672,10 +747,10 @@ export default function GuestfsTab({ vmName, namespace, vmItem }: GuestfsTabProp
               <Icon icon="mdi:help-circle-outline" width={16} />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Stop & delete VM" arrow>
+          <Tooltip title="Stop & delete inspector VM" arrow>
             <IconButton
               size="small"
-              onClick={deleteInspectorVMI}
+              onClick={() => setShowDeleteConfirm(true)}
               sx={{ p: 0.25, borderRadius: 0.5, color: 'error.main' }}
             >
               <Icon icon="mdi:close" width={16} />
@@ -866,6 +941,17 @@ export default function GuestfsTab({ vmName, namespace, vmItem }: GuestfsTabProp
             </Box>
           )}
         </Box>
+        <ConfirmDialog
+          open={showDeleteConfirm}
+          title="Stop Disk Inspector"
+          message="This will stop and delete the inspector VM. Any unsaved changes to mounted filesystems will be lost."
+          confirmLabel="Stop & Delete"
+          onConfirm={() => {
+            setShowDeleteConfirm(false);
+            deleteInspectorVMI();
+          }}
+          onCancel={() => setShowDeleteConfirm(false)}
+        />
       </Box>
     );
   }

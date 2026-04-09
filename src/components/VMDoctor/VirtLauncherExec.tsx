@@ -15,36 +15,78 @@ function getHelpCommands(domain: string): Array<{ category: string; commands: Co
     {
       category: 'VM Status',
       commands: [
-        { label: 'List VMs', command: 'virsh list --all 2>/dev/null' },
-        { label: 'VM Info', command: `virsh dominfo ${domain} 2>/dev/null` },
-        { label: 'VM State', command: `virsh domstate ${domain} --reason 2>/dev/null` },
-        { label: 'vCPU Info', command: `virsh vcpuinfo ${domain} 2>/dev/null` },
+        {
+          label: 'List VMs',
+          command: 'virsh list --all 2>/dev/null',
+          description: 'Show all VMs managed by libvirt on this node, including stopped ones',
+        },
+        {
+          label: 'VM Info',
+          command: `virsh dominfo ${domain} 2>/dev/null`,
+          description: 'General info: UUID, memory, vCPUs, state, autostart, and security model',
+        },
+        {
+          label: 'VM State',
+          command: `virsh domstate ${domain} --reason 2>/dev/null`,
+          description: 'Current state (running, paused, etc.) and the reason for that state',
+        },
+        {
+          label: 'vCPU Info',
+          command: `virsh vcpuinfo ${domain} 2>/dev/null`,
+          description:
+            'Per-vCPU details: which physical CPU it runs on, CPU time used, and pinning',
+        },
       ],
     },
     {
       category: 'Resources',
       commands: [
-        { label: 'Memory Stats', command: `virsh dommemstat ${domain} 2>/dev/null` },
-        { label: 'Block Devices', command: `virsh domblklist ${domain} 2>/dev/null` },
-        { label: 'Block Stats', command: `virsh domblkstat ${domain} 2>/dev/null` },
-        { label: 'Network Interfaces', command: `virsh domiflist ${domain} 2>/dev/null` },
+        {
+          label: 'Memory Stats',
+          command: `virsh dommemstat ${domain} 2>/dev/null`,
+          description: 'Memory usage breakdown: actual, available, swap, balloon, and RSS',
+        },
+        {
+          label: 'Block Devices',
+          command: `virsh domblklist ${domain} 2>/dev/null`,
+          description: 'List all attached disks with their target device names and source paths',
+        },
+        {
+          label: 'Block Stats',
+          command: `virsh domblkstat ${domain} 2>/dev/null`,
+          description: 'I/O statistics: read/write operations, bytes transferred, and errors',
+        },
+        {
+          label: 'Network Interfaces',
+          command: `virsh domiflist ${domain} 2>/dev/null`,
+          description:
+            'List all network interfaces with their type, source, model, and MAC address',
+        },
         {
           label: 'Network Stats',
           command: `virsh domifstat ${domain} $(virsh domiflist ${domain} 2>/dev/null | awk 'NR>2 && NF{print $1; exit}') 2>/dev/null`,
+          description:
+            'Network I/O counters for the first interface: packets, bytes, drops, and errors',
         },
       ],
     },
     {
       category: 'Configuration',
       commands: [
-        { label: 'VM XML', command: `virsh dumpxml ${domain} 2>/dev/null | more` },
+        {
+          label: 'VM XML',
+          command: `virsh dumpxml ${domain} 2>/dev/null | more`,
+          description: "Full libvirt XML definition — the ground truth of this VM's configuration",
+        },
         {
           label: 'QEMU Args',
           command: `virsh qemu-monitor-command ${domain} --hmp 'info version' 2>/dev/null`,
+          description: 'QEMU hypervisor version running this VM',
         },
         {
           label: 'QEMU Threads',
           command: `virsh qemu-monitor-command ${domain} --hmp 'info cpus' 2>/dev/null`,
+          description: 'Thread-to-CPU mapping — shows which host threads handle each vCPU',
         },
       ],
     },
@@ -55,44 +97,63 @@ function getHelpCommands(domain: string): Array<{ category: string; commands: Co
           label: 'Guest Agent Ping',
           command: `virsh qemu-agent-command ${domain} --pretty '{"execute":"guest-ping"}' 2>/dev/null`,
           requiresAgent: true,
+          description: 'Check if the QEMU Guest Agent inside the VM is responding',
         },
         {
           label: 'Guest OS Info',
           command: `virsh qemu-agent-command ${domain} --pretty '{"execute":"guest-get-osinfo"}' 2>/dev/null`,
           requiresAgent: true,
+          description: 'OS name, version, kernel, and architecture as reported by the guest agent',
         },
         {
           label: 'Guest Hostname',
           command: `virsh qemu-agent-command ${domain} --pretty '{"execute":"guest-get-host-name"}' 2>/dev/null`,
           requiresAgent: true,
+          description: 'Hostname as seen from inside the VM',
         },
         {
           label: 'Guest Networks',
           command: `virsh qemu-agent-command ${domain} --pretty '{"execute":"guest-network-get-interfaces"}' 2>/dev/null`,
           requiresAgent: true,
+          description: 'Network interfaces, IPs, and MAC addresses as seen from inside the VM',
         },
         {
           label: 'Guest Filesystems',
           command: `virsh qemu-agent-command ${domain} --pretty '{"execute":"guest-get-fsinfo"}' 2>/dev/null`,
           requiresAgent: true,
+          description: 'Mounted filesystems, disk usage, and mount points inside the VM',
         },
         {
           label: 'Guest Users',
           command: `virsh qemu-agent-command ${domain} --pretty '{"execute":"guest-get-users"}' 2>/dev/null`,
           requiresAgent: true,
+          description: 'Currently logged-in users inside the VM',
         },
       ],
     },
     {
       category: 'System',
       commands: [
-        { label: 'Processes', command: 'ps aux' },
-        { label: 'Disk Usage', command: 'df -h' },
-        { label: 'Memory', command: 'cat /proc/meminfo | head -10' },
+        {
+          label: 'Processes',
+          command: 'ps aux',
+          description: 'All processes running in the virt-launcher pod (QEMU, libvirt, sidecars)',
+        },
+        {
+          label: 'Disk Usage',
+          command: 'df -h',
+          description: 'Filesystem usage inside the virt-launcher pod — check for full disks',
+        },
+        {
+          label: 'Memory',
+          command: 'cat /proc/meminfo | head -10',
+          description: 'Pod-level memory info: total, free, available, and buffers',
+        },
         {
           label: 'Cgroup Limits',
           command:
             'cat /sys/fs/cgroup/memory.max 2>/dev/null || cat /sys/fs/cgroup/memory/memory.limit_in_bytes 2>/dev/null',
+          description: 'Memory limit enforced by Kubernetes on the virt-launcher pod',
         },
       ],
     },

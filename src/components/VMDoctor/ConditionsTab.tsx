@@ -2,7 +2,7 @@ import { Icon } from '@iconify/react';
 import { ApiProxy } from '@kinvolk/headlamp-plugin/lib';
 import { Box, Card, CardContent, Chip, IconButton, Tooltip, Typography } from '@mui/material';
 import { useSnackbar } from 'notistack';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { safeError } from '../../utils/sanitize';
 import ConfirmDialog from '../common/ConfirmDialog';
 import VirtualMachine from '../VirtualMachines/VirtualMachine';
@@ -213,6 +213,14 @@ export default function ConditionsTab({
 
   const [currentPodName, setCurrentPodName] = useState(podName);
 
+  // Memoize attached DV names to avoid re-fetching on every vmItem reference change
+  const attachedDvNames = useMemo(() => {
+    const names = (vmItem?.spec?.template?.spec?.volumes || [])
+      .map((v: { dataVolume?: { name?: string } }) => v.dataVolume?.name)
+      .filter(Boolean) as string[];
+    return JSON.stringify(names.sort());
+  }, [vmItem?.spec?.template?.spec?.volumes]);
+
   useEffect(() => {
     if (!vmName || !namespace) return;
     let cancelled = false;
@@ -261,20 +269,11 @@ export default function ConditionsTab({
           `/apis/cdi.kubevirt.io/v1beta1/namespaces/${namespace}/datavolumes`
         );
         if (!cancelled) {
-          // Find DVs belonging to this VM (by owner reference or naming convention)
+          // Find DVs actually attached to this VM via spec.template.spec.volumes
+          const dvNameSet = new Set(JSON.parse(attachedDvNames) as string[]);
           const vmDvs = (dvList?.items || []).filter(
-            (dv: {
-              metadata?: { name?: string; ownerReferences?: Array<{ name: string; kind: string }> };
-              status?: { conditions?: K8sCondition[] };
-            }) => {
-              const owners = dv.metadata?.ownerReferences || [];
-              const ownedByVM = owners.some(
-                (o: { name: string; kind: string }) =>
-                  o.name === vmName && o.kind === 'VirtualMachine'
-              );
-              const nameMatch = dv.metadata?.name?.startsWith(vmName + '-');
-              return ownedByVM || nameMatch;
-            }
+            (dv: { metadata?: { name?: string }; status?: { conditions?: K8sCondition[] } }) =>
+              dvNameSet.has(dv.metadata?.name || '')
           );
           setDvConditions(
             vmDvs.map(
@@ -304,7 +303,7 @@ export default function ConditionsTab({
       cancelled = true;
       clearInterval(interval);
     };
-  }, [vmName, namespace, podName]);
+  }, [vmName, namespace, podName, attachedDvNames]);
 
   if (loading) {
     return <Typography color="text.secondary">Loading conditions...</Typography>;

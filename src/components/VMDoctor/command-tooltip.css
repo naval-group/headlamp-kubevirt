@@ -1,0 +1,7 @@
+.command-tooltip {
+  max-width: 280px;
+  font-size: 0.8rem;
+  padding: 10px 14px;
+  border-radius: 6px;
+  line-height: 1.5;
+}

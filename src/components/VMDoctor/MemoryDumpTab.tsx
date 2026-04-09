@@ -1,3 +1,4 @@
+import './command-tooltip.css';
 import { Icon } from '@iconify/react';
 import { ApiProxy } from '@kinvolk/headlamp-plugin/lib';
 import {
@@ -136,6 +137,7 @@ function CopyableCommand({ command, label }: { command: string; label?: string }
 interface ForensicCommand {
   label: string;
   command: string;
+  description?: string;
 }
 
 function getForensicCommands(): Array<{ category: string; commands: ForensicCommand[] }> {
@@ -144,54 +146,116 @@ function getForensicCommands(): Array<{ category: string; commands: ForensicComm
     {
       category: 'Info',
       commands: [
-        { label: 'Scan Dump', command: `vol-qemu -f ${dump} --info` },
-        { label: 'List Plugins', command: `vol-qemu -f ${dump} --list` },
-        { label: 'Banners', command: `vol -f ${dump} banners.Banners` },
-        { label: 'VMCoreInfo', command: `vol-qemu -f ${dump} linux.vmcoreinfo.VMCoreInfo` },
+        {
+          label: 'Scan Dump',
+          command: `vol-qemu -f ${dump} --info`,
+          description: 'Identify the OS and kernel version from the memory dump',
+        },
+        {
+          label: 'List Plugins',
+          command: `vol-qemu -f ${dump} --list`,
+          description: 'Show all available Volatility analysis plugins',
+        },
+        {
+          label: 'Banners',
+          command: `vol -f ${dump} banners.Banners`,
+          description: 'Extract OS identification strings from the dump',
+        },
+        {
+          label: 'VMCoreInfo',
+          command: `vol-qemu -f ${dump} linux.vmcoreinfo.VMCoreInfo`,
+          description: 'Kernel crash info — symbol table and debug data offsets',
+        },
       ],
     },
     {
       category: 'Processes',
       commands: [
-        { label: 'Process List', command: `vol-qemu -f ${dump} linux.pslist.PsList` },
-        { label: 'Process Tree', command: `vol-qemu -f ${dump} linux.pstree.PsTree` },
-        { label: 'Process Aux', command: `vol-qemu -f ${dump} linux.psaux.PsAux` },
-        { label: 'Bash History', command: `vol-qemu -f ${dump} linux.bash.Bash` },
+        {
+          label: 'Process List',
+          command: `vol-qemu -f ${dump} linux.pslist.PsList`,
+          description: 'Flat list of all running processes at the time of the dump',
+        },
+        {
+          label: 'Process Tree',
+          command: `vol-qemu -f ${dump} linux.pstree.PsTree`,
+          description: 'Hierarchical parent-child view of all processes',
+        },
+        {
+          label: 'Process Aux',
+          command: `vol-qemu -f ${dump} linux.psaux.PsAux`,
+          description: 'Detailed process info with command-line arguments (like ps aux)',
+        },
+        {
+          label: 'Bash History',
+          command: `vol-qemu -f ${dump} linux.bash.Bash`,
+          description: 'In-memory bash command history — may reveal commands not saved to disk',
+        },
       ],
     },
     {
       category: 'Kernel',
       commands: [
-        { label: 'Kernel Modules', command: `vol-qemu -f ${dump} linux.lsmod.Lsmod` },
-        { label: 'Kernel Log', command: `vol-qemu -f ${dump} linux.kmsg.Kmsg` },
+        {
+          label: 'Kernel Modules',
+          command: `vol-qemu -f ${dump} linux.lsmod.Lsmod`,
+          description: 'List loaded kernel modules — check for unexpected or rootkit modules',
+        },
+        {
+          label: 'Kernel Log',
+          command: `vol-qemu -f ${dump} linux.kmsg.Kmsg`,
+          description: 'Kernel ring buffer messages (dmesg) captured in the dump',
+        },
         {
           label: 'Syscall Check',
           command: `vol-qemu -f ${dump} linux.malware.check_syscall.Check_syscall`,
+          description: 'Detect hooked system calls — a common rootkit technique',
         },
       ],
     },
     {
       category: 'Filesystem',
       commands: [
-        { label: 'Open Files', command: `vol-qemu -f ${dump} linux.lsof.Lsof` },
-        { label: 'Mount Info', command: `vol-qemu -f ${dump} linux.mountinfo.MountInfo` },
+        {
+          label: 'Open Files',
+          command: `vol-qemu -f ${dump} linux.lsof.Lsof`,
+          description: 'All files currently open by any process at dump time',
+        },
+        {
+          label: 'Mount Info',
+          command: `vol-qemu -f ${dump} linux.mountinfo.MountInfo`,
+          description: 'Mounted filesystems and their options at dump time',
+        },
       ],
     },
     {
       category: 'Network',
-      commands: [{ label: 'Socket Stats', command: `vol-qemu -f ${dump} linux.sockstat.Sockstat` }],
+      commands: [
+        {
+          label: 'Socket Stats',
+          command: `vol-qemu -f ${dump} linux.sockstat.Sockstat`,
+          description: 'Active network connections and listening ports at dump time',
+        },
+      ],
     },
     {
       category: 'Security',
       commands: [
-        { label: 'Malfind', command: `vol-qemu -f ${dump} linux.malware.malfind.Malfind` },
+        {
+          label: 'Malfind',
+          command: `vol-qemu -f ${dump} linux.malware.malfind.Malfind`,
+          description:
+            'Detect suspicious memory regions: injected code, shellcode, or unpacked malware',
+        },
         {
           label: 'Hidden Modules',
           command: `vol-qemu -f ${dump} linux.malware.hidden_modules.Hidden_modules`,
+          description: 'Find kernel modules hidden from lsmod — a rootkit detection technique',
         },
         {
           label: 'Module Check',
           command: `vol-qemu -f ${dump} linux.malware.check_modules.Check_modules`,
+          description: 'Verify kernel module integrity against known-good state',
         },
       ],
     },
@@ -201,12 +265,18 @@ function getForensicCommands(): Array<{ category: string; commands: ForensicComm
         {
           label: 'Secrets Scan',
           command: `strings ${dump} | grep -i "password\\|secret\\|token" | less`,
+          description: "Search raw memory for strings containing 'password', 'secret', or 'token'",
         },
         {
           label: 'Shell History',
           command: `strings ${dump} | grep "COMMAND\\|bash\\|ssh" | less`,
+          description: 'Search raw memory for shell commands and SSH-related strings',
         },
-        { label: 'List Dump Files', command: 'ls -lh /dump/' },
+        {
+          label: 'List Dump Files',
+          command: 'ls -lh /dump/',
+          description: 'Show the memory dump files and their sizes',
+        },
       ],
     },
   ];
@@ -228,7 +298,7 @@ function ForensicCommandChip({
     setTimeout(() => setCopied(false), 1500);
   };
 
-  return (
+  const chip = (
     <Box
       sx={{
         display: 'flex',
@@ -265,6 +335,20 @@ function ForensicCommandChip({
       </IconButton>
     </Box>
   );
+
+  if (cmd.description) {
+    return (
+      <Tooltip
+        title={cmd.description}
+        arrow
+        placement="left"
+        classes={{ tooltip: 'command-tooltip' }}
+      >
+        {chip}
+      </Tooltip>
+    );
+  }
+  return chip;
 }
 
 export default function MemoryDumpTab({

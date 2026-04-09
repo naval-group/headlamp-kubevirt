@@ -16,12 +16,14 @@ import {
   Typography,
 } from '@mui/material';
 import React, { useEffect, useRef, useState } from 'react';
+import InfoTooltip from '../../components/common/InfoTooltip';
 import {
   isValidMdevSelector,
   isValidPciSelector,
   isValidResourceName,
   sanitizeFeatureGateSearch,
 } from '../../utils/sanitize';
+import { TOOLTIPS } from '../../utils/tooltips';
 
 // ---------------------------------------------------------------------------
 // Local types
@@ -1004,7 +1006,12 @@ const FeatureGatesSection = React.memo(function FeatureGatesSection(
                                         color="success"
                                       />
                                     }
-                                    label="Allow Auto-Converge"
+                                    label={
+                                      <>
+                                        Allow Auto-Converge{' '}
+                                        <InfoTooltip text={TOOLTIPS.autoConverge} />
+                                      </>
+                                    }
                                   />
                                   <Typography
                                     variant="caption"
@@ -1028,7 +1035,11 @@ const FeatureGatesSection = React.memo(function FeatureGatesSection(
                                         color="success"
                                       />
                                     }
-                                    label="Allow Post-Copy"
+                                    label={
+                                      <>
+                                        Allow Post-Copy <InfoTooltip text={TOOLTIPS.postCopy} />
+                                      </>
+                                    }
                                   />
                                   <Typography
                                     variant="caption"
