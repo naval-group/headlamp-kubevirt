@@ -489,11 +489,7 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
           </>
         )}
         <SimpleStyledTooltip title="Launch More Like This">
-          <IconButton
-            size="small"
-            onClick={() => setShowLaunchLikeThis(true)}
-            sx={{ p: 0.5 }}
-          >
+          <IconButton size="small" onClick={() => setShowLaunchLikeThis(true)} sx={{ p: 0.5 }}>
             <Icon icon="mdi:rocket-launch" width={18} />
           </IconButton>
         </SimpleStyledTooltip>
