@@ -25,6 +25,7 @@ import useFeatureGate from '../../hooks/useFeatureGate';
 import useVMActions from '../../hooks/useVMActions';
 import { VMIData, VMIStatusNetworkInterface, VMIVolumeStatus } from '../../types';
 import { formatDuration } from '../../utils/formatDuration';
+import { buildLaunchTemplate } from '../../utils/launchTemplate';
 import { safeError } from '../../utils/sanitize';
 import { shortAccessModes } from '../../utils/volumeDialog';
 import DataVolume from '../BootableVolumes/DataVolume';
@@ -126,6 +127,7 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDoctor, setShowDoctor] = useState(false);
   const [showCloneDialog, setShowCloneDialog] = useState(false);
+  const [showLaunchLikeThis, setShowLaunchLikeThis] = useState(false);
   const [migrateVolumeName, setMigrateVolumeName] = useState<string | undefined>(undefined);
   const [showMigrateDialog, setShowMigrateDialog] = useState(false);
   const [showResolveDialog, setShowResolveDialog] = useState(false);
@@ -486,6 +488,11 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
             </SimpleStyledTooltip>
           </>
         )}
+        <SimpleStyledTooltip title="Launch More Like This">
+          <IconButton size="small" onClick={() => setShowLaunchLikeThis(true)} sx={{ p: 0.5 }}>
+            <Icon icon="mdi:rocket-launch" width={18} />
+          </IconButton>
+        </SimpleStyledTooltip>
         <SimpleStyledTooltip title="VM Doctor">
           <IconButton size="small" onClick={() => setShowDoctor(true)} sx={{ p: 0.5 }}>
             <Icon icon="mdi:stethoscope" width={18} />
@@ -1716,6 +1723,16 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                 ]
               : []),
             {
+              id: 'launch-like-this',
+              action: (
+                <ActionButton
+                  description="Launch More Like This"
+                  icon="mdi:rocket-launch"
+                  onClick={() => setShowLaunchLikeThis(true)}
+                ></ActionButton>
+              ),
+            },
+            {
               id: 'doctor',
               action: (
                 <ActionButton
@@ -1781,6 +1798,17 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
           resourceClass={VirtualMachine}
           initialResource={vmItem.jsonData}
           editMode
+          formComponent={VMFormWrapper}
+          validate={r => !!(r?.metadata?.name && r?.metadata?.namespace)}
+        />
+      )}
+      {vmItem && showLaunchLikeThis && (
+        <CreateResourceDialog
+          open={showLaunchLikeThis}
+          onClose={() => setShowLaunchLikeThis(false)}
+          title="Launch More Like This"
+          resourceClass={VirtualMachine}
+          initialResource={buildLaunchTemplate(vmItem.jsonData)}
           formComponent={VMFormWrapper}
           validate={r => !!(r?.metadata?.name && r?.metadata?.namespace)}
         />

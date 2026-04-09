@@ -13,6 +13,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import useFeatureGate from '../../hooks/useFeatureGate';
 import useFilteredList from '../../hooks/useFilteredList';
 import useVMActions from '../../hooks/useVMActions';
+import { buildLaunchTemplate } from '../../utils/launchTemplate';
 import { getLabelColumns, LabelColumn } from '../../utils/pluginSettings';
 import { safeError } from '../../utils/sanitize';
 import ConfirmDialog from '../common/ConfirmDialog';
@@ -53,6 +54,7 @@ function VMRowActionMenuItems({
   onDoctor,
   onClone,
   onSnapshot,
+  onLaunchLikeThis,
   onEdit,
   onViewYaml,
   onDelete,
@@ -64,6 +66,7 @@ function VMRowActionMenuItems({
   onDoctor: (vm: VirtualMachine) => void;
   onClone: (vm: VirtualMachine) => void;
   onSnapshot: (vm: VirtualMachine) => void;
+  onLaunchLikeThis: (vm: VirtualMachine) => void;
   onEdit: (vm: VirtualMachine) => void;
   onViewYaml: (vm: VirtualMachine) => void;
   onDelete: (vm: VirtualMachine) => void;
@@ -130,6 +133,18 @@ function VMRowActionMenuItems({
           <ListItemText>Clone</ListItemText>
         </MenuItem>
       )}
+      <MenuItem
+        key="launch-like-this"
+        onClick={() => {
+          closeMenu();
+          onLaunchLikeThis(vm);
+        }}
+      >
+        <ListItemIcon>
+          <Icon icon="mdi:rocket-launch" />
+        </ListItemIcon>
+        <ListItemText>Launch More Like This</ListItemText>
+      </MenuItem>
       <Divider />
       <MenuItem
         key="edit"
@@ -222,6 +237,7 @@ export default function VirtualMachineList() {
   const [viewYamlVM, setViewYamlVM] = useState<VirtualMachine | null>(null);
   const [cloneVM, setCloneVM] = useState<VirtualMachine | null>(null);
   const [snapshotVM, setSnapshotVM] = useState<VirtualMachine | null>(null);
+  const [launchLikeThisVM, setLaunchLikeThisVM] = useState<VirtualMachine | null>(null);
   useEffect(() => {
     setCustomLabelColumns(getLabelColumns());
   }, []);
@@ -502,6 +518,7 @@ export default function VirtualMachineList() {
         onDoctor={openDoctor}
         onClone={setCloneVM}
         onSnapshot={setSnapshotVM}
+        onLaunchLikeThis={setLaunchLikeThisVM}
         onEdit={setEditVM}
         onViewYaml={setViewYamlVM}
         onDelete={setDeleteVM}
@@ -639,6 +656,18 @@ export default function VirtualMachineList() {
         vmName={snapshotVM?.getName() || ''}
         namespace={snapshotVM?.getNamespace() || ''}
       />
+
+      {launchLikeThisVM && (
+        <CreateResourceDialog
+          open={!!launchLikeThisVM}
+          onClose={() => setLaunchLikeThisVM(null)}
+          title="Launch More Like This"
+          resourceClass={VirtualMachine}
+          initialResource={buildLaunchTemplate(launchLikeThisVM.jsonData)}
+          formComponent={VMFormWrapper}
+          validate={r => !!(r?.metadata?.name && r?.metadata?.namespace)}
+        />
+      )}
     </>
   );
 }
