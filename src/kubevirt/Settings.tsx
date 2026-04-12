@@ -8,7 +8,6 @@ import {
   Button,
   Card,
   CardContent,
-  Checkbox,
   Chip,
   Collapse,
   Dialog,
@@ -33,7 +32,7 @@ import { useEffect, useRef, useState } from 'react';
 import InfoTooltip from '../components/common/InfoTooltip';
 import ResourceEditorDialog from '../components/ResourceEditorDialog';
 import { INSPECTOR_IMAGE } from '../components/VMDoctor/constants';
-import { LiveUpdateConfig, MigrationConfig, NetworkConfig, PermittedHostDevices } from '../types';
+import { LiveUpdateConfig, NetworkConfig } from '../types';
 import { updateFeatureGates } from '../utils/featureGates';
 import {
   addLabelColumn,
@@ -57,16 +56,14 @@ import {
   isValidK8sLabelKey,
   isValidK8sLabelValue,
   isValidK8sName,
-  isValidMdevSelector,
-  isValidPciSelector,
-  isValidResourceName,
   safeError,
 } from '../utils/sanitize';
 import { TOOLTIPS } from '../utils/tooltips';
 import CDI from './CDI';
 import KubeVirt from './KubeVirt';
-import type { MediatedDevice, PciDevice } from './Settings/FeatureGatesSection';
 import FeatureGatesSection from './Settings/FeatureGatesSection';
+import HostDevicesCard from './Settings/HostDevicesCard';
+import MigrationConfigCard from './Settings/MigrationConfigCard';
 import SystemHealthSection from './Settings/SystemHealthSection';
 
 // ValidatingAdmissionPolicy for VM Delete Protection
@@ -299,39 +296,6 @@ export default function KubeVirtSettings() {
     permitSlirpInterface: networkConfig.permitSlirpInterface || false,
   });
 
-  // State for migration configuration
-  const migrationConfig = kubeVirt?.getMigrationConfig() || {};
-  const [localMigrationConfig, setLocalMigrationConfig] = useState({
-    parallelMigrationsPerCluster: migrationConfig.parallelMigrationsPerCluster ?? '',
-    parallelOutboundMigrationsPerNode: migrationConfig.parallelOutboundMigrationsPerNode ?? '',
-    bandwidthPerMigration: migrationConfig.bandwidthPerMigration ?? '',
-    network: migrationConfig.network ?? '',
-    progressTimeout: migrationConfig.progressTimeout ?? '',
-    completionTimeoutPerGiB: migrationConfig.completionTimeoutPerGiB ?? '',
-    allowAutoConverge: migrationConfig.allowAutoConverge ?? false,
-    allowPostCopy: migrationConfig.allowPostCopy ?? false,
-  });
-  const [migrationConfigExpanded, setMigrationConfigExpanded] = useState(false);
-
-  // State for permitted host devices configuration
-  const [localPciDevices, setLocalPciDevices] = useState<PciDevice[]>(
-    kubeVirt?.getPciHostDevices() || []
-  );
-  const [localMediatedDevices, setLocalMediatedDevices] = useState<MediatedDevice[]>(
-    kubeVirt?.getMediatedDevices() || []
-  );
-  const [newPciDevice, setNewPciDevice] = useState<PciDevice>({
-    pciVendorSelector: '',
-    resourceName: '',
-    externalResourceProvider: false,
-  });
-  const [newMediatedDevice, setNewMediatedDevice] = useState<MediatedDevice>({
-    mdevNameSelector: '',
-    resourceName: '',
-    externalResourceProvider: false,
-  });
-  const [hostDevicesExpanded, setHostDevicesExpanded] = useState(false);
-
   // Track if initial data has been loaded to update local state
   const initialLoadRef = useRef(false);
   const monitorTimerRef = useRef<ReturnType<typeof setTimeout>>();
@@ -356,21 +320,6 @@ export default function KubeVirtSettings() {
         permitBridgeInterfaceOnPodNetwork: netConfig.permitBridgeInterfaceOnPodNetwork || false,
         permitSlirpInterface: netConfig.permitSlirpInterface || false,
       });
-
-      const migConfig = kubeVirt.getMigrationConfig();
-      setLocalMigrationConfig({
-        parallelMigrationsPerCluster: migConfig.parallelMigrationsPerCluster ?? '',
-        parallelOutboundMigrationsPerNode: migConfig.parallelOutboundMigrationsPerNode ?? '',
-        bandwidthPerMigration: migConfig.bandwidthPerMigration ?? '',
-        network: migConfig.network ?? '',
-        progressTimeout: migConfig.progressTimeout ?? '',
-        completionTimeoutPerGiB: migConfig.completionTimeoutPerGiB ?? '',
-        allowAutoConverge: migConfig.allowAutoConverge ?? false,
-        allowPostCopy: migConfig.allowPostCopy ?? false,
-      });
-
-      setLocalPciDevices(kubeVirt.getPciHostDevices());
-      setLocalMediatedDevices(kubeVirt.getMediatedDevices());
 
       setLocalMonitorNamespace(kubeVirt.getMonitorNamespace());
       setLocalMonitorAccount(kubeVirt.getMonitorAccount());
@@ -490,21 +439,6 @@ export default function KubeVirtSettings() {
     } catch (error: unknown) {
       console.error('Failed to update feature gates', error);
       enqueueSnackbar('Failed to update feature gate.', {
-        variant: 'error',
-      });
-    } finally {
-      setUpdating(false);
-    }
-  };
-
-  const handleMigrationConfigUpdate = async (config: Record<string, unknown>) => {
-    setUpdating(true);
-    try {
-      await kubeVirt.updateMigrationConfig(config as MigrationConfig);
-      enqueueSnackbar('Migration configuration updated successfully', { variant: 'success' });
-    } catch (error: unknown) {
-      console.error('Failed to update migration configuration', error);
-      enqueueSnackbar('Failed to update migration configuration.', {
         variant: 'error',
       });
     } finally {
@@ -672,31 +606,6 @@ export default function KubeVirtSettings() {
     } catch (error: unknown) {
       console.error('Failed to update network configuration', error);
       enqueueSnackbar('Failed to update network configuration.', {
-        variant: 'error',
-      });
-    } finally {
-      setUpdating(false);
-    }
-  };
-
-  const handleHostDevicesConfigUpdate = async (pci: PciDevice[], mediated: MediatedDevice[]) => {
-    setUpdating(true);
-    try {
-      const permittedHostDevices: PermittedHostDevices = {};
-      if (pci.length > 0) {
-        permittedHostDevices.pciHostDevices = pci;
-      }
-      if (mediated.length > 0) {
-        permittedHostDevices.mediatedDevices = mediated;
-      }
-
-      await kubeVirt.updatePermittedHostDevices(
-        Object.keys(permittedHostDevices).length > 0 ? permittedHostDevices : undefined
-      );
-      enqueueSnackbar('Host devices configuration updated successfully', { variant: 'success' });
-    } catch (error: unknown) {
-      console.error('Failed to update host devices configuration', error);
-      enqueueSnackbar('Failed to update host devices configuration.', {
         variant: 'error',
       });
     } finally {
@@ -1498,7 +1407,14 @@ export default function KubeVirtSettings() {
               <CardContent>
                 <Box display="flex" justifyContent="space-between" alignItems="center">
                   <Box flex={1}>
-                    <Typography variant="body1" fontWeight={500}>
+                    <Typography
+                      variant="body1"
+                      fontWeight={500}
+                      display="flex"
+                      alignItems="center"
+                      gap={1}
+                    >
+                      <Icon icon="mdi:package-variant" width={20} style={{ color: '#9c27b0' }} />
                       Common Instance Types Deployment
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
@@ -1544,7 +1460,15 @@ export default function KubeVirtSettings() {
             {/* Memory Overcommit */}
             <Card variant="outlined" sx={{ mb: 2 }}>
               <CardContent>
-                <Typography variant="body1" fontWeight={500} mb={1}>
+                <Typography
+                  variant="body1"
+                  fontWeight={500}
+                  mb={1}
+                  display="flex"
+                  alignItems="center"
+                  gap={1}
+                >
+                  <Icon icon="mdi:memory" width={20} style={{ color: '#ff9800' }} />
                   Memory Overcommit <InfoTooltip text={TOOLTIPS.memoryOvercommit} />
                 </Typography>
                 <Typography variant="body2" color="text.secondary" mb={2}>
@@ -1584,7 +1508,15 @@ export default function KubeVirtSettings() {
             {/* Eviction Strategy */}
             <Card variant="outlined" sx={{ mb: 2 }}>
               <CardContent>
-                <Typography variant="body1" fontWeight={500} mb={1}>
+                <Typography
+                  variant="body1"
+                  fontWeight={500}
+                  mb={1}
+                  display="flex"
+                  alignItems="center"
+                  gap={1}
+                >
+                  <Icon icon="mdi:exit-run" width={20} style={{ color: '#f44336' }} />
                   Eviction Strategy <InfoTooltip text={TOOLTIPS.evictionStrategy} />
                 </Typography>
                 <Typography variant="body2" color="text.secondary" mb={2}>
@@ -1633,7 +1565,7 @@ export default function KubeVirtSettings() {
                   onClick={() => setLiveUpdateConfigExpanded(!liveUpdateConfigExpanded)}
                 >
                   <Icon
-                    icon="mdi:cog"
+                    icon="mdi:cpu-64-bit"
                     width={20}
                     height={20}
                     style={{ color: liveUpdateConfigExpanded ? '#2196f3' : '#9e9e9e' }}
@@ -1725,7 +1657,7 @@ export default function KubeVirtSettings() {
                   onClick={() => setNetworkConfigExpanded(!networkConfigExpanded)}
                 >
                   <Icon
-                    icon="mdi:cog"
+                    icon="mdi:lan"
                     width={20}
                     height={20}
                     style={{ color: networkConfigExpanded ? '#2196f3' : '#9e9e9e' }}
@@ -1831,561 +1763,21 @@ export default function KubeVirtSettings() {
               </CardContent>
             </Card>
 
-            {/* Live Migration Configuration */}
-            <Card variant="outlined" sx={{ mb: 2 }}>
-              <CardContent>
-                <Box
-                  display="flex"
-                  alignItems="center"
-                  gap={1}
-                  mb={2}
-                  sx={{ cursor: 'pointer' }}
-                  onClick={() => setMigrationConfigExpanded(!migrationConfigExpanded)}
-                >
-                  <Icon
-                    icon="mdi:swap-horizontal"
-                    width={20}
-                    height={20}
-                    style={{ color: migrationConfigExpanded ? '#2196f3' : '#9e9e9e' }}
-                  />
-                  <Typography variant="body1" fontWeight={500} flex={1}>
-                    Live Migration Configuration
-                  </Typography>
-                  <Icon
-                    icon={migrationConfigExpanded ? 'mdi:chevron-up' : 'mdi:chevron-down'}
-                    width={20}
-                    height={20}
-                  />
-                </Box>
-                <Typography variant="body2" color="text.secondary" mb={1}>
-                  Configure live migration limits, bandwidth, timeouts, and strategies
-                </Typography>
-                <Collapse in={migrationConfigExpanded}>
-                  <Grid container spacing={2}>
-                    <Grid item xs={12} sm={6}>
-                      <TextField
-                        fullWidth
-                        label="Max Migrations per Cluster"
-                        type="number"
-                        size="small"
-                        placeholder="5"
-                        value={localMigrationConfig.parallelMigrationsPerCluster}
-                        onChange={e =>
-                          setLocalMigrationConfig({
-                            ...localMigrationConfig,
-                            parallelMigrationsPerCluster: e.target.value,
-                          })
-                        }
-                        helperText="Maximum concurrent migrations cluster-wide"
-                      />
-                    </Grid>
-                    <Grid item xs={12} sm={6}>
-                      <TextField
-                        fullWidth
-                        label="Max Migrations per Node"
-                        type="number"
-                        size="small"
-                        placeholder="2"
-                        value={localMigrationConfig.parallelOutboundMigrationsPerNode}
-                        onChange={e =>
-                          setLocalMigrationConfig({
-                            ...localMigrationConfig,
-                            parallelOutboundMigrationsPerNode: e.target.value,
-                          })
-                        }
-                        helperText="Maximum outbound migrations per node"
-                      />
-                    </Grid>
-                    <Grid item xs={12} sm={6}>
-                      <TextField
-                        fullWidth
-                        label="Bandwidth per Migration"
-                        size="small"
-                        placeholder="0 (unlimited)"
-                        value={localMigrationConfig.bandwidthPerMigration}
-                        onChange={e =>
-                          setLocalMigrationConfig({
-                            ...localMigrationConfig,
-                            bandwidthPerMigration: e.target.value,
-                          })
-                        }
-                        helperText="e.g., 64Mi, 1Gi"
-                      />
-                    </Grid>
-                    <Grid item xs={12} sm={6}>
-                      <TextField
-                        fullWidth
-                        label="Migration Network"
-                        size="small"
-                        placeholder="Leave empty for pod network"
-                        value={localMigrationConfig.network}
-                        onChange={e =>
-                          setLocalMigrationConfig({
-                            ...localMigrationConfig,
-                            network: e.target.value,
-                          })
-                        }
-                        helperText="Dedicated network for migration traffic"
-                      />
-                    </Grid>
-                    <Grid item xs={12} sm={6}>
-                      <TextField
-                        fullWidth
-                        label="Progress Timeout"
-                        type="number"
-                        size="small"
-                        placeholder="150"
-                        value={localMigrationConfig.progressTimeout}
-                        onChange={e =>
-                          setLocalMigrationConfig({
-                            ...localMigrationConfig,
-                            progressTimeout: e.target.value,
-                          })
-                        }
-                        helperText="Seconds before migration is cancelled if no progress"
-                      />
-                    </Grid>
-                    <Grid item xs={12} sm={6}>
-                      <TextField
-                        fullWidth
-                        label="Completion Timeout per GiB"
-                        type="number"
-                        size="small"
-                        placeholder="150"
-                        value={localMigrationConfig.completionTimeoutPerGiB}
-                        onChange={e =>
-                          setLocalMigrationConfig({
-                            ...localMigrationConfig,
-                            completionTimeoutPerGiB: e.target.value,
-                          })
-                        }
-                        helperText="Seconds per GiB before migration times out"
-                      />
-                    </Grid>
-                    <Grid item xs={12} sm={6}>
-                      <FormControlLabel
-                        control={
-                          <Switch
-                            checked={!!localMigrationConfig.allowAutoConverge}
-                            onChange={e =>
-                              setLocalMigrationConfig({
-                                ...localMigrationConfig,
-                                allowAutoConverge: e.target.checked,
-                              })
-                            }
-                            color="success"
-                          />
-                        }
-                        label={
-                          <Box display="flex" alignItems="center" gap={0.5}>
-                            Allow Auto-Converge
-                            <InfoTooltip text={TOOLTIPS.autoConverge} />
-                          </Box>
-                        }
-                      />
-                    </Grid>
-                    <Grid item xs={12} sm={6}>
-                      <FormControlLabel
-                        control={
-                          <Switch
-                            checked={!!localMigrationConfig.allowPostCopy}
-                            onChange={e =>
-                              setLocalMigrationConfig({
-                                ...localMigrationConfig,
-                                allowPostCopy: e.target.checked,
-                              })
-                            }
-                            color="success"
-                          />
-                        }
-                        label={
-                          <Box display="flex" alignItems="center" gap={0.5}>
-                            Allow Post-Copy
-                            <InfoTooltip text={TOOLTIPS.postCopy} />
-                          </Box>
-                        }
-                      />
-                    </Grid>
-                    <Grid item xs={12}>
-                      <Box display="flex" justifyContent="flex-end" gap={1}>
-                        <Button
-                          variant="outlined"
-                          size="small"
-                          onClick={() => setMigrationConfigExpanded(false)}
-                        >
-                          Cancel
-                        </Button>
-                        <Button
-                          variant="contained"
-                          size="small"
-                          onClick={() => {
-                            const config: Record<string, unknown> = {};
-                            if (localMigrationConfig.parallelMigrationsPerCluster !== '')
-                              config.parallelMigrationsPerCluster = parseInt(
-                                String(localMigrationConfig.parallelMigrationsPerCluster)
-                              );
-                            if (localMigrationConfig.parallelOutboundMigrationsPerNode !== '')
-                              config.parallelOutboundMigrationsPerNode = parseInt(
-                                String(localMigrationConfig.parallelOutboundMigrationsPerNode)
-                              );
-                            if (localMigrationConfig.bandwidthPerMigration)
-                              config.bandwidthPerMigration =
-                                localMigrationConfig.bandwidthPerMigration;
-                            if (localMigrationConfig.network)
-                              config.network = localMigrationConfig.network;
-                            if (localMigrationConfig.progressTimeout !== '')
-                              config.progressTimeout = parseInt(
-                                String(localMigrationConfig.progressTimeout)
-                              );
-                            if (localMigrationConfig.completionTimeoutPerGiB !== '')
-                              config.completionTimeoutPerGiB = parseInt(
-                                String(localMigrationConfig.completionTimeoutPerGiB)
-                              );
-                            config.allowAutoConverge = localMigrationConfig.allowAutoConverge;
-                            config.allowPostCopy = localMigrationConfig.allowPostCopy;
-                            handleMigrationConfigUpdate(config);
-                          }}
-                          disabled={updating}
-                          sx={{
-                            backgroundColor: '#4caf50',
-                            '&:hover': {
-                              backgroundColor: '#45a049',
-                            },
-                          }}
-                        >
-                          Apply
-                        </Button>
-                      </Box>
-                    </Grid>
-                  </Grid>
-                </Collapse>
-              </CardContent>
-            </Card>
-
-            {/* Permitted Host Devices */}
-            <Card variant="outlined">
-              <CardContent>
-                <Box
-                  display="flex"
-                  alignItems="center"
-                  gap={1}
-                  mb={2}
-                  sx={{ cursor: 'pointer' }}
-                  onClick={() => setHostDevicesExpanded(!hostDevicesExpanded)}
-                >
-                  <Icon
-                    icon="mdi:expansion-card"
-                    width={20}
-                    height={20}
-                    style={{ color: hostDevicesExpanded ? '#2196f3' : '#9e9e9e' }}
-                  />
-                  <Typography variant="body1" fontWeight={500} flex={1}>
-                    Permitted Host Devices
-                  </Typography>
-                  <Icon
-                    icon={hostDevicesExpanded ? 'mdi:chevron-up' : 'mdi:chevron-down'}
-                    width={20}
-                    height={20}
-                  />
-                </Box>
-                <Typography variant="body2" color="text.secondary" mb={1}>
-                  Configure PCI devices and mediated devices (vGPUs) that can be assigned to VMs
-                </Typography>
-                <Collapse in={hostDevicesExpanded}>
-                  {/* PCI Host Devices */}
-                  <Typography variant="subtitle2" fontWeight={600} mt={1} mb={1}>
-                    PCI Host Devices
-                  </Typography>
-                  <Box display="flex" gap={1} mb={1} alignItems="flex-start">
-                    <TextField
-                      size="small"
-                      label="PCI Vendor Selector"
-                      placeholder="e.g., 10de:1eb8"
-                      value={newPciDevice.pciVendorSelector}
-                      onChange={e =>
-                        setNewPciDevice({ ...newPciDevice, pciVendorSelector: e.target.value })
-                      }
-                      error={
-                        !!newPciDevice.pciVendorSelector &&
-                        !isValidPciSelector(newPciDevice.pciVendorSelector)
-                      }
-                      helperText={
-                        newPciDevice.pciVendorSelector &&
-                        !isValidPciSelector(newPciDevice.pciVendorSelector)
-                          ? 'Format: vendor:device (hex)'
-                          : ''
-                      }
-                      sx={{ flex: 1 }}
-                    />
-                    <TextField
-                      size="small"
-                      label="Resource Name"
-                      placeholder="e.g., nvidia.com/GP102GL"
-                      value={newPciDevice.resourceName}
-                      onChange={e =>
-                        setNewPciDevice({ ...newPciDevice, resourceName: e.target.value })
-                      }
-                      error={
-                        !!newPciDevice.resourceName &&
-                        !isValidResourceName(newPciDevice.resourceName)
-                      }
-                      helperText={
-                        newPciDevice.resourceName && !isValidResourceName(newPciDevice.resourceName)
-                          ? 'Format: domain/name'
-                          : ''
-                      }
-                      sx={{ flex: 1 }}
-                    />
-                    <Button
-                      variant="contained"
-                      size="small"
-                      disabled={
-                        !newPciDevice.pciVendorSelector ||
-                        !newPciDevice.resourceName ||
-                        !isValidPciSelector(newPciDevice.pciVendorSelector) ||
-                        !isValidResourceName(newPciDevice.resourceName)
-                      }
-                      onClick={() => {
-                        setLocalPciDevices([...localPciDevices, { ...newPciDevice }]);
-                        setNewPciDevice({
-                          pciVendorSelector: '',
-                          resourceName: '',
-                          externalResourceProvider: false,
-                        });
-                      }}
-                      sx={{ mt: 0.5 }}
-                    >
-                      Add
-                    </Button>
-                  </Box>
-                  <Box display="flex" alignItems="center" mt={-1} mb={1}>
-                    <FormControlLabel
-                      control={
-                        <Checkbox
-                          size="small"
-                          checked={!!newPciDevice.externalResourceProvider}
-                          onChange={e =>
-                            setNewPciDevice({
-                              ...newPciDevice,
-                              externalResourceProvider: e.target.checked,
-                            })
-                          }
-                        />
-                      }
-                      label={
-                        <Box display="flex" alignItems="center" gap={0.5}>
-                          <Typography variant="body2">External Resource Provider</Typography>
-                          <InfoTooltip text={TOOLTIPS.externalResourceProvider} />
-                        </Box>
-                      }
-                    />
-                  </Box>
-                  {localPciDevices.length > 0 && (
-                    <Box mb={2}>
-                      {localPciDevices.map((dev, idx) => (
-                        <Box
-                          key={idx}
-                          display="flex"
-                          alignItems="center"
-                          gap={1}
-                          p={1}
-                          sx={{
-                            backgroundColor: 'rgba(0, 0, 0, 0.02)',
-                            borderRadius: '4px',
-                            mb: 0.5,
-                          }}
-                        >
-                          <Typography variant="body2" sx={{ fontFamily: 'monospace', flex: 1 }}>
-                            {dev.pciVendorSelector}
-                          </Typography>
-                          <Typography variant="body2" sx={{ fontFamily: 'monospace', flex: 1 }}>
-                            {dev.resourceName}
-                          </Typography>
-                          {dev.externalResourceProvider && (
-                            <Chip label="External" size="small" variant="outlined" />
-                          )}
-                          <IconButton
-                            size="small"
-                            color="error"
-                            onClick={() =>
-                              setLocalPciDevices(localPciDevices.filter((_, i) => i !== idx))
-                            }
-                          >
-                            <Icon icon="mdi:delete" width={18} />
-                          </IconButton>
-                        </Box>
-                      ))}
-                    </Box>
-                  )}
-
-                  <Divider sx={{ my: 2 }} />
-
-                  {/* Mediated Devices (vGPU) */}
-                  <Typography variant="subtitle2" fontWeight={600} mb={1}>
-                    Mediated Devices (vGPU)
-                  </Typography>
-                  <Box display="flex" gap={1} mb={1} alignItems="flex-start">
-                    <TextField
-                      size="small"
-                      label="MDEV Name Selector"
-                      placeholder="e.g., GRID T4-2Q"
-                      value={newMediatedDevice.mdevNameSelector}
-                      onChange={e =>
-                        setNewMediatedDevice({
-                          ...newMediatedDevice,
-                          mdevNameSelector: e.target.value,
-                        })
-                      }
-                      error={
-                        !!newMediatedDevice.mdevNameSelector &&
-                        !isValidMdevSelector(newMediatedDevice.mdevNameSelector)
-                      }
-                      helperText={
-                        newMediatedDevice.mdevNameSelector &&
-                        !isValidMdevSelector(newMediatedDevice.mdevNameSelector)
-                          ? 'Invalid MDEV selector'
-                          : ''
-                      }
-                      sx={{ flex: 1 }}
-                    />
-                    <TextField
-                      size="small"
-                      label="Resource Name"
-                      placeholder="e.g., nvidia.com/GRID_T4-2Q"
-                      value={newMediatedDevice.resourceName}
-                      onChange={e =>
-                        setNewMediatedDevice({
-                          ...newMediatedDevice,
-                          resourceName: e.target.value,
-                        })
-                      }
-                      error={
-                        !!newMediatedDevice.resourceName &&
-                        !isValidResourceName(newMediatedDevice.resourceName)
-                      }
-                      helperText={
-                        newMediatedDevice.resourceName &&
-                        !isValidResourceName(newMediatedDevice.resourceName)
-                          ? 'Format: domain/name'
-                          : ''
-                      }
-                      sx={{ flex: 1 }}
-                    />
-                    <Button
-                      variant="contained"
-                      size="small"
-                      disabled={
-                        !newMediatedDevice.mdevNameSelector ||
-                        !newMediatedDevice.resourceName ||
-                        !isValidMdevSelector(newMediatedDevice.mdevNameSelector) ||
-                        !isValidResourceName(newMediatedDevice.resourceName)
-                      }
-                      onClick={() => {
-                        setLocalMediatedDevices([
-                          ...localMediatedDevices,
-                          { ...newMediatedDevice },
-                        ]);
-                        setNewMediatedDevice({
-                          mdevNameSelector: '',
-                          resourceName: '',
-                          externalResourceProvider: false,
-                        });
-                      }}
-                      sx={{ mt: 0.5 }}
-                    >
-                      Add
-                    </Button>
-                  </Box>
-                  <Box display="flex" alignItems="center" mt={-1} mb={1}>
-                    <FormControlLabel
-                      control={
-                        <Checkbox
-                          size="small"
-                          checked={!!newMediatedDevice.externalResourceProvider}
-                          onChange={e =>
-                            setNewMediatedDevice({
-                              ...newMediatedDevice,
-                              externalResourceProvider: e.target.checked,
-                            })
-                          }
-                        />
-                      }
-                      label={
-                        <Box display="flex" alignItems="center" gap={0.5}>
-                          <Typography variant="body2">External Resource Provider</Typography>
-                          <InfoTooltip text={TOOLTIPS.externalResourceProvider} />
-                        </Box>
-                      }
-                    />
-                  </Box>
-                  {localMediatedDevices.length > 0 && (
-                    <Box mb={2}>
-                      {localMediatedDevices.map((dev, idx) => (
-                        <Box
-                          key={idx}
-                          display="flex"
-                          alignItems="center"
-                          gap={1}
-                          p={1}
-                          sx={{
-                            backgroundColor: 'rgba(0, 0, 0, 0.02)',
-                            borderRadius: '4px',
-                            mb: 0.5,
-                          }}
-                        >
-                          <Typography variant="body2" sx={{ fontFamily: 'monospace', flex: 1 }}>
-                            {dev.mdevNameSelector}
-                          </Typography>
-                          <Typography variant="body2" sx={{ fontFamily: 'monospace', flex: 1 }}>
-                            {dev.resourceName}
-                          </Typography>
-                          {dev.externalResourceProvider && (
-                            <Chip label="External" size="small" variant="outlined" />
-                          )}
-                          <IconButton
-                            size="small"
-                            color="error"
-                            onClick={() =>
-                              setLocalMediatedDevices(
-                                localMediatedDevices.filter((_, i) => i !== idx)
-                              )
-                            }
-                          >
-                            <Icon icon="mdi:delete" width={18} />
-                          </IconButton>
-                        </Box>
-                      ))}
-                    </Box>
-                  )}
-
-                  <Box display="flex" justifyContent="flex-end" gap={1} mt={2}>
-                    <Button
-                      variant="outlined"
-                      size="small"
-                      onClick={() => setHostDevicesExpanded(false)}
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      variant="contained"
-                      size="small"
-                      onClick={() =>
-                        handleHostDevicesConfigUpdate(localPciDevices, localMediatedDevices)
-                      }
-                      disabled={updating}
-                      sx={{
-                        backgroundColor: '#4caf50',
-                        '&:hover': {
-                          backgroundColor: '#45a049',
-                        },
-                      }}
-                    >
-                      Apply
-                    </Button>
-                  </Box>
-                </Collapse>
-              </CardContent>
-            </Card>
+            <MigrationConfigCard
+              initialConfig={kubeVirt?.getMigrationConfig() || {}}
+              updating={updating}
+              onUpdate={async config => {
+                await kubeVirt.updateMigrationConfig(config);
+              }}
+            />
+            <HostDevicesCard
+              initialPciDevices={kubeVirt?.getPciHostDevices() || []}
+              initialMediatedDevices={kubeVirt?.getMediatedDevices() || []}
+              updating={updating}
+              onUpdate={async devices => {
+                await kubeVirt.updatePermittedHostDevices(devices);
+              }}
+            />
           </Box>
         </Collapse>
       </Box>

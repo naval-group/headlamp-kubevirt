@@ -16,34 +16,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import { sanitizeFeatureGateSearch } from '../../utils/sanitize';
 
 // ---------------------------------------------------------------------------
-// Local types
-// ---------------------------------------------------------------------------
-
-export interface MigrationConfig {
-  parallelMigrationsPerCluster?: number | string;
-  parallelOutboundMigrationsPerNode?: number | string;
-  bandwidthPerMigration?: string;
-  completionTimeoutPerGiB?: number | string;
-  progressTimeout?: number | string;
-  allowAutoConverge?: boolean;
-  allowPostCopy?: boolean;
-  network?: string;
-  [key: string]: unknown;
-}
-
-export interface PciDevice {
-  pciVendorSelector: string;
-  resourceName: string;
-  externalResourceProvider?: boolean;
-}
-
-export interface MediatedDevice {
-  mdevNameSelector: string;
-  resourceName: string;
-  externalResourceProvider?: boolean;
-}
-
-// ---------------------------------------------------------------------------
 // Feature gate metadata
 // ---------------------------------------------------------------------------
 
@@ -52,7 +24,6 @@ type FeatureGateState = 'GA' | 'Beta' | 'Alpha';
 interface FeatureGateInfo {
   name: string;
   description: string;
-  hasConfig?: boolean;
   // Version history: { version: state } - gates introduced in version with that state
   // Special values: 'removed' for deprecated/removed gates
   versionHistory: Record<string, FeatureGateState | 'removed'>;
@@ -178,7 +149,6 @@ const FEATURE_GATE_CATEGORIES: Record<
       {
         name: 'LiveMigration',
         description: 'Live migration of VMs between nodes',
-        hasConfig: true,
         versionHistory: { '0.3': 'Alpha', '0.42': 'Beta', '1.0': 'GA' },
       },
       {
@@ -256,7 +226,6 @@ const FEATURE_GATE_CATEGORIES: Record<
       {
         name: 'HostDevices',
         description: 'PCI/USB passthrough to VMs',
-        hasConfig: true,
         versionHistory: { '0.31': 'Alpha' },
       },
       {
@@ -498,11 +467,12 @@ const FeatureGatesSection = React.memo(function FeatureGatesSection(
   const [maturityFilter, setMaturityFilter] = useState<Set<FeatureGateState>>(
     new Set(['GA', 'Beta', 'Alpha'])
   );
+  const [hideAlwaysOn, setHideAlwaysOn] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchFocusedRef = useRef(false);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
-  const debouncedSearch = featureGateSearch;
+  const searchQuery = featureGateSearch;
 
   // Cleanup search timer on unmount
   useEffect(() => {
@@ -608,6 +578,22 @@ const FeatureGatesSection = React.memo(function FeatureGatesSection(
                   />
                 );
               })}
+              <Chip
+                label="Always On"
+                size="small"
+                onClick={() => setHideAlwaysOn(prev => !prev)}
+                sx={{
+                  borderColor: '#4caf50',
+                  color: !hideAlwaysOn ? '#fff' : '#4caf50',
+                  backgroundColor: !hideAlwaysOn ? '#4caf50' : 'transparent',
+                  fontWeight: 600,
+                  '&:hover': {
+                    backgroundColor: !hideAlwaysOn ? '#4caf50' : 'rgba(76, 175, 80, 0.12)',
+                    color: !hideAlwaysOn ? '#fff' : '#4caf50',
+                  },
+                }}
+                variant="outlined"
+              />
               {featureGateSearchOpen ? (
                 <TextField
                   size="small"
@@ -669,12 +655,12 @@ const FeatureGatesSection = React.memo(function FeatureGatesSection(
               const kvVersion = kubeVirt?.getVersion() || '1.7.0';
 
               // Filter gates available in this version, apply search, and sort by state
-              const searchLower = debouncedSearch.toLowerCase();
+              const searchLower = searchQuery.toLowerCase();
               const availableGates = gates
                 .filter(gate => isGateAvailableInVersion(gate, kvVersion))
                 .filter(
                   gate =>
-                    !debouncedSearch ||
+                    !searchQuery ||
                     gate.name.toLowerCase().includes(searchLower) ||
                     gate.description.toLowerCase().includes(searchLower)
                 )
@@ -683,6 +669,7 @@ const FeatureGatesSection = React.memo(function FeatureGatesSection(
                   currentState: getGateStateForVersion(gate, kvVersion) as FeatureGateState,
                 }))
                 .filter(gate => maturityFilter.has(gate.currentState))
+                .filter(gate => !hideAlwaysOn || !GA_GATES.has(gate.name))
                 .sort((a, b) => STATE_ORDER[a.currentState] - STATE_ORDER[b.currentState]);
 
               // Skip category if no gates available
@@ -690,7 +677,22 @@ const FeatureGatesSection = React.memo(function FeatureGatesSection(
 
               return (
                 <Box key={category} id={`fg-category-${category}`} mb={3}>
-                  <Box display="flex" alignItems="center" gap={1} mb={2}>
+                  <Box
+                    display="flex"
+                    alignItems="center"
+                    gap={1}
+                    py={1.5}
+                    px={1}
+                    mb={1}
+                    sx={{
+                      position: 'sticky',
+                      top: 0,
+                      zIndex: 5,
+                      bgcolor: 'background.paper',
+                      borderBottom: '1px solid',
+                      borderColor: 'divider',
+                    }}
+                  >
                     <Icon icon={icon} width={24} style={{ color }} />
                     <Typography variant="h6">{category}</Typography>
                   </Box>
@@ -794,9 +796,8 @@ const FeatureGatesSection = React.memo(function FeatureGatesSection(
             {/* Show any custom feature gates that aren't in the known list */}
             {enabledFeatureGates
               .filter(fg => !ALL_KNOWN_GATES.includes(fg))
-              .filter(
-                fg => !debouncedSearch || fg.toLowerCase().includes(debouncedSearch.toLowerCase())
-              ).length > 0 && (
+              .filter(fg => !searchQuery || fg.toLowerCase().includes(searchQuery.toLowerCase()))
+              .length > 0 && (
               <Box mb={3}>
                 <Box display="flex" alignItems="center" gap={1} mb={2}>
                   <Icon icon="mdi:puzzle" width={24} style={{ color: '#9e9e9e' }} />
@@ -805,8 +806,7 @@ const FeatureGatesSection = React.memo(function FeatureGatesSection(
                 {enabledFeatureGates
                   .filter(fg => !ALL_KNOWN_GATES.includes(fg))
                   .filter(
-                    fg =>
-                      !debouncedSearch || fg.toLowerCase().includes(debouncedSearch.toLowerCase())
+                    fg => !searchQuery || fg.toLowerCase().includes(searchQuery.toLowerCase())
                   )
                   .map(customFG => (
                     <Box key={customFG}>

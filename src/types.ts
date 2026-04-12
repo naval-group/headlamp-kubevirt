@@ -258,17 +258,21 @@ export interface NetworkConfig {
   [key: string]: unknown;
 }
 
+export interface PciDevice {
+  pciVendorSelector: string;
+  resourceName: string;
+  externalResourceProvider?: boolean;
+}
+
+export interface MediatedDevice {
+  mdevNameSelector: string;
+  resourceName: string;
+  externalResourceProvider?: boolean;
+}
+
 export interface PermittedHostDevices {
-  pciHostDevices?: Array<{
-    pciVendorSelector: string;
-    resourceName: string;
-    externalResourceProvider?: boolean;
-  }>;
-  mediatedDevices?: Array<{
-    mdevNameSelector: string;
-    resourceName: string;
-    externalResourceProvider?: boolean;
-  }>;
+  pciHostDevices?: PciDevice[];
+  mediatedDevices?: MediatedDevice[];
 }
 
 // ─── Prometheus ─────────────────────────────────────────────────────
