@@ -96,7 +96,12 @@ export default function VMShellTab({ vmItem, active }: VMShellTabProps) {
           flexDirection: 'column',
         }}
       >
-        <VNCPanel item={item} active={active && mode === 'vnc'} onStatusChange={handleVNCStatus} />
+        <VNCPanel
+          item={item}
+          vm={vmItem}
+          active={active && mode === 'vnc'}
+          onStatusChange={handleVNCStatus}
+        />
         <TerminalPanel
           item={item}
           active={active && mode === 'terminal'}

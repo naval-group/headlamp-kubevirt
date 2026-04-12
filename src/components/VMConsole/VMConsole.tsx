@@ -1,5 +1,6 @@
 import '@xterm/xterm/css/xterm.css';
 import { Icon } from '@iconify/react';
+import * as ApiProxy from '@kinvolk/headlamp-plugin/lib/ApiProxy';
 import { StreamArgs, StreamResultsCb } from '@kinvolk/headlamp-plugin/lib/ApiProxy';
 import { Dialog } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
 import { KubeObject } from '@kinvolk/headlamp-plugin/lib/K8s/cluster';
@@ -7,6 +8,7 @@ import type { DialogProps } from '@mui/material';
 import {
   Alert,
   Box,
+  Button,
   Divider,
   IconButton,
   ListItemIcon,
@@ -19,12 +21,13 @@ import {
   Typography,
 } from '@mui/material';
 import DialogContent from '@mui/material/DialogContent';
+// @ts-ignore — noVNC has no TypeScript declarations
+import RFBCreate from '@novnc/novnc/lib/rfb';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal as XTerminal } from '@xterm/xterm';
 import React, { useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import useVMActions from '../../hooks/useVMActions';
-import { RFBPixelFormat } from '../../types';
 import VirtualMachine from '../VirtualMachines/VirtualMachine';
 
 // ── Terminal types ──────────────────────────────────────────────────────
@@ -46,135 +49,6 @@ interface XTerminalConnected {
   reconnectOnEnter: boolean;
 }
 type execReturn = ReturnType<ConsoleObject['exec']>;
-
-// ── VNC keysym mapping ──────────────────────────────────────────────────
-
-// Keyboard mode: 'character' sends the character the browser produces (e.key),
-// 'physical' sends the keysym for the physical key position (e.code) — useful
-// when guest OS has its own keyboard layout configured.
-type KeyboardMode = 'character' | 'physical';
-
-const specialKeys: { [key: string]: number } = {
-  Backspace: 0xff08,
-  Tab: 0xff09,
-  Enter: 0xff0d,
-  Escape: 0xff1b,
-  Delete: 0xffff,
-  Home: 0xff50,
-  End: 0xff57,
-  PageUp: 0xff55,
-  PageDown: 0xff56,
-  ArrowLeft: 0xff51,
-  ArrowUp: 0xff52,
-  ArrowRight: 0xff53,
-  ArrowDown: 0xff54,
-  Shift: 0xffe1,
-  Control: 0xffe3,
-  Alt: 0xffe9,
-  Meta: 0xffe7,
-  F1: 0xffbe,
-  F2: 0xffbf,
-  F3: 0xffc0,
-  F4: 0xffc1,
-  F5: 0xffc2,
-  F6: 0xffc3,
-  F7: 0xffc4,
-  F8: 0xffc5,
-  F9: 0xffc6,
-  F10: 0xffc7,
-  F11: 0xffc8,
-  F12: 0xffc9,
-  Insert: 0xff63,
-  CapsLock: 0xffe5,
-  NumLock: 0xff7f,
-  ScrollLock: 0xff14,
-  Pause: 0xff13,
-  PrintScreen: 0xff61,
-};
-
-// Maps physical key codes (e.code) to US-QWERTY keysyms.
-// This lets users with non-US keyboards send the "correct" physical key
-// when the guest OS handles its own layout.
-const codeToKeysym: { [code: string]: [number, number] } = {
-  // [unshifted, shifted] keysyms
-  Backquote: [0x60, 0x7e], // ` ~
-  Digit1: [0x31, 0x21], // 1 !
-  Digit2: [0x32, 0x40], // 2 @
-  Digit3: [0x33, 0x23], // 3 #
-  Digit4: [0x34, 0x24], // 4 $
-  Digit5: [0x35, 0x25], // 5 %
-  Digit6: [0x36, 0x5e], // 6 ^
-  Digit7: [0x37, 0x26], // 7 &
-  Digit8: [0x38, 0x2a], // 8 *
-  Digit9: [0x39, 0x28], // 9 (
-  Digit0: [0x30, 0x29], // 0 )
-  Minus: [0x2d, 0x5f], // - _
-  Equal: [0x3d, 0x2b], // = +
-  KeyQ: [0x71, 0x51], // q Q
-  KeyW: [0x77, 0x57], // w W
-  KeyE: [0x65, 0x45], // e E
-  KeyR: [0x72, 0x52], // r R
-  KeyT: [0x74, 0x54], // t T
-  KeyY: [0x79, 0x59], // y Y
-  KeyU: [0x75, 0x55], // u U
-  KeyI: [0x69, 0x49], // i I
-  KeyO: [0x6f, 0x4f], // o O
-  KeyP: [0x70, 0x50], // p P
-  BracketLeft: [0x5b, 0x7b], // [ {
-  BracketRight: [0x5d, 0x7d], // ] }
-  Backslash: [0x5c, 0x7c], // \ |
-  KeyA: [0x61, 0x41], // a A
-  KeyS: [0x73, 0x53], // s S
-  KeyD: [0x64, 0x44], // d D
-  KeyF: [0x66, 0x46], // f F
-  KeyG: [0x67, 0x47], // g G
-  KeyH: [0x68, 0x48], // h H
-  KeyJ: [0x6a, 0x4a], // j J
-  KeyK: [0x6b, 0x4b], // k K
-  KeyL: [0x6c, 0x4c], // l L
-  Semicolon: [0x3b, 0x3a], // ; :
-  Quote: [0x27, 0x22], // ' "
-  KeyZ: [0x7a, 0x5a], // z Z
-  KeyX: [0x78, 0x58], // x X
-  KeyC: [0x63, 0x43], // c C
-  KeyV: [0x76, 0x56], // v V
-  KeyB: [0x62, 0x42], // b B
-  KeyN: [0x6e, 0x4e], // n N
-  KeyM: [0x6d, 0x4d], // m M
-  Comma: [0x2c, 0x3c], // , <
-  Period: [0x2e, 0x3e], // . >
-  Slash: [0x2f, 0x3f], // / ?
-  Space: [0x20, 0x20], // space
-  IntlBackslash: [0x3c, 0x3e], // < > (ISO key between left shift and Z)
-};
-
-function getKeysym(e: React.KeyboardEvent, mode: KeyboardMode = 'character'): number | null {
-  // Special keys always use e.key
-  if (e.key in specialKeys) return specialKeys[e.key];
-
-  if (mode === 'physical' && e.code) {
-    // Physical mode: map e.code to US-QWERTY keysym
-    const mapping = codeToKeysym[e.code];
-    if (mapping) {
-      return e.shiftKey ? mapping[1] : mapping[0];
-    }
-    // Fallback to special keys by code
-    if (e.code in specialKeys) return specialKeys[e.code];
-  }
-
-  // Character mode: use the character the browser produces
-  if (e.key === 'Dead') {
-    const deadKeyMap: { [code: string]: number } = {
-      BracketLeft: 0x5e,
-      Quote: 0xb4,
-      Backquote: 0x60,
-    };
-    if (e.code && e.code in deadKeyMap) return deadKeyMap[e.code];
-    return null;
-  }
-  if (e.key.length === 1) return e.key.charCodeAt(0);
-  return null;
-}
 
 // ── Props ───────────────────────────────────────────────────────────────
 
@@ -495,18 +369,6 @@ export const TerminalPanel = React.forwardRef<
 
 // ── Shared helpers ──────────────────────────────────────────────────────
 
-/** Build and send a VNC key event (RFB message type 4). */
-function sendVncKey(socket: WebSocket, keysym: number, down: boolean) {
-  const msg = new Uint8Array(8);
-  msg[0] = 4;
-  msg[1] = down ? 1 : 0;
-  msg[4] = (keysym >> 24) & 0xff;
-  msg[5] = (keysym >> 16) & 0xff;
-  msg[6] = (keysym >> 8) & 0xff;
-  msg[7] = keysym & 0xff;
-  socket.send(msg);
-}
-
 /** Shared disabled section header styling for menus. */
 const menuSectionSx = {
   fontSize: '0.8rem',
@@ -593,6 +455,14 @@ function VNCKeysMenu({ onSend }: { onSend: (keys: number[]) => void }) {
           </ListItemIcon>
           <ListItemText primaryTypographyProps={{ fontSize: '0.8rem' }}>
             Ctrl+Alt+Backspace — Kill X
+          </ListItemText>
+        </MenuItem>
+        <MenuItem onClick={() => send([0xffeb])} sx={menuItemSx}>
+          <ListItemIcon sx={iconSx}>
+            <Icon icon="mdi:microsoft-windows" width={16} color="rgba(255,255,255,0.7)" />
+          </ListItemIcon>
+          <ListItemText primaryTypographyProps={{ fontSize: '0.8rem' }}>
+            Super (Win) key
           </ListItemText>
         </MenuItem>
       </Menu>
@@ -702,346 +572,217 @@ function SerialKeysMenu({
   );
 }
 
-export function VNCPanel({
-  item,
-  active,
-  onStatusChange,
-}: {
-  item: ConsoleObject;
-  active: boolean;
-  onStatusChange: (status: 'connecting' | 'connected' | 'disconnected') => void;
-}) {
+export interface VNCPanelActions {
+  sendCtrlAltDel: () => void;
+  sendKeys: (keys: number[]) => void;
+  screenshot: () => void;
+  toggleFullscreen: () => void;
+}
+
+export const VNCPanel = React.forwardRef<
+  VNCPanelActions,
+  {
+    item: ConsoleObject;
+    vm?: KubeObject;
+    active: boolean;
+    onStatusChange: (status: 'connecting' | 'connected' | 'disconnected') => void;
+  }
+>(function VNCPanel({ item, vm, active, onStatusChange }, ref) {
   const [errorMessage, setErrorMessage] = useState('');
-  const [framebufferSize, setFramebufferSize] = useState<{ width: number; height: number } | null>(
-    null
-  );
   const [localStatus, setLocalStatus] = useState<'connecting' | 'connected' | 'disconnected'>(
     'connecting'
   );
-  const [keyboardMode, setKeyboardMode] = useState<KeyboardMode>('physical');
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [toolbarOpen, setToolbarOpen] = useState(true);
+  const [tabletWarning, setTabletWarning] = useState(false);
+  const [tabletPatching, setTabletPatching] = useState(false);
+  const [tabletAdded, setTabletAdded] = useState(false);
   const vncContainerRef = useRef<HTMLDivElement>(null);
-  const vncRef = useRef<{ cancel: () => void; getSocket: () => WebSocket } | null>(null);
+  const vncDisplayRef = useRef<HTMLDivElement>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rfbRef = useRef<any>(null);
+  const desktopCheckTimerRef = useRef<number | null>(null);
+  const vmRef = useRef(vm);
+  vmRef.current = vm;
 
-  // Listen for fullscreen changes (exit via Esc, etc.)
+  const actions: VNCPanelActions = {
+    sendCtrlAltDel: () => rfbRef.current?.sendCtrlAltDel(),
+    sendKeys: (keys: number[]) => {
+      const rfb = rfbRef.current;
+      if (!rfb) return;
+      keys.forEach(k => rfb.sendKey(k, null, true));
+      [...keys].reverse().forEach(k => rfb.sendKey(k, null, false));
+    },
+    screenshot: () => {
+      const canvas = vncDisplayRef.current?.querySelector('canvas');
+      if (!canvas) return;
+      const link = document.createElement('a');
+      link.download = `vnc-${item.getName()}-${new Date().toISOString().replace(/[:.]/g, '-')}.png`;
+      link.href = (canvas as HTMLCanvasElement).toDataURL('image/png');
+      link.click();
+    },
+    toggleFullscreen: () => {
+      if (document.fullscreenElement) {
+        document.exitFullscreen?.();
+      } else {
+        vncContainerRef.current?.requestFullscreen?.();
+      }
+    },
+  };
+
+  useImperativeHandle(ref, () => actions, [item]);
+
+  // Listen for fullscreen changes + lock system keys (Super/Win) in fullscreen
   useEffect(() => {
     const handler = () => {
-      setIsFullscreen(!!document.fullscreenElement);
+      const fs = !!document.fullscreenElement;
+      setIsFullscreen(fs);
+      if (fs && (navigator as any).keyboard?.lock) {
+        (navigator as any).keyboard.lock(['MetaLeft', 'MetaRight', 'Escape']).catch(() => {});
+      }
     };
     document.addEventListener('fullscreenchange', handler);
     return () => document.removeEventListener('fullscreenchange', handler);
   }, []);
 
   useEffect(() => {
-    if (canvasRef.current && framebufferSize) {
-      canvasRef.current.width = framebufferSize.width;
-      canvasRef.current.height = framebufferSize.height;
-    }
-  }, [framebufferSize, localStatus]);
-
-  useEffect(() => {
     if (!active) {
-      if (vncRef.current) {
-        vncRef.current.cancel();
-        vncRef.current = null;
+      if (rfbRef.current) {
+        rfbRef.current.disconnect();
+        rfbRef.current = null;
       }
       setLocalStatus('connecting');
       setErrorMessage('');
-      setFramebufferSize(null);
       return;
     }
 
-    if (vncRef.current) {
-      vncRef.current.cancel();
-      vncRef.current = null;
+    if (!vncDisplayRef.current) return;
+
+    if (rfbRef.current) {
+      rfbRef.current.disconnect();
+      rfbRef.current = null;
     }
 
     setLocalStatus('connecting');
     onStatusChange('connecting');
     setErrorMessage('');
+    setTabletWarning(false);
 
-    let rfbState = 'ProtocolVersion';
-    const decoder = new TextDecoder('latin1');
-    const encoder = new TextEncoder();
-    let fbWidth = 0;
-    let fbHeight = 0;
-    let pixelFormat: RFBPixelFormat | null = null;
-    let buffer = new Uint8Array(0);
+    // Build WebSocket URL matching Headlamp's ApiProxy.stream() format
+    const ns = item.getNamespace();
+    const name = item.getName();
+    const backendPort = (window as any).headlampBackendPort || 4466;
+    const isDesktop = !!(window as any).desktopApi || window.location.protocol === 'file:';
+    const wsBase = isDesktop
+      ? `ws://localhost:${backendPort}`
+      : window.location.origin.replace(/^http/, 'ws');
+    const cluster = (item as any).cluster || 'default';
+    const vncPath = `/apis/subresources.kubevirt.io/v1/namespaces/${ns}/virtualmachineinstances/${name}/vnc`;
+    const wsUrl = `${wsBase}/clusters/${cluster}${vncPath}`;
 
-    function appendBuffer(newData: Uint8Array) {
-      const combined = new Uint8Array(buffer.length + newData.length);
-      combined.set(buffer);
-      combined.set(newData, buffer.length);
-      buffer = combined;
-    }
+    // Include auth protocols matching what ApiProxy.stream() sends
+    const userId = localStorage.getItem('headlamp-userId') || '';
+    const wsProtocols = [
+      'base64.binary.k8s.io',
+      'plain.kubevirt.io',
+      ...(userId ? [`base64url.headlamp.authorization.k8s.io.${userId}`] : []),
+    ];
 
-    function consumeBuffer(length: number): Uint8Array | null {
-      if (buffer.length < length) return null;
-      const consumed = buffer.slice(0, length);
-      buffer = buffer.slice(length);
-      return consumed;
-    }
+    try {
+      const rfb = new RFBCreate(vncDisplayRef.current, wsUrl, {
+        wsProtocols,
+        scaleViewport: true,
+      });
 
-    let isCancelled = false;
+      rfb.addEventListener('connect', () => {
+        setLocalStatus('connected');
+        onStatusChange('connected');
 
-    (async function () {
-      try {
-        const connection = await item.vnc(
-          (data: ArrayBuffer) => {
-            if (isCancelled) return;
-            const bytes = new Uint8Array(data);
-            appendBuffer(bytes);
-
-            while (true) {
-              if (rfbState === 'ProtocolVersion') {
-                const msg = consumeBuffer(12);
-                if (!msg) break;
-                decoder.decode(msg);
-                const response = 'RFB 003.008\n';
-                const socket = vncRef.current?.getSocket();
-                if (socket && socket.readyState === 1) {
-                  socket.send(encoder.encode(response));
-                  rfbState = 'Security';
+        // Periodically check if this is a desktop VM without tablet
+        if (vmRef.current) {
+          const devices = (vmRef.current as any).jsonData?.spec?.template?.spec?.domain?.devices;
+          const hasTablet = devices?.inputs?.some((i: any) => i.type === 'tablet');
+          const hasAutoAttach = devices?.autoattachInputDevice === true;
+          if (!hasTablet && !hasAutoAttach) {
+            let checkCount = 0;
+            const maxChecks = 10; // check for up to ~5 minutes
+            const checkDesktop = () => {
+              checkCount++;
+              const canvas = vncDisplayRef.current?.querySelector('canvas') as HTMLCanvasElement;
+              if (!canvas) return;
+              const ctx = canvas.getContext('2d');
+              if (!ctx) return;
+              const w = canvas.width;
+              const h = canvas.height;
+              if (w === 0 || h === 0) return;
+              const imgData = ctx.getImageData(0, 0, w, h).data;
+              const step = Math.max(1, Math.floor(Math.min(w, h) / 20));
+              let colorfulPixels = 0;
+              let totalSampled = 0;
+              for (let y = step; y < h - step; y += step) {
+                for (let x = step; x < w - step; x += step) {
+                  const i = (y * w + x) * 4;
+                  const r = imgData[i];
+                  const g = imgData[i + 1];
+                  const b = imgData[i + 2];
+                  const max = Math.max(r, g, b);
+                  const min = Math.min(r, g, b);
+                  const saturation = max === 0 ? 0 : (max - min) / max;
+                  if (saturation > 0.15 && max > 30) colorfulPixels++;
+                  totalSampled++;
                 }
-              } else if (rfbState === 'Security') {
-                if (buffer.length < 1) break;
-                const numTypes = buffer[0];
-                const msg = consumeBuffer(1 + numTypes);
-                if (!msg) break;
-                if (numTypes === 0) {
-                  console.error('VNC server offered zero security types (connection refused).');
-                  setLocalStatus('disconnected');
-                  onStatusChange('disconnected');
-                  setErrorMessage('VNC connection refused by server.');
-                  break;
-                }
-                const types = Array.from(msg.slice(1));
-                // RFB security type 1 = None (no authentication).
-                // KubeVirt's VNC proxy handles auth via Kubernetes RBAC — the user must have
-                // permission to access the VMI subresource. Once past RBAC, the VNC connection
-                // itself uses type 1 (None) since authentication is already established.
-                if (types.includes(1)) {
-                  const socket = vncRef.current?.getSocket();
-                  if (socket && socket.readyState === 1) {
-                    socket.send(new Uint8Array([1]));
-                    rfbState = 'SecurityResult';
-                  }
-                } else {
-                  console.error(
-                    'VNC server does not offer security type None (1). Available types:',
-                    types
-                  );
-                  setLocalStatus('disconnected');
-                  onStatusChange('disconnected');
-                  setErrorMessage(
-                    'VNC connection failed: server requires unsupported authentication.'
-                  );
-                }
-              } else if (rfbState === 'SecurityResult') {
-                const msg = consumeBuffer(4);
-                if (!msg) break;
-                const resultCode = new DataView(msg.buffer, msg.byteOffset).getUint32(0);
-                if (resultCode !== 0) {
-                  setLocalStatus('disconnected');
-                  onStatusChange('disconnected');
-                  setErrorMessage('VNC authentication failed.');
-                  break;
-                }
-                const socket = vncRef.current?.getSocket();
-                if (socket && socket.readyState === 1) {
-                  socket.send(new Uint8Array([1]));
-                  rfbState = 'ServerInit';
-                }
-              } else if (rfbState === 'ServerInit') {
-                if (buffer.length < 24) break;
-                const view = new DataView(buffer.buffer, buffer.byteOffset);
-                const nameLength = view.getUint32(20);
-                const totalLength = 24 + nameLength;
-                const msg = consumeBuffer(totalLength);
-                if (!msg) break;
-
-                const msgView = new DataView(msg.buffer, msg.byteOffset);
-                fbWidth = msgView.getUint16(0);
-                fbHeight = msgView.getUint16(2);
-
-                pixelFormat = {
-                  bitsPerPixel: msgView.getUint8(4),
-                  depth: msgView.getUint8(5),
-                  bigEndian: msgView.getUint8(6) !== 0,
-                  trueColor: msgView.getUint8(7) !== 0,
-                  redMax: msgView.getUint16(8),
-                  greenMax: msgView.getUint16(10),
-                  blueMax: msgView.getUint16(12),
-                  redShift: msgView.getUint8(14),
-                  greenShift: msgView.getUint8(15),
-                  blueShift: msgView.getUint8(16),
-                };
-
-                setFramebufferSize({ width: fbWidth, height: fbHeight });
-                setLocalStatus('connected');
-                onStatusChange('connected');
-                rfbState = 'Normal';
-
-                const socket = vncRef.current?.getSocket();
-                if (socket && socket.readyState === 1) {
-                  // Advertise: Raw (0) + DesktopSize pseudo-encoding (-223)
-                  const encodingsMsg = new Uint8Array(12);
-                  encodingsMsg[0] = 2; // SetEncodings
-                  encodingsMsg[1] = 0;
-                  encodingsMsg[2] = 0;
-                  encodingsMsg[3] = 2; // 2 encodings
-                  // Raw encoding (0)
-                  encodingsMsg[4] = 0;
-                  encodingsMsg[5] = 0;
-                  encodingsMsg[6] = 0;
-                  encodingsMsg[7] = 0;
-                  // DesktopSize pseudo-encoding (-223 = 0xFFFFFF21)
-                  encodingsMsg[8] = 0xff;
-                  encodingsMsg[9] = 0xff;
-                  encodingsMsg[10] = 0xff;
-                  encodingsMsg[11] = 0x21;
-                  socket.send(encodingsMsg);
-
-                  const updateMsg = new Uint8Array(10);
-                  updateMsg[0] = 3;
-                  updateMsg[1] = 0;
-                  updateMsg[2] = 0;
-                  updateMsg[3] = 0;
-                  updateMsg[4] = 0;
-                  updateMsg[5] = 0;
-                  updateMsg[6] = (fbWidth >> 8) & 0xff;
-                  updateMsg[7] = fbWidth & 0xff;
-                  updateMsg[8] = (fbHeight >> 8) & 0xff;
-                  updateMsg[9] = fbHeight & 0xff;
-                  socket.send(updateMsg);
-                }
-              } else if (rfbState === 'Normal') {
-                if (!pixelFormat) break;
-                if (buffer.length < 4) break;
-                if (buffer[0] === 0) {
-                  const view = new DataView(buffer.buffer, buffer.byteOffset);
-                  const numRects = view.getUint16(2);
-                  let requiredSize = 4;
-                  let offset = 4;
-
-                  for (let i = 0; i < numRects; i++) {
-                    if (buffer.length < offset + 12) return;
-                    const w = view.getUint16(offset + 4);
-                    const h = view.getUint16(offset + 6);
-                    const encoding = view.getInt32(offset + 8);
-                    requiredSize = offset + 12;
-                    if (encoding === 0) {
-                      // Raw encoding: has pixel data
-                      const bytesPerPixel = pixelFormat.bitsPerPixel / 8;
-                      requiredSize += w * h * bytesPerPixel;
-                    }
-                    // Pseudo-encodings (negative values like -223) have no pixel data
-                    offset = requiredSize;
-                  }
-
-                  if (buffer.length < requiredSize) break;
-
-                  const msg = consumeBuffer(requiredSize);
-                  if (!msg) break;
-
-                  const msgView = new DataView(msg.buffer, msg.byteOffset);
-                  offset = 4;
-
-                  for (let i = 0; i < numRects; i++) {
-                    const x = msgView.getUint16(offset);
-                    const y = msgView.getUint16(offset + 2);
-                    const w = msgView.getUint16(offset + 4);
-                    const h = msgView.getUint16(offset + 6);
-                    const encoding = msgView.getInt32(offset + 8);
-                    offset += 12;
-
-                    if (encoding === -223) {
-                      // DesktopSize pseudo-encoding: w,h = new framebuffer size
-                      fbWidth = w;
-                      fbHeight = h;
-                      setFramebufferSize({ width: w, height: h });
-                      // No pixel data for this rect
-                    } else if (encoding === 0 && canvasRef.current) {
-                      const bytesPerPixel = pixelFormat.bitsPerPixel / 8;
-                      const ctx = canvasRef.current.getContext('2d');
-                      if (ctx) {
-                        const imageData = ctx.createImageData(w, h);
-                        for (let py = 0; py < h; py++) {
-                          for (let px = 0; px < w; px++) {
-                            const pixelOffset = offset + (py * w + px) * bytesPerPixel;
-                            const imgOffset = (py * w + px) * 4;
-                            if (bytesPerPixel === 4) {
-                              imageData.data[imgOffset + 0] = msg[pixelOffset + 2];
-                              imageData.data[imgOffset + 1] = msg[pixelOffset + 1];
-                              imageData.data[imgOffset + 2] = msg[pixelOffset + 0];
-                              imageData.data[imgOffset + 3] = 255;
-                            }
-                          }
-                        }
-                        ctx.putImageData(imageData, x, y);
-                      }
-                      offset += w * h * bytesPerPixel;
-                    }
-                  }
-
-                  const socket = vncRef.current?.getSocket();
-                  if (socket && socket.readyState === 1) {
-                    const updateMsg = new Uint8Array(10);
-                    updateMsg[0] = 3;
-                    updateMsg[1] = 1;
-                    updateMsg[2] = 0;
-                    updateMsg[3] = 0;
-                    updateMsg[4] = 0;
-                    updateMsg[5] = 0;
-                    updateMsg[6] = (fbWidth >> 8) & 0xff;
-                    updateMsg[7] = fbWidth & 0xff;
-                    updateMsg[8] = (fbHeight >> 8) & 0xff;
-                    updateMsg[9] = fbHeight & 0xff;
-                    socket.send(updateMsg);
-                  }
-                } else {
-                  consumeBuffer(1);
-                }
-              } else {
-                break;
               }
-            }
-          },
-          {
-            reconnectOnFailure: false,
-            connectCb: () => {},
-            failCb: () => {
-              if (isCancelled) return;
-              setLocalStatus('disconnected');
-              onStatusChange('disconnected');
-              setErrorMessage('VNC connection failed.');
-            },
+              const colorRatio = totalSampled > 0 ? colorfulPixels / totalSampled : 0;
+              if (colorRatio > 0.05) {
+                setTabletWarning(true);
+                // Stop checking — desktop detected
+              } else if (checkCount < maxChecks) {
+                desktopCheckTimerRef.current = window.setTimeout(checkDesktop, 30000);
+              }
+            };
+            desktopCheckTimerRef.current = window.setTimeout(checkDesktop, 3000);
           }
-        );
-
-        if (isCancelled) {
-          connection.cancel();
-          return;
         }
-        vncRef.current = connection;
-      } catch (error) {
-        if (isCancelled) return;
-        console.error('VNC connection error:', error);
+      });
+
+      rfb.addEventListener('disconnect', (e: { detail: { clean: boolean } }) => {
         setLocalStatus('disconnected');
         onStatusChange('disconnected');
-        setErrorMessage('Failed to create VNC connection.');
-      }
-    })();
+        if (!e.detail.clean) {
+          setErrorMessage('VNC connection lost.');
+        }
+      });
+
+      rfb.scaleViewport = true;
+      rfb.resizeSession = false;
+
+      rfbRef.current = rfb;
+    } catch (error) {
+      console.error('VNC connection error:', error);
+      setLocalStatus('disconnected');
+      onStatusChange('disconnected');
+      setErrorMessage('Failed to create VNC connection.');
+    }
 
     return () => {
-      isCancelled = true;
-      if (vncRef.current) {
-        vncRef.current.cancel();
-        vncRef.current = null;
+      if (desktopCheckTimerRef.current) {
+        clearTimeout(desktopCheckTimerRef.current);
+        desktopCheckTimerRef.current = null;
+      }
+      if (rfbRef.current) {
+        rfbRef.current.disconnect();
+        rfbRef.current = null;
       }
     };
   }, [active, item]);
+
+  const alertSx = {
+    position: 'absolute' as const,
+    top: 8,
+    left: 8,
+    right: 8,
+    zIndex: 10,
+  };
 
   return (
     <Box
@@ -1056,281 +797,227 @@ export function VNCPanel({
       }}
     >
       {errorMessage && (
-        <Alert
-          severity="error"
-          onClose={() => setErrorMessage('')}
-          sx={{
-            position: 'absolute',
-            top: 8,
-            left: 8,
-            right: 8,
-            zIndex: 10,
-          }}
-        >
+        <Alert severity="error" variant="filled" onClose={() => setErrorMessage('')} sx={alertSx}>
           {errorMessage}
+        </Alert>
+      )}
+
+      {tabletWarning && (
+        <Alert
+          severity="warning"
+          variant="filled"
+          onClose={() => setTabletWarning(false)}
+          sx={alertSx}
+          action={
+            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+              <Button
+                color="inherit"
+                size="small"
+                variant="outlined"
+                disabled={tabletPatching}
+                onClick={async () => {
+                  if (!vm) return;
+                  setTabletPatching(true);
+                  try {
+                    const ns = vm.getNamespace();
+                    const vmName = vm.getName();
+                    await ApiProxy.patch(
+                      `/apis/kubevirt.io/v1/namespaces/${ns}/virtualmachines/${vmName}`,
+                      {
+                        spec: {
+                          template: {
+                            spec: {
+                              domain: {
+                                devices: {
+                                  inputs: [{ type: 'tablet', bus: 'usb', name: 'tablet0' }],
+                                },
+                              },
+                            },
+                          },
+                        },
+                      }
+                    );
+                    setTabletWarning(false);
+                    setTabletPatching(false);
+                    setTabletAdded(true);
+                  } catch (err) {
+                    console.error('Failed to add tablet:', err);
+                    setTabletPatching(false);
+                    setErrorMessage('Failed to add tablet input device.');
+                  }
+                }}
+              >
+                {tabletPatching ? 'Adding...' : 'Add tablet'}
+              </Button>
+              <IconButton size="small" color="inherit" onClick={() => setTabletWarning(false)}>
+                <Icon icon="mdi:close" width={16} />
+              </IconButton>
+            </Box>
+          }
+        >
+          Desktop detected without tablet input device — mouse cursor position may be inaccurate.
+        </Alert>
+      )}
+
+      {tabletAdded && (
+        <Alert severity="info" variant="filled" onClose={() => setTabletAdded(false)} sx={alertSx}>
+          Tablet input added — will be effective after a VM restart.
         </Alert>
       )}
 
       {localStatus === 'connecting' && !errorMessage && (
         <Box
           sx={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            height: '100%',
             color: '#fff',
+            zIndex: 5,
           }}
         >
           <Typography>Connecting to VNC...</Typography>
         </Box>
       )}
 
-      {localStatus === 'connected' && (
-        <Box
-          ref={vncContainerRef}
-          sx={{
-            flex: 1,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            overflow: 'hidden',
-            width: '100%',
-            minHeight: 0,
-            position: 'relative',
-            bgcolor: '#000',
-          }}
-        >
-          {/* VNC toolbar — top right */}
+      <Box
+        ref={vncContainerRef}
+        sx={{
+          flex: 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          overflow: 'hidden',
+          width: '100%',
+          minHeight: 0,
+          position: 'relative',
+          bgcolor: '#000',
+        }}
+      >
+        {/* VNC toolbar — right side, click-collapsible */}
+        {localStatus === 'connected' && (
           <Box
             sx={{
               position: 'absolute',
-              top: 8,
-              right: 8,
+              right: 0,
+              top: '50%',
+              transform: 'translateY(-50%)',
               zIndex: 10,
               display: 'flex',
+              flexDirection: 'row',
               alignItems: 'center',
-              gap: 0.75,
-              bgcolor: 'rgba(0,0,0,0.75)',
-              borderRadius: 1,
-              px: 1,
-              py: 0.5,
             }}
           >
-            {/* Ctrl+Alt+Del button */}
-            <Tooltip title="Ctrl+Alt+Del" arrow placement="bottom">
-              <IconButton
-                size="small"
-                onClick={() => {
-                  const socket = vncRef.current?.getSocket();
-                  if (!socket || socket.readyState !== 1) return;
-                  [0xffe3, 0xffe9, 0xffff].forEach(k => sendVncKey(socket, k, true));
-                  [0xffff, 0xffe9, 0xffe3].forEach(k => sendVncKey(socket, k, false));
-                  canvasRef.current?.focus();
-                }}
-                sx={{ color: 'rgba(255,255,255,0.7)', '&:hover': { color: '#fff' }, p: 0.5 }}
-              >
-                <Icon icon="mdi:restart" width={16} />
-              </IconButton>
-            </Tooltip>
-
-            {/* Send Keys menu */}
-            <VNCKeysMenu
-              onSend={keys => {
-                const socket = vncRef.current?.getSocket();
-                if (!socket || socket.readyState !== 1) return;
-                keys.forEach(k => sendVncKey(socket, k, true));
-                [...keys].reverse().forEach(k => sendVncKey(socket, k, false));
-                canvasRef.current?.focus();
-              }}
-            />
-
-            <Box sx={{ width: 1, height: 18, bgcolor: 'rgba(255,255,255,0.2)', mx: 0.25 }} />
-
-            {/* Keyboard mode toggle */}
-            <ToggleButtonGroup
-              value={keyboardMode}
-              exclusive
-              onChange={(_, v) => {
-                if (v) {
-                  setKeyboardMode(v);
-                  canvasRef.current?.focus();
-                }
-              }}
+            {/* Toggle button — always visible */}
+            <IconButton
               size="small"
+              onClick={() => setToolbarOpen(o => !o)}
               sx={{
-                '& .MuiToggleButton-root': {
-                  color: 'rgba(255,255,255,0.7)',
-                  borderColor: 'rgba(255,255,255,0.3)',
-                  py: 0.25,
-                  px: 1,
-                  fontSize: '0.7rem',
-                  '&.Mui-selected': {
-                    bgcolor: 'rgba(255,255,255,0.15)',
-                    color: '#fff',
-                  },
-                },
+                color: 'rgba(255,255,255,0.5)',
+                bgcolor: 'rgba(0,0,0,0.5)',
+                borderRadius: '4px 0 0 4px',
+                p: 0.25,
+                width: 16,
+                height: 40,
+                '&:hover': { bgcolor: 'rgba(0,0,0,0.7)', color: 'rgba(255,255,255,0.8)' },
               }}
             >
-              <Tooltip
-                title="Character mode: sends typed characters (guest has US layout)"
-                arrow
-                placement="bottom"
-              >
-                <ToggleButton value="character">ABC</ToggleButton>
-              </Tooltip>
-              <Tooltip
-                title="Physical mode: sends physical key positions (guest has its own layout)"
-                arrow
-                placement="bottom"
-              >
-                <ToggleButton value="physical">
-                  <Icon icon="mdi:keyboard" width={16} />
-                </ToggleButton>
-              </Tooltip>
-            </ToggleButtonGroup>
+              <Icon icon={toolbarOpen ? 'mdi:chevron-right' : 'mdi:chevron-left'} width={14} />
+            </IconButton>
 
-            <Box sx={{ width: 1, height: 18, bgcolor: 'rgba(255,255,255,0.2)', mx: 0.25 }} />
-
-            {/* Screenshot */}
-            <Tooltip title="Screenshot" arrow placement="bottom">
-              <IconButton
-                size="small"
-                onClick={() => {
-                  const canvas = canvasRef.current;
-                  if (!canvas) return;
-                  const link = document.createElement('a');
-                  link.download = `vnc-${item.getName()}-${new Date()
-                    .toISOString()
-                    .replace(/[:.]/g, '-')}.png`;
-                  link.href = canvas.toDataURL('image/png');
-                  link.click();
+            {/* Panel — shown/hidden by state */}
+            {toolbarOpen && (
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 0.5,
+                  bgcolor: 'rgba(0,0,0,0.8)',
+                  borderRadius: '8px 0 0 8px',
+                  px: 0.5,
+                  py: 1,
                 }}
-                sx={{ color: 'rgba(255,255,255,0.7)', '&:hover': { color: '#fff' }, p: 0.5 }}
               >
-                <Icon icon="mdi:camera" width={16} />
-              </IconButton>
-            </Tooltip>
+                <Tooltip title="Ctrl+Alt+Del" arrow placement="left">
+                  <IconButton
+                    size="small"
+                    onClick={() => actions.sendCtrlAltDel()}
+                    sx={{ color: 'rgba(255,255,255,0.7)', '&:hover': { color: '#fff' }, p: 0.5 }}
+                  >
+                    <Icon icon="mdi:restart" width={18} />
+                  </IconButton>
+                </Tooltip>
 
-            <Box sx={{ width: 1, height: 18, bgcolor: 'rgba(255,255,255,0.2)', mx: 0.25 }} />
+                <VNCKeysMenu onSend={keys => actions.sendKeys(keys)} />
 
-            {/* Fullscreen toggle */}
-            <Tooltip
-              title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
-              arrow
-              placement="bottom"
-            >
-              <IconButton
-                size="small"
-                onClick={() => {
-                  if (isFullscreen) {
-                    document.exitFullscreen?.();
-                  } else {
-                    vncContainerRef.current?.requestFullscreen?.();
-                  }
-                  canvasRef.current?.focus();
-                }}
-                sx={{ color: 'rgba(255,255,255,0.7)', '&:hover': { color: '#fff' }, p: 0.5 }}
-              >
-                <Icon icon={isFullscreen ? 'mdi:fullscreen-exit' : 'mdi:fullscreen'} width={16} />
-              </IconButton>
-            </Tooltip>
+                <Box
+                  sx={{
+                    height: 1,
+                    width: 18,
+                    bgcolor: 'rgba(255,255,255,0.2)',
+                    mx: 'auto',
+                    my: 0.25,
+                  }}
+                />
+
+                <Tooltip title="Screenshot" arrow placement="left">
+                  <IconButton
+                    size="small"
+                    onClick={() => actions.screenshot()}
+                    sx={{ color: 'rgba(255,255,255,0.7)', '&:hover': { color: '#fff' }, p: 0.5 }}
+                  >
+                    <Icon icon="mdi:camera" width={18} />
+                  </IconButton>
+                </Tooltip>
+
+                <Box
+                  sx={{
+                    height: 1,
+                    width: 18,
+                    bgcolor: 'rgba(255,255,255,0.2)',
+                    mx: 'auto',
+                    my: 0.25,
+                  }}
+                />
+
+                <Tooltip
+                  title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+                  arrow
+                  placement="left"
+                >
+                  <IconButton
+                    size="small"
+                    onClick={() => actions.toggleFullscreen()}
+                    sx={{ color: 'rgba(255,255,255,0.7)', '&:hover': { color: '#fff' }, p: 0.5 }}
+                  >
+                    <Icon
+                      icon={isFullscreen ? 'mdi:fullscreen-exit' : 'mdi:fullscreen'}
+                      width={18}
+                    />
+                  </IconButton>
+                </Tooltip>
+              </Box>
+            )}
           </Box>
-          <canvas
-            ref={canvasRef}
-            tabIndex={0}
-            style={{
-              display: 'block',
-              imageRendering: 'auto',
-              outline: 'none',
-              cursor: 'default',
-              width: '100%',
-              height: '100%',
-              objectFit: 'contain',
-            }}
-            onMouseDown={e => {
-              const socket = vncRef.current?.getSocket();
-              if (!socket || socket.readyState !== 1) return;
-              const canvas = canvasRef.current;
-              if (!canvas) return;
-              const rect = canvas.getBoundingClientRect();
-              const scaleX = canvas.width / rect.width;
-              const scaleY = canvas.height / rect.height;
-              const x = Math.floor((e.clientX - rect.left) * scaleX);
-              const y = Math.floor((e.clientY - rect.top) * scaleY);
-              const msg = new Uint8Array(6);
-              msg[0] = 5;
-              msg[1] = 1 << e.button;
-              msg[2] = (x >> 8) & 0xff;
-              msg[3] = x & 0xff;
-              msg[4] = (y >> 8) & 0xff;
-              msg[5] = y & 0xff;
-              socket.send(msg);
-            }}
-            onMouseUp={e => {
-              const socket = vncRef.current?.getSocket();
-              if (!socket || socket.readyState !== 1) return;
-              const canvas = canvasRef.current;
-              if (!canvas) return;
-              const rect = canvas.getBoundingClientRect();
-              const scaleX = canvas.width / rect.width;
-              const scaleY = canvas.height / rect.height;
-              const x = Math.floor((e.clientX - rect.left) * scaleX);
-              const y = Math.floor((e.clientY - rect.top) * scaleY);
-              const msg = new Uint8Array(6);
-              msg[0] = 5;
-              msg[1] = 0;
-              msg[2] = (x >> 8) & 0xff;
-              msg[3] = x & 0xff;
-              msg[4] = (y >> 8) & 0xff;
-              msg[5] = y & 0xff;
-              socket.send(msg);
-            }}
-            onMouseMove={e => {
-              const socket = vncRef.current?.getSocket();
-              if (!socket || socket.readyState !== 1) return;
-              const canvas = canvasRef.current;
-              if (!canvas) return;
-              const rect = canvas.getBoundingClientRect();
-              const scaleX = canvas.width / rect.width;
-              const scaleY = canvas.height / rect.height;
-              const x = Math.floor((e.clientX - rect.left) * scaleX);
-              const y = Math.floor((e.clientY - rect.top) * scaleY);
-              const msg = new Uint8Array(6);
-              msg[0] = 5;
-              msg[1] = 0;
-              msg[2] = (x >> 8) & 0xff;
-              msg[3] = x & 0xff;
-              msg[4] = (y >> 8) & 0xff;
-              msg[5] = y & 0xff;
-              socket.send(msg);
-            }}
-            onKeyDown={e => {
-              e.preventDefault();
-              e.stopPropagation();
-              const socket = vncRef.current?.getSocket();
-              if (!socket || socket.readyState !== 1) return;
-              const isAltGr = e.getModifierState && e.getModifierState('AltGraph');
-              if (isAltGr) sendVncKey(socket, 0xfe03, true);
-              const keysym = getKeysym(e, keyboardMode);
-              if (keysym !== null) sendVncKey(socket, keysym, true);
-            }}
-            onKeyUp={e => {
-              e.preventDefault();
-              e.stopPropagation();
-              const socket = vncRef.current?.getSocket();
-              if (!socket || socket.readyState !== 1) return;
-              const keysym = getKeysym(e, keyboardMode);
-              if (keysym !== null) sendVncKey(socket, keysym, false);
-              const isAltGr = e.getModifierState && e.getModifierState('AltGraph');
-              if (isAltGr) sendVncKey(socket, 0xfe03, false);
-            }}
-            onClick={() => canvasRef.current?.focus()}
-          />
-        </Box>
-      )}
+        )}
+        <div
+          ref={vncDisplayRef}
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+          }}
+        />
+      </Box>
     </Box>
   );
-}
+});
 
 // ── Main VMConsole Component ────────────────────────────────────────────
 
@@ -1340,6 +1027,7 @@ export default function VMConsole(props: VMConsoleProps) {
   const [connectionStatus, setConnectionStatus] = useState<
     'connecting' | 'connected' | 'disconnected'
   >('connecting');
+  const vncActionsRef = useRef<VNCPanelActions>(null);
 
   // Reset tab when dialog opens
   useEffect(() => {
@@ -1349,19 +1037,16 @@ export default function VMConsole(props: VMConsoleProps) {
     }
   }, [props.open, initialTab]);
 
-  const handleVNCStatus = useCallback(
-    (status: 'connecting' | 'connected' | 'disconnected') => {
-      if (activeTab === 'vnc') setConnectionStatus(status);
-    },
-    [activeTab]
-  );
+  const activeTabRef = useRef(activeTab);
+  activeTabRef.current = activeTab;
 
-  const handleTerminalStatus = useCallback(
-    (status: 'connecting' | 'connected') => {
-      if (activeTab === 'terminal') setConnectionStatus(status);
-    },
-    [activeTab]
-  );
+  const handleVNCStatus = useCallback((status: 'connecting' | 'connected' | 'disconnected') => {
+    if (activeTabRef.current === 'vnc') setConnectionStatus(status);
+  }, []);
+
+  const handleTerminalStatus = useCallback((status: 'connecting' | 'connected') => {
+    if (activeTabRef.current === 'terminal') setConnectionStatus(status);
+  }, []);
 
   const statusColor =
     connectionStatus === 'connected'
@@ -1447,6 +1132,8 @@ export default function VMConsole(props: VMConsoleProps) {
           overflow: 'hidden',
           display: 'grid !important',
           gridTemplateRows: 'auto 1fr',
+          height: '85vh',
+          maxHeight: '85vh',
           '& .MuiDialogTitle-root': {
             padding: '8px 24px',
           },
@@ -1465,7 +1152,9 @@ export default function VMConsole(props: VMConsoleProps) {
         }}
       >
         <VNCPanel
+          ref={vncActionsRef}
           item={item}
+          vm={vm}
           active={props.open && activeTab === 'vnc'}
           onStatusChange={handleVNCStatus}
         />
