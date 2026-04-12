@@ -4,6 +4,7 @@ import {
   Alert,
   Box,
   Button,
+  Checkbox,
   Chip,
   Collapse,
   Divider,
@@ -13,6 +14,7 @@ import {
   InputAdornment,
   Switch,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import React, { useEffect, useRef, useState } from 'react';
@@ -530,10 +532,15 @@ const FeatureGatesSection = React.memo(function FeatureGatesSection(
   const [localMediatedDevices, setLocalMediatedDevices] = useState<MediatedDevice[]>(
     kubeVirt?.getMediatedDevices() || []
   );
-  const [newPciDevice, setNewPciDevice] = useState({ pciVendorSelector: '', resourceName: '' });
-  const [newMediatedDevice, setNewMediatedDevice] = useState({
+  const [newPciDevice, setNewPciDevice] = useState<PciDevice>({
+    pciVendorSelector: '',
+    resourceName: '',
+    externalResourceProvider: false,
+  });
+  const [newMediatedDevice, setNewMediatedDevice] = useState<MediatedDevice>({
     mdevNameSelector: '',
     resourceName: '',
+    externalResourceProvider: false,
   });
 
   // Local handlers
@@ -572,7 +579,7 @@ const FeatureGatesSection = React.memo(function FeatureGatesSection(
   const addPciDevice = () => {
     if (newPciDevice.pciVendorSelector && newPciDevice.resourceName) {
       setLocalPciDevices([...localPciDevices, { ...newPciDevice }]);
-      setNewPciDevice({ pciVendorSelector: '', resourceName: '' });
+      setNewPciDevice({ pciVendorSelector: '', resourceName: '', externalResourceProvider: false });
     }
   };
 
@@ -583,7 +590,11 @@ const FeatureGatesSection = React.memo(function FeatureGatesSection(
   const addMediatedDevice = () => {
     if (newMediatedDevice.mdevNameSelector && newMediatedDevice.resourceName) {
       setLocalMediatedDevices([...localMediatedDevices, { ...newMediatedDevice }]);
-      setNewMediatedDevice({ mdevNameSelector: '', resourceName: '' });
+      setNewMediatedDevice({
+        mdevNameSelector: '',
+        resourceName: '',
+        externalResourceProvider: false,
+      });
     }
   };
 
@@ -1126,7 +1137,16 @@ const FeatureGatesSection = React.memo(function FeatureGatesSection(
                                           pciVendorSelector: e.target.value,
                                         })
                                       }
-                                      helperText="Vendor:Device ID"
+                                      error={
+                                        !!newPciDevice.pciVendorSelector &&
+                                        !isValidPciSelector(newPciDevice.pciVendorSelector)
+                                      }
+                                      helperText={
+                                        newPciDevice.pciVendorSelector &&
+                                        !isValidPciSelector(newPciDevice.pciVendorSelector)
+                                          ? 'Must be vendor_id:device_id (hex, e.g., 10DE:1DB6)'
+                                          : 'Vendor:Device ID'
+                                      }
                                     />
                                   </Grid>
                                   <Grid item xs={12} sm={5}>
@@ -1142,7 +1162,46 @@ const FeatureGatesSection = React.memo(function FeatureGatesSection(
                                           resourceName: e.target.value,
                                         })
                                       }
-                                      helperText="Kubernetes resource name"
+                                      error={
+                                        !!newPciDevice.resourceName &&
+                                        !isValidResourceName(newPciDevice.resourceName)
+                                      }
+                                      helperText={
+                                        newPciDevice.resourceName &&
+                                        !isValidResourceName(newPciDevice.resourceName)
+                                          ? 'Must be domain/name (e.g., nvidia.com/GP102GL)'
+                                          : 'Kubernetes resource name'
+                                      }
+                                    />
+                                  </Grid>
+                                  <Grid item xs={12} sm={10}>
+                                    <FormControlLabel
+                                      control={
+                                        <Checkbox
+                                          size="small"
+                                          checked={newPciDevice.externalResourceProvider || false}
+                                          onChange={e =>
+                                            setNewPciDevice({
+                                              ...newPciDevice,
+                                              externalResourceProvider: e.target.checked,
+                                            })
+                                          }
+                                        />
+                                      }
+                                      label={
+                                        <Box display="flex" alignItems="center" gap={0.5}>
+                                          <Typography variant="body2">
+                                            External Resource Provider
+                                          </Typography>
+                                          <Tooltip title="Enable when a third-party device plugin (e.g., NVIDIA GPU Operator) manages this device. KubeVirt will permit the device but delegate allocation and health monitoring to the external plugin.">
+                                            <Icon
+                                              icon="mdi:information-outline"
+                                              width={16}
+                                              style={{ color: '#9e9e9e', cursor: 'help' }}
+                                            />
+                                          </Tooltip>
+                                        </Box>
+                                      }
                                     />
                                   </Grid>
                                   <Grid item xs={12} sm={2}>
@@ -1180,9 +1239,18 @@ const FeatureGatesSection = React.memo(function FeatureGatesSection(
                                         }}
                                       >
                                         <Box>
-                                          <Typography variant="body2" fontWeight={500}>
-                                            {device.pciVendorSelector}
-                                          </Typography>
+                                          <Box display="flex" alignItems="center" gap={1}>
+                                            <Typography variant="body2" fontWeight={500}>
+                                              {device.pciVendorSelector}
+                                            </Typography>
+                                            {device.externalResourceProvider && (
+                                              <Chip
+                                                label="External"
+                                                size="small"
+                                                sx={{ height: 18, fontSize: '0.65rem' }}
+                                              />
+                                            )}
+                                          </Box>
                                           <Typography variant="caption" color="text.secondary">
                                             {device.resourceName}
                                           </Typography>
@@ -1239,7 +1307,16 @@ const FeatureGatesSection = React.memo(function FeatureGatesSection(
                                           mdevNameSelector: e.target.value,
                                         })
                                       }
-                                      helperText="Mediated device type name"
+                                      error={
+                                        !!newMediatedDevice.mdevNameSelector &&
+                                        !isValidMdevSelector(newMediatedDevice.mdevNameSelector)
+                                      }
+                                      helperText={
+                                        newMediatedDevice.mdevNameSelector &&
+                                        !isValidMdevSelector(newMediatedDevice.mdevNameSelector)
+                                          ? 'Must be alphanumeric with spaces/dashes (e.g., GRID T4-1Q)'
+                                          : 'Mediated device type name'
+                                      }
                                     />
                                   </Grid>
                                   <Grid item xs={12} sm={5}>
@@ -1255,7 +1332,48 @@ const FeatureGatesSection = React.memo(function FeatureGatesSection(
                                           resourceName: e.target.value,
                                         })
                                       }
-                                      helperText="Kubernetes resource name"
+                                      error={
+                                        !!newMediatedDevice.resourceName &&
+                                        !isValidResourceName(newMediatedDevice.resourceName)
+                                      }
+                                      helperText={
+                                        newMediatedDevice.resourceName &&
+                                        !isValidResourceName(newMediatedDevice.resourceName)
+                                          ? 'Must be domain/name (e.g., nvidia.com/GRID_T4-1Q)'
+                                          : 'Kubernetes resource name'
+                                      }
+                                    />
+                                  </Grid>
+                                  <Grid item xs={12} sm={10}>
+                                    <FormControlLabel
+                                      control={
+                                        <Checkbox
+                                          size="small"
+                                          checked={
+                                            newMediatedDevice.externalResourceProvider || false
+                                          }
+                                          onChange={e =>
+                                            setNewMediatedDevice({
+                                              ...newMediatedDevice,
+                                              externalResourceProvider: e.target.checked,
+                                            })
+                                          }
+                                        />
+                                      }
+                                      label={
+                                        <Box display="flex" alignItems="center" gap={0.5}>
+                                          <Typography variant="body2">
+                                            External Resource Provider
+                                          </Typography>
+                                          <Tooltip title="Enable when a third-party device plugin (e.g., NVIDIA GPU Operator) manages this device. KubeVirt will permit the device but delegate allocation and health monitoring to the external plugin.">
+                                            <Icon
+                                              icon="mdi:information-outline"
+                                              width={16}
+                                              style={{ color: '#9e9e9e', cursor: 'help' }}
+                                            />
+                                          </Tooltip>
+                                        </Box>
+                                      }
                                     />
                                   </Grid>
                                   <Grid item xs={12} sm={2}>
@@ -1293,9 +1411,18 @@ const FeatureGatesSection = React.memo(function FeatureGatesSection(
                                         }}
                                       >
                                         <Box>
-                                          <Typography variant="body2" fontWeight={500}>
-                                            {device.mdevNameSelector}
-                                          </Typography>
+                                          <Box display="flex" alignItems="center" gap={1}>
+                                            <Typography variant="body2" fontWeight={500}>
+                                              {device.mdevNameSelector}
+                                            </Typography>
+                                            {device.externalResourceProvider && (
+                                              <Chip
+                                                label="External"
+                                                size="small"
+                                                sx={{ height: 18, fontSize: '0.65rem' }}
+                                              />
+                                            )}
+                                          </Box>
                                           <Typography variant="caption" color="text.secondary">
                                             {device.resourceName}
                                           </Typography>

@@ -370,6 +370,7 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
     { id: 'conditions', label: 'Conditions', icon: 'mdi:alert-circle-outline' },
     { id: 'networks', label: 'Networks', icon: 'mdi:lan' },
     { id: 'disks', label: 'Disks', icon: 'mdi:harddisk' },
+    { id: 'devices', label: 'Devices', icon: 'mdi:expansion-card' },
     ...(snapshotEnabled ? [{ id: 'snapshots', label: 'Snapshots', icon: 'mdi:camera' }] : []),
     ...(vmExportEnabled ? [{ id: 'exports', label: 'Exports', icon: 'mdi:export' }] : []),
     { id: 'migrations', label: 'Migrations', icon: 'mdi:swap-horizontal' },
@@ -1571,6 +1572,73 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                       </SectionBox>
                     );
                   })()}
+                </Box>
+              ),
+            },
+            {
+              id: 'devices',
+              section: (
+                <Box id="section-devices">
+                  <SectionBox title="GPUs & Host Devices">
+                    {(() => {
+                      const specGpus: Array<{ name: string; deviceName: string }> =
+                        vmItem?.spec?.template?.spec?.domain?.devices?.gpus || [];
+                      const specHostDevices: Array<{ name: string; deviceName: string }> =
+                        vmItem?.spec?.template?.spec?.domain?.devices?.hostDevices || [];
+
+                      if (specGpus.length === 0 && specHostDevices.length === 0) {
+                        return (
+                          <Typography
+                            variant="body2"
+                            color="text.secondary"
+                            fontStyle="italic"
+                            p={2}
+                          >
+                            No GPUs or host devices assigned to this VM.
+                          </Typography>
+                        );
+                      }
+
+                      return (
+                        <>
+                          {specGpus.length > 0 && (
+                            <Box mb={2}>
+                              <Typography variant="subtitle2" fontWeight={600} mb={1}>
+                                GPUs
+                              </Typography>
+                              <SimpleTable
+                                columns={[
+                                  { label: 'Name', getter: (g: Record<string, string>) => g.name },
+                                  {
+                                    label: 'Device',
+                                    getter: (g: Record<string, string>) => g.deviceName,
+                                  },
+                                ]}
+                                data={specGpus}
+                              />
+                            </Box>
+                          )}
+                          {specHostDevices.length > 0 && (
+                            <Box>
+                              <Typography variant="subtitle2" fontWeight={600} mb={1}>
+                                Host Devices
+                              </Typography>
+                              <SimpleTable
+                                columns={[
+                                  { label: 'Name', getter: (g: Record<string, string>) => g.name },
+                                  {
+                                    label: 'Device',
+                                    getter: (g: Record<string, string>) => g.deviceName,
+                                  },
+                                ]}
+                                data={specHostDevices}
+                              />
+                            </Box>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </SectionBox>
                 </Box>
               ),
             },

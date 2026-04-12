@@ -16,6 +16,7 @@ import {
   Button,
   Card,
   Checkbox,
+  Chip,
   Divider,
   FormControl,
   FormControlLabel,
@@ -36,6 +37,7 @@ import {
 } from '@mui/material';
 import { useSnackbar } from 'notistack';
 import React, { useState } from 'react';
+import KubeVirt from '../../kubevirt/KubeVirt';
 import { DVTStorageSpec } from '../../types';
 import { TOOLTIPS } from '../../utils/tooltips';
 import DataSource from '../BootableVolumes/DataSource';
@@ -702,6 +704,19 @@ export default function VMFormFull({
   const [volumeSnapshots, setVolumeSnapshots] = useState<string[]>([]);
   const [dataVolumes, setDataVolumes] = useState<string[]>([]);
   const [nodeLabels, setNodeLabels] = useState<string[]>([]); // Available node label keys
+
+  // Fetch permitted host devices from KubeVirt CR for device passthrough
+  const { items: kubeVirtConfigs } = KubeVirt.useList();
+  const kvConfig = kubeVirtConfigs?.[0];
+  const permittedPciDevices = kvConfig?.getPciHostDevices() || [];
+  const permittedMediatedDevices = kvConfig?.getMediatedDevices() || [];
+  const allPermittedDeviceNames = [
+    ...permittedPciDevices.map(d => d.resourceName),
+    ...permittedMediatedDevices.map(d => d.resourceName),
+  ];
+  const [newGpu, setNewGpu] = useState({ name: '', deviceName: '' });
+  const [newHostDev, setNewHostDev] = useState({ name: '', deviceName: '' });
+
   // Local state for complex UI interactions
   const [useAdvancedTopologyState, setUseAdvancedTopologyState] = useState(useAdvancedTopology);
 
@@ -4037,6 +4052,261 @@ export default function VMFormFull({
           </Button>
         </AccordionDetails>
       </Accordion>
+
+      {/* Devices Section (GPU / PCI Passthrough) */}
+      {allPermittedDeviceNames.length > 0 && (
+        <Accordion sx={{ borderLeft: '3px solid #4caf50' }}>
+          <AccordionSummary
+            expandIcon={<Icon icon="mdi:chevron-down" />}
+            sx={{ bgcolor: 'rgba(76, 175, 80, 0.06)' }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Icon icon="mdi:expansion-card" color="#4caf50" />
+              <Typography variant="h6">Devices</Typography>
+              {(() => {
+                const total =
+                  (resource.spec?.template?.spec?.domain?.devices?.gpus || []).length +
+                  (resource.spec?.template?.spec?.domain?.devices?.hostDevices || []).length;
+                return total > 0 ? (
+                  <Chip
+                    label={total}
+                    size="small"
+                    sx={{ height: 20, bgcolor: '#4caf50', color: 'white' }}
+                  />
+                ) : null;
+              })()}
+            </Box>
+          </AccordionSummary>
+          <AccordionDetails>
+            <Typography variant="body2" color="text.secondary" mb={2}>
+              Assign GPUs and PCI host devices from the cluster&apos;s permitted devices list.
+              Configure permitted devices in Settings → Feature Gates → HostDevices.
+            </Typography>
+
+            {/* GPUs */}
+            <Typography variant="subtitle2" fontWeight={600} mb={1}>
+              <Icon
+                icon="mdi:video"
+                width={16}
+                style={{ verticalAlign: 'middle', marginRight: 4 }}
+              />
+              GPUs
+            </Typography>
+            {(
+              (resource.spec?.template?.spec?.domain?.devices?.gpus || []) as Array<{
+                name: string;
+                deviceName: string;
+              }>
+            ).map((gpu, idx) => (
+              <Box key={idx} display="flex" alignItems="center" gap={1} mb={1}>
+                <Chip label={gpu.name} size="small" />
+                <Typography variant="body2" color="text.secondary">
+                  {gpu.deviceName}
+                </Typography>
+                <IconButton
+                  size="small"
+                  color="error"
+                  onClick={() => {
+                    const gpus = [...(resource.spec?.template?.spec?.domain?.devices?.gpus || [])];
+                    gpus.splice(idx, 1);
+                    updateSpec({
+                      template: {
+                        ...resource.spec?.template,
+                        spec: {
+                          ...resource.spec?.template?.spec,
+                          domain: {
+                            ...resource.spec?.template?.spec?.domain,
+                            devices: { ...resource.spec?.template?.spec?.domain?.devices, gpus },
+                          },
+                        },
+                      },
+                    });
+                  }}
+                >
+                  <Icon icon="mdi:delete" width={16} />
+                </IconButton>
+              </Box>
+            ))}
+            <Grid container spacing={2} alignItems="flex-end" mb={3}>
+              <Grid item xs={5}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Name"
+                  placeholder="e.g., gpu1"
+                  value={newGpu.name}
+                  onChange={e => setNewGpu({ ...newGpu, name: e.target.value })}
+                />
+              </Grid>
+              <Grid item xs={5}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  select
+                  label="Device"
+                  value={newGpu.deviceName}
+                  onChange={e => setNewGpu({ ...newGpu, deviceName: e.target.value })}
+                >
+                  <MenuItem value="" disabled>
+                    Select a permitted device
+                  </MenuItem>
+                  {allPermittedDeviceNames.map(n => (
+                    <MenuItem key={n} value={n}>
+                      {n}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              </Grid>
+              <Grid item xs={2}>
+                <Button
+                  fullWidth
+                  variant="outlined"
+                  size="small"
+                  startIcon={<Icon icon="mdi:plus" />}
+                  disabled={!newGpu.name || !newGpu.deviceName}
+                  onClick={() => {
+                    const gpus = [
+                      ...(resource.spec?.template?.spec?.domain?.devices?.gpus || []),
+                      { name: newGpu.name.trim(), deviceName: newGpu.deviceName },
+                    ];
+                    updateSpec({
+                      template: {
+                        ...resource.spec?.template,
+                        spec: {
+                          ...resource.spec?.template?.spec,
+                          domain: {
+                            ...resource.spec?.template?.spec?.domain,
+                            devices: { ...resource.spec?.template?.spec?.domain?.devices, gpus },
+                          },
+                        },
+                      },
+                    });
+                    setNewGpu({ name: '', deviceName: '' });
+                  }}
+                >
+                  Add
+                </Button>
+              </Grid>
+            </Grid>
+
+            <Divider sx={{ my: 2 }} />
+
+            {/* Host Devices */}
+            <Typography variant="subtitle2" fontWeight={600} mb={1}>
+              <Icon
+                icon="mdi:expansion-card-variant"
+                width={16}
+                style={{ verticalAlign: 'middle', marginRight: 4 }}
+              />
+              Host Devices
+            </Typography>
+            {(
+              (resource.spec?.template?.spec?.domain?.devices?.hostDevices || []) as Array<{
+                name: string;
+                deviceName: string;
+              }>
+            ).map((dev, idx) => (
+              <Box key={idx} display="flex" alignItems="center" gap={1} mb={1}>
+                <Chip label={dev.name} size="small" />
+                <Typography variant="body2" color="text.secondary">
+                  {dev.deviceName}
+                </Typography>
+                <IconButton
+                  size="small"
+                  color="error"
+                  onClick={() => {
+                    const hostDevices = [
+                      ...(resource.spec?.template?.spec?.domain?.devices?.hostDevices || []),
+                    ];
+                    hostDevices.splice(idx, 1);
+                    updateSpec({
+                      template: {
+                        ...resource.spec?.template,
+                        spec: {
+                          ...resource.spec?.template?.spec,
+                          domain: {
+                            ...resource.spec?.template?.spec?.domain,
+                            devices: {
+                              ...resource.spec?.template?.spec?.domain?.devices,
+                              hostDevices,
+                            },
+                          },
+                        },
+                      },
+                    });
+                  }}
+                >
+                  <Icon icon="mdi:delete" width={16} />
+                </IconButton>
+              </Box>
+            ))}
+            <Grid container spacing={2} alignItems="flex-end">
+              <Grid item xs={5}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Name"
+                  placeholder="e.g., qat1"
+                  value={newHostDev.name}
+                  onChange={e => setNewHostDev({ ...newHostDev, name: e.target.value })}
+                />
+              </Grid>
+              <Grid item xs={5}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  select
+                  label="Device"
+                  value={newHostDev.deviceName}
+                  onChange={e => setNewHostDev({ ...newHostDev, deviceName: e.target.value })}
+                >
+                  <MenuItem value="" disabled>
+                    Select a permitted device
+                  </MenuItem>
+                  {allPermittedDeviceNames.map(n => (
+                    <MenuItem key={n} value={n}>
+                      {n}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              </Grid>
+              <Grid item xs={2}>
+                <Button
+                  fullWidth
+                  variant="outlined"
+                  size="small"
+                  startIcon={<Icon icon="mdi:plus" />}
+                  disabled={!newHostDev.name || !newHostDev.deviceName}
+                  onClick={() => {
+                    const hostDevices = [
+                      ...(resource.spec?.template?.spec?.domain?.devices?.hostDevices || []),
+                      { name: newHostDev.name.trim(), deviceName: newHostDev.deviceName },
+                    ];
+                    updateSpec({
+                      template: {
+                        ...resource.spec?.template,
+                        spec: {
+                          ...resource.spec?.template?.spec,
+                          domain: {
+                            ...resource.spec?.template?.spec?.domain,
+                            devices: {
+                              ...resource.spec?.template?.spec?.domain?.devices,
+                              hostDevices,
+                            },
+                          },
+                        },
+                      },
+                    });
+                    setNewHostDev({ name: '', deviceName: '' });
+                  }}
+                >
+                  Add
+                </Button>
+              </Grid>
+            </Grid>
+          </AccordionDetails>
+        </Accordion>
+      )}
 
       {/* Scheduling Section */}
       <Accordion sx={{ borderLeft: '3px solid #00bcd4' }}>
