@@ -30,6 +30,7 @@ import {
 import { useSnackbar } from 'notistack';
 import { useEffect, useRef, useState } from 'react';
 import InfoTooltip from '../components/common/InfoTooltip';
+import MetricsEndpointConfig from '../components/common/MetricsEndpointConfig';
 import ResourceEditorDialog from '../components/ResourceEditorDialog';
 import { INSPECTOR_IMAGE } from '../components/VMDoctor/constants';
 import { LiveUpdateConfig, NetworkConfig } from '../types';
@@ -1281,6 +1282,13 @@ export default function KubeVirtSettings() {
 
         <Collapse in={generalConfigExpanded}>
           <Box p={2} pt={0}>
+            {/* Metrics Endpoint */}
+            <Card variant="outlined" sx={{ mb: 2 }}>
+              <CardContent>
+                <MetricsEndpointConfig />
+              </CardContent>
+            </Card>
+
             {/* Prometheus Monitoring */}
             <Card variant="outlined" sx={{ mb: 2 }}>
               <CardContent>

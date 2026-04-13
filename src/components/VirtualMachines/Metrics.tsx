@@ -1,15 +1,4 @@
-import { Icon } from '@iconify/react';
-import { ApiProxy } from '@kinvolk/headlamp-plugin/lib';
-import {
-  Alert,
-  Box,
-  Card,
-  CardContent,
-  FormControl,
-  MenuItem,
-  Select,
-  Typography,
-} from '@mui/material';
+import { Box, Card, CardContent, FormControl, MenuItem, Select, Typography } from '@mui/material';
 import React, { useEffect, useState } from 'react';
 import {
   CartesianGrid,
@@ -22,7 +11,8 @@ import {
   YAxis,
 } from 'recharts';
 import { ChartTooltipProps, VMIData } from '../../types';
-import { discoverPrometheus } from '../../utils/prometheus';
+import { useMetricsEndpoint } from '../../utils/metricsEndpoint';
+import MetricsEndpointConfig from '../common/MetricsEndpointConfig';
 import VirtualMachine from './VirtualMachine';
 
 interface MetricsProps {
@@ -39,9 +29,7 @@ interface TimeSeriesData {
 
 export default function VMMetrics({ vmName, namespace, vmiData, vmItem }: MetricsProps) {
   const [timeRange, setTimeRange] = useState<string>('30m');
-  const [prometheusAvailable, setPrometheusAvailable] = useState(false);
-  const [prometheusInstalled, setPrometheusInstalled] = useState(false);
-  const [serviceMonitorConfigured, setServiceMonitorConfigured] = useState(false);
+  const metricsEndpoint = useMetricsEndpoint();
 
   // Time series data for graphs
   const [cpuTimeSeries, setCpuTimeSeries] = useState<TimeSeriesData[]>([]);
@@ -71,30 +59,12 @@ export default function VMMetrics({ vmName, namespace, vmiData, vmItem }: Metric
     return value * (multipliers[unit] || 60);
   };
 
-  // Check if KubeVirt ServiceMonitor is configured
-  useEffect(() => {
-    ApiProxy.request('/apis/kubevirt.io/v1/kubevirts')
-      .then(
-        (resp: {
-          items?: Array<{ spec?: { monitorNamespace?: string; monitorAccount?: string } }>;
-        }) => {
-          const kv = resp?.items?.[0];
-          setServiceMonitorConfigured(!!kv?.spec?.monitorNamespace && !!kv?.spec?.monitorAccount);
-        }
-      )
-      .catch(() => setServiceMonitorConfigured(false));
-  }, []);
-
   useEffect(() => {
     const fetchMetrics = async () => {
       try {
-        // Find Prometheus service dynamically
-        const prom = await discoverPrometheus();
-        setPrometheusInstalled(prom.installed);
-        setPrometheusAvailable(prom.available);
-        if (!prom.available) return;
+        if (!metricsEndpoint.available || !metricsEndpoint.baseUrl) return;
 
-        const promBaseUrl = prom.baseUrl;
+        const promBaseUrl = metricsEndpoint.baseUrl;
 
         const now = Math.floor(Date.now() / 1000);
         const rangeSeconds = getTimeRangeSeconds(timeRange);
@@ -129,11 +99,13 @@ export default function VMMetrics({ vmName, namespace, vmiData, vmItem }: Metric
         // vcpu_seconds_total is closer to guest-visible CPU than cpu_usage_seconds_total
         // (which includes QEMU emulation overhead)
         const cpuQuery = `sum(rate(kubevirt_vmi_vcpu_seconds_total{name="${vmName}",namespace="${namespace}",state="running"}[5m])) / ${vCpuCount} * 100`;
-        const cpuRangeResp = await ApiProxy.request(
-          `${promBaseUrl}/api/v1/query_range?query=${encodeURIComponent(
-            cpuQuery
-          )}&start=${start}&end=${now}&step=${step}`
-        ).catch(() => null);
+        const cpuRangeResp = await metricsEndpoint
+          .request(
+            `${promBaseUrl}/api/v1/query_range?query=${encodeURIComponent(
+              cpuQuery
+            )}&start=${start}&end=${now}&step=${step}`
+          )
+          .catch(() => null);
 
         if (cpuRangeResp?.data?.result?.[0]) {
           const values = cpuRangeResp.data.result[0].values || [];
@@ -156,16 +128,20 @@ export default function VMMetrics({ vmName, namespace, vmiData, vmItem }: Metric
         const memAvailQuery = `kubevirt_vmi_memory_usable_bytes{name="${vmName}",namespace="${namespace}"} / (1024^3)`;
 
         const [memDomainResp, memAvailResp] = await Promise.all([
-          ApiProxy.request(
-            `${promBaseUrl}/api/v1/query_range?query=${encodeURIComponent(
-              memDomainQuery
-            )}&start=${start}&end=${now}&step=${step}`
-          ).catch(() => null),
-          ApiProxy.request(
-            `${promBaseUrl}/api/v1/query_range?query=${encodeURIComponent(
-              memAvailQuery
-            )}&start=${start}&end=${now}&step=${step}`
-          ).catch(() => null),
+          metricsEndpoint
+            .request(
+              `${promBaseUrl}/api/v1/query_range?query=${encodeURIComponent(
+                memDomainQuery
+              )}&start=${start}&end=${now}&step=${step}`
+            )
+            .catch(() => null),
+          metricsEndpoint
+            .request(
+              `${promBaseUrl}/api/v1/query_range?query=${encodeURIComponent(
+                memAvailQuery
+              )}&start=${start}&end=${now}&step=${step}`
+            )
+            .catch(() => null),
         ]);
 
         if (memDomainResp?.data?.result?.[0] && memAvailResp?.data?.result?.[0]) {
@@ -200,16 +176,20 @@ export default function VMMetrics({ vmName, namespace, vmiData, vmItem }: Metric
         const networkTxQuery = `sum(rate(kubevirt_vmi_network_transmit_bytes_total{name="${vmName}",namespace="${namespace}"}[5m])) / 1024`;
 
         const [rxResp, txResp] = await Promise.all([
-          ApiProxy.request(
-            `${promBaseUrl}/api/v1/query_range?query=${encodeURIComponent(
-              networkRxQuery
-            )}&start=${start}&end=${now}&step=${step}`
-          ).catch(() => null),
-          ApiProxy.request(
-            `${promBaseUrl}/api/v1/query_range?query=${encodeURIComponent(
-              networkTxQuery
-            )}&start=${start}&end=${now}&step=${step}`
-          ).catch(() => null),
+          metricsEndpoint
+            .request(
+              `${promBaseUrl}/api/v1/query_range?query=${encodeURIComponent(
+                networkRxQuery
+              )}&start=${start}&end=${now}&step=${step}`
+            )
+            .catch(() => null),
+          metricsEndpoint
+            .request(
+              `${promBaseUrl}/api/v1/query_range?query=${encodeURIComponent(
+                networkTxQuery
+              )}&start=${start}&end=${now}&step=${step}`
+            )
+            .catch(() => null),
         ]);
 
         if (rxResp?.data?.result?.[0] && txResp?.data?.result?.[0]) {
@@ -234,16 +214,20 @@ export default function VMMetrics({ vmName, namespace, vmiData, vmItem }: Metric
         const storageWriteQuery = `sum(rate(kubevirt_vmi_storage_write_traffic_bytes_total{name="${vmName}",namespace="${namespace}"}[5m])) / 1024`;
 
         const [readResp, writeResp] = await Promise.all([
-          ApiProxy.request(
-            `${promBaseUrl}/api/v1/query_range?query=${encodeURIComponent(
-              storageReadQuery
-            )}&start=${start}&end=${now}&step=${step}`
-          ).catch(() => null),
-          ApiProxy.request(
-            `${promBaseUrl}/api/v1/query_range?query=${encodeURIComponent(
-              storageWriteQuery
-            )}&start=${start}&end=${now}&step=${step}`
-          ).catch(() => null),
+          metricsEndpoint
+            .request(
+              `${promBaseUrl}/api/v1/query_range?query=${encodeURIComponent(
+                storageReadQuery
+              )}&start=${start}&end=${now}&step=${step}`
+            )
+            .catch(() => null),
+          metricsEndpoint
+            .request(
+              `${promBaseUrl}/api/v1/query_range?query=${encodeURIComponent(
+                storageWriteQuery
+              )}&start=${start}&end=${now}&step=${step}`
+            )
+            .catch(() => null),
         ]);
 
         if (readResp?.data?.result?.[0] && writeResp?.data?.result?.[0]) {
@@ -265,38 +249,19 @@ export default function VMMetrics({ vmName, namespace, vmiData, vmItem }: Metric
           }
         }
       } catch (err) {
-        setPrometheusAvailable(false);
+        // error handled by hook
       }
     };
 
     fetchMetrics();
     const interval = setInterval(fetchMetrics, 30000); // Refresh every 30s
     return () => clearInterval(interval);
-  }, [vmName, namespace, timeRange]);
+  }, [vmName, namespace, timeRange, metricsEndpoint.available, metricsEndpoint.baseUrl]);
 
-  if (!prometheusAvailable) {
+  if (!metricsEndpoint.available) {
     return (
       <Box p={3}>
-        {prometheusInstalled && !serviceMonitorConfigured ? (
-          <Alert
-            severity="warning"
-            sx={{ '& .MuiAlert-message': { color: '#ffb74d' } }}
-            icon={<Icon icon="mdi:monitor-eye" />}
-          >
-            <Typography variant="body2">
-              <strong>Prometheus detected</strong> but KubeVirt metrics are not enabled. Go to{' '}
-              <strong>Settings → General Configuration → Prometheus Monitoring</strong> to configure
-              the ServiceMonitor and start collecting VM metrics.
-            </Typography>
-          </Alert>
-        ) : (
-          <Alert severity="info" icon={<Icon icon="mdi:chart-line" />}>
-            <Typography variant="body2">
-              <strong>Enable metrics:</strong> Install Prometheus to view VM metrics (CPU, Memory,
-              Network, Storage).
-            </Typography>
-          </Alert>
-        )}
+        <MetricsEndpointConfig compact />
       </Box>
     );
   }
