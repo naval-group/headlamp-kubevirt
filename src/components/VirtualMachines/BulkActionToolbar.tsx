@@ -11,10 +11,9 @@ type BulkAction = 'start' | 'stop' | 'forceStop' | 'migrate' | 'delete';
 
 interface BulkActionToolbarProps {
   table: MRT_TableInstance<VirtualMachine>;
-  liveMigrationEnabled: boolean;
 }
 
-export default function BulkActionToolbar({ table, liveMigrationEnabled }: BulkActionToolbarProps) {
+export default function BulkActionToolbar({ table }: BulkActionToolbarProps) {
   const { enqueueSnackbar } = useSnackbar();
   const [confirmAction, setConfirmAction] = useState<BulkAction | null>(null);
   const [compareOpen, setCompareOpen] = useState(false);
@@ -144,19 +143,17 @@ export default function BulkActionToolbar({ table, liveMigrationEnabled }: BulkA
           </span>
         </Tooltip>
 
-        {liveMigrationEnabled && (
-          <Tooltip title="Migrate">
-            <span>
-              <IconButton
-                onClick={() => setConfirmAction('migrate')}
-                disabled={!hasMigratable}
-                sx={{ fontSize: '1.5rem' }}
-              >
-                <Icon icon="mdi:arrow-decision" />
-              </IconButton>
-            </span>
-          </Tooltip>
-        )}
+        <Tooltip title="Migrate">
+          <span>
+            <IconButton
+              onClick={() => setConfirmAction('migrate')}
+              disabled={!hasMigratable}
+              sx={{ fontSize: '1.5rem' }}
+            >
+              <Icon icon="mdi:arrow-decision" />
+            </IconButton>
+          </span>
+        </Tooltip>
 
         <Tooltip
           title={

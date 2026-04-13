@@ -49,7 +49,6 @@ function DeleteProtectionBadge({ vm }: { vm: VirtualMachine }) {
 function VMRowActionMenuItems({
   vm,
   closeMenu,
-  liveMigrationEnabled,
   snapshotEnabled,
   onDoctor,
   onClone,
@@ -61,7 +60,6 @@ function VMRowActionMenuItems({
 }: {
   vm: VirtualMachine;
   closeMenu: () => void;
-  liveMigrationEnabled: boolean;
   snapshotEnabled: boolean;
   onDoctor: (vm: VirtualMachine) => void;
   onClone: (vm: VirtualMachine) => void;
@@ -74,11 +72,10 @@ function VMRowActionMenuItems({
   // Use live VM data only when menu is open (one at a time, not per row)
   const [liveVM] = VirtualMachine.useGet(vm.getName(), vm.getNamespace());
   const { actions, isProtected } = useVMActions(liveVM || vm);
-  const visibleActions = actions.filter(a => a.id !== 'migrate' || liveMigrationEnabled);
 
   return (
     <>
-      {visibleActions.map(a => (
+      {actions.map(a => (
         <MenuItem
           key={a.id}
           onClick={() => {
@@ -242,7 +239,6 @@ export default function VirtualMachineList() {
     setCustomLabelColumns(getLabelColumns());
   }, []);
 
-  const liveMigrationEnabled = useFeatureGate('LiveMigration');
   const snapshotEnabled = useFeatureGate('Snapshot');
 
   // Fetch VMs (all namespaces, filtered client-side for smooth switching)
@@ -344,7 +340,7 @@ export default function VirtualMachineList() {
           return (
             <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center', flexWrap: 'wrap' }}>
               <Chip label={status} size="small" color={color} icon={icon} />
-              {liveMigrationEnabled && !vm.isLiveMigratable() && status === 'Running' && (
+              {!vm.isLiveMigratable() && status === 'Running' && (
                 <TitledTooltip
                   title="Not Migratable"
                   rows={[{ label: 'Reason', value: vm.getLiveMigratableReason() }]}
@@ -467,7 +463,7 @@ export default function VirtualMachineList() {
     });
 
     return cols;
-  }, [liveMigrationEnabled, getVMI, customLabelColumns]);
+  }, [getVMI, customLabelColumns]);
 
   const openDoctor = useCallback(async (vm: VirtualMachine) => {
     const vmName = vm.getName();
@@ -513,7 +509,6 @@ export default function VirtualMachineList() {
         key="actions"
         vm={row.original}
         closeMenu={closeMenu}
-        liveMigrationEnabled={liveMigrationEnabled}
         snapshotEnabled={snapshotEnabled}
         onDoctor={openDoctor}
         onClone={setCloneVM}
@@ -524,7 +519,7 @@ export default function VirtualMachineList() {
         onDelete={setDeleteVM}
       />,
     ],
-    [liveMigrationEnabled, snapshotEnabled, openDoctor]
+    [snapshotEnabled, openDoctor]
   );
 
   return (
@@ -559,9 +554,7 @@ export default function VirtualMachineList() {
           enableFacetedValues
           enableFullScreenToggle={false}
           renderRowActionMenuItems={renderRowActionMenuItems}
-          renderRowSelectionToolbar={({ table }) => (
-            <BulkActionToolbar table={table} liveMigrationEnabled={liveMigrationEnabled} />
-          )}
+          renderRowSelectionToolbar={({ table }) => <BulkActionToolbar table={table} />}
           getRowId={(vm: VirtualMachine) => vm.metadata?.uid ?? vm.getName()}
         />
       </SectionBox>

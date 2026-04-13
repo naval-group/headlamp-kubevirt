@@ -112,7 +112,7 @@ function registerKubeVirtResource(config: ResourceRoute) {
 loadFeatureGates();
 
 // Feature gates that affect sidebar visibility
-const SIDEBAR_AFFECTING_FEATURE_GATES = ['Snapshot', 'VMExport', 'DataVolumes', 'LiveMigration'];
+const SIDEBAR_AFFECTING_FEATURE_GATES = ['Snapshot', 'VMExport', 'DataVolumes'];
 
 // KubeVirt Update Watcher Component
 function KubeVirtUpdateWatcher() {
@@ -389,10 +389,6 @@ registerSidebarEntryFilter(entry => {
   }
   // Hide datavolumes if DataVolumes feature gate is not enabled
   if (entry.name === 'datavolumes' && loaded && !gates.includes('DataVolumes')) {
-    return null;
-  }
-  // Hide migrations if LiveMigration feature gate is not enabled
-  if (entry.name === 'migrations' && loaded && !gates.includes('LiveMigration')) {
     return null;
   }
   return entry;

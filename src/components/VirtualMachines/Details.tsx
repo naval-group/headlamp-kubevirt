@@ -150,8 +150,6 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
 
   const snapshotEnabled = useFeatureGate('Snapshot');
   const vmExportEnabled = useFeatureGate('VMExport');
-  const liveMigrationEnabled = useFeatureGate('LiveMigration');
-  const volumeMigrationEnabled = useFeatureGate('VolumeMigration');
 
   const handleDeletePod = async (force: boolean) => {
     setPodDeleteConfirm(null);
@@ -454,22 +452,20 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
             );
           })()}
         <Box sx={{ flex: 1 }} />
-        {vmActions
-          .filter(a => a.id !== 'migrate' || liveMigrationEnabled)
-          .map(a => (
-            <SimpleStyledTooltip key={a.id} title={a.label}>
-              <span>
-                <IconButton
-                  size="small"
-                  disabled={a.disabled}
-                  onClick={handleStickyAction(a.handler)}
-                  sx={{ p: 0.5 }}
-                >
-                  <Icon icon={a.icon} width={18} />
-                </IconButton>
-              </span>
-            </SimpleStyledTooltip>
-          ))}
+        {vmActions.map(a => (
+          <SimpleStyledTooltip key={a.id} title={a.label}>
+            <span>
+              <IconButton
+                size="small"
+                disabled={a.disabled}
+                onClick={handleStickyAction(a.handler)}
+                sx={{ p: 0.5 }}
+              >
+                <Icon icon={a.icon} width={18} />
+              </IconButton>
+            </span>
+          </SimpleStyledTooltip>
+        ))}
         <SimpleStyledTooltip title="Edit with Wizard">
           <IconButton size="small" onClick={() => setShowEditDialog(true)} sx={{ p: 0.5 }}>
             <Icon icon="mdi:auto-fix" width={18} />
@@ -550,38 +546,37 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                         '& .MuiChip-icon': { color: statusConfig.color },
                       }}
                     />
-                    {liveMigrationEnabled &&
-                      item?.jsonData.status.conditions?.map(condition => {
-                        if (condition.type === 'LiveMigratable' && condition.status === 'False') {
-                          return (
-                            <SimpleStyledTooltip
-                              key="notmigratable"
-                              title={condition.message || 'Cannot be live migrated'}
-                            >
-                              <Chip
-                                label="Not Migratable"
-                                size="small"
-                                variant="outlined"
-                                icon={
-                                  <Icon
-                                    icon="mdi:alert"
-                                    width={14}
-                                    style={{ verticalAlign: 'middle', marginTop: -2 }}
-                                  />
-                                }
-                                sx={{
-                                  borderColor: '#ffb74d',
-                                  color: '#ffb74d',
-                                  borderRadius: '16px',
-                                  height: 26,
-                                  '& .MuiChip-icon': { color: '#ffb74d' },
-                                }}
-                              />
-                            </SimpleStyledTooltip>
-                          );
-                        }
-                        return null;
-                      })}
+                    {item?.jsonData.status.conditions?.map(condition => {
+                      if (condition.type === 'LiveMigratable' && condition.status === 'False') {
+                        return (
+                          <SimpleStyledTooltip
+                            key="notmigratable"
+                            title={condition.message || 'Cannot be live migrated'}
+                          >
+                            <Chip
+                              label="Not Migratable"
+                              size="small"
+                              variant="outlined"
+                              icon={
+                                <Icon
+                                  icon="mdi:alert"
+                                  width={14}
+                                  style={{ verticalAlign: 'middle', marginTop: -2 }}
+                                />
+                              }
+                              sx={{
+                                borderColor: '#ffb74d',
+                                color: '#ffb74d',
+                                borderRadius: '16px',
+                                height: 26,
+                                '& .MuiChip-icon': { color: '#ffb74d' },
+                              }}
+                            />
+                          </SimpleStyledTooltip>
+                        );
+                      }
+                      return null;
+                    })}
                     {status === 'Migrating' && activeMigration && (
                       <Link
                         routeName="migration"
@@ -1479,7 +1474,7 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                       });
                     }
 
-                    const migrateChip = volumeMigrationEnabled
+                    const migrateChip = true
                       ? [
                           <Chip
                             key="migrate"
@@ -1542,7 +1537,7 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                               getter: (row: DiskRow) => row.pvcDisplay,
                             },
                             { label: 'Volume Mode', getter: (row: DiskRow) => row.volumeMode },
-                            ...(volumeMigrationEnabled
+                            ...(true
                               ? [
                                   {
                                     label: '',
@@ -1743,19 +1738,17 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
         }
         actions={item =>
           item && [
-            ...vmActions
-              .filter(a => a.id !== 'migrate' || liveMigrationEnabled)
-              .map(a => ({
-                id: a.id,
-                action: (
-                  <ActionButton
-                    description={t(a.label)}
-                    icon={a.icon}
-                    onClick={a.handler}
-                    iconButtonProps={{ disabled: a.disabled }}
-                  ></ActionButton>
-                ),
-              })),
+            ...vmActions.map(a => ({
+              id: a.id,
+              action: (
+                <ActionButton
+                  description={t(a.label)}
+                  icon={a.icon}
+                  onClick={a.handler}
+                  iconButtonProps={{ disabled: a.disabled }}
+                ></ActionButton>
+              ),
+            })),
             {
               id: 'edit-wizard',
               action: (
