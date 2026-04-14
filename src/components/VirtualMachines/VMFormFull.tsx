@@ -33,6 +33,7 @@ import {
   TableHead,
   TableRow,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import { useSnackbar } from 'notistack';
@@ -289,6 +290,8 @@ export default function VMFormFull({
       ? 'http'
       : bootDvt.spec?.source?.pvc
       ? 'pvc'
+      : bootDvt.spec?.source?.s3
+      ? 's3'
       : bootDvt.spec?.source?.upload
       ? 'upload'
       : bootDvt.spec?.source?.blank
@@ -302,11 +305,16 @@ export default function VMFormFull({
   const [bootCatalogOpen, setBootCatalogOpen] = useState(false);
 
   const handleBootCatalogSelect = (selection: CatalogSelection) => {
-    setBootSourceTypeOverride('registry');
-    handleBootDvtUpdate(
-      { source: { registry: { url: selection.registryUrl } } },
-      selection.storageSize
-    );
+    if (selection.sourceType === 'http' && selection.httpUrl) {
+      setBootSourceTypeOverride('http');
+      handleBootDvtUpdate({ source: { http: { url: selection.httpUrl } } }, selection.storageSize);
+    } else {
+      setBootSourceTypeOverride('registry');
+      handleBootDvtUpdate(
+        { source: { registry: { url: selection.registryUrl } } },
+        selection.storageSize
+      );
+    }
   };
 
   const resourceMode = resource.spec?.instancetype ? 'instanceType' : 'custom';
@@ -2641,6 +2649,7 @@ export default function VMFormFull({
                 <MenuItem value="dataSource">DataSource (Bootable Volume)</MenuItem>
                 <MenuItem value="registry">Container Registry</MenuItem>
                 <MenuItem value="http">HTTP/HTTPS URL</MenuItem>
+                <MenuItem value="s3">S3 Object Storage</MenuItem>
                 <MenuItem value="pvc">PVC Clone</MenuItem>
                 <MenuItem value="upload">Upload (virtctl)</MenuItem>
                 <MenuItem value="blank">Blank Disk</MenuItem>
@@ -2703,6 +2712,79 @@ export default function VMFormFull({
                 placeholder="https://example.com/disk-image.qcow2"
                 helperText="URL to ISO, qcow2, or raw disk image"
               />
+            )}
+
+            {/* S3 specific fields */}
+            {bootSourceType === 's3' && (
+              <>
+                <TextField
+                  fullWidth
+                  label="S3 URL"
+                  value={bootDvt?.spec?.source?.s3?.url || ''}
+                  onChange={e =>
+                    handleBootDvtUpdate({
+                      source: {
+                        s3: {
+                          url: e.target.value.trim(),
+                          ...(bootDvt?.spec?.source?.s3?.secretRef
+                            ? { secretRef: bootDvt.spec.source.s3.secretRef }
+                            : {}),
+                        },
+                      },
+                    })
+                  }
+                  error={
+                    !!(
+                      bootDvt?.spec?.source?.s3?.url &&
+                      !bootDvt.spec.source.s3.url.startsWith('https://') &&
+                      !bootDvt.spec.source.s3.url.startsWith('http://')
+                    )
+                  }
+                  placeholder="https://s3.eu-west-1.amazonaws.com/bucket/disk-image.qcow2"
+                  helperText={
+                    bootDvt?.spec?.source?.s3?.url &&
+                    !bootDvt.spec.source.s3.url.startsWith('https://') &&
+                    !bootDvt.spec.source.s3.url.startsWith('http://')
+                      ? 'URL must start with https:// or http:// (not s3://)'
+                      : 'Format: https://s3.<region>.amazonaws.com/<bucket>/<object> or https://<minio-host>/<bucket>/<object>'
+                  }
+                />
+                <Tooltip
+                  title={
+                    <span>
+                      Secret must contain keys:
+                      <br />
+                      <code>accessKeyId</code> and <code>secretKey</code>
+                    </span>
+                  }
+                  arrow
+                  placement="top-start"
+                >
+                  <Autocomplete
+                    fullWidth
+                    options={secrets}
+                    value={bootDvt?.spec?.source?.s3?.secretRef || ''}
+                    onChange={(_, newValue) =>
+                      handleBootDvtUpdate({
+                        source: {
+                          s3: {
+                            url: bootDvt?.spec?.source?.s3?.url || '',
+                            ...(newValue ? { secretRef: newValue } : {}),
+                          },
+                        },
+                      })
+                    }
+                    renderInput={params => (
+                      <TextField
+                        {...params}
+                        label="S3 Credentials Secret"
+                        placeholder="Select secret..."
+                        helperText="Secret with accessKeyId and secretKey (required)"
+                      />
+                    )}
+                  />
+                </Tooltip>
+              </>
             )}
 
             {/* PVC Clone specific fields */}
@@ -3279,6 +3361,8 @@ export default function VMFormFull({
                         ? 'Container Registry'
                         : bootSourceType === 'http'
                         ? 'HTTP/HTTPS URL'
+                        : bootSourceType === 's3'
+                        ? 'S3 Object Storage'
                         : bootSourceType === 'pvc'
                         ? 'PVC Clone'
                         : bootSourceType === 'upload'
