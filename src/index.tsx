@@ -54,6 +54,8 @@ import VirtualMachineDetails from './components/VirtualMachines/Details';
 import VirtualMachineList from './components/VirtualMachines/List';
 import SnapshotDetails from './components/VirtualMachineSnapshot/Details';
 import SnapshotList from './components/VirtualMachineSnapshot/List';
+import VMTemplateDetails from './components/VirtualMachineTemplate/Details';
+import VMTemplateList from './components/VirtualMachineTemplate/List';
 import KubeVirtSettings from './kubevirt/Settings';
 import { areFeatureGatesLoaded, getFeatureGates, loadFeatureGates } from './utils/featureGates';
 import { detectKubeVirtCapabilities } from './utils/kubevirtVersion';
@@ -481,6 +483,17 @@ registerKubeVirtResource({
   DetailsComponent: PreferenceDetails,
   detailsRouteName: 'preference',
   hasNamespace: false,
+});
+
+registerKubeVirtResource({
+  name: 'vmtemplates',
+  label: 'Templates',
+  path: 'templates',
+  icon: 'mdi:text-box-outline',
+  ListComponent: VMTemplateList,
+  DetailsComponent: VMTemplateDetails,
+  detailsRouteName: 'vmtemplate',
+  hasNamespace: true,
 });
 
 registerKubeVirtResource({

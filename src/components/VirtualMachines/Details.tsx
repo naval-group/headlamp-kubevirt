@@ -40,6 +40,7 @@ import VirtualMachineExport from '../VirtualMachineExport/VirtualMachineExport';
 import CreateSnapshotDialog from '../VirtualMachineSnapshot/CreateSnapshotDialog';
 import RestoreDialog from '../VirtualMachineSnapshot/RestoreDialog';
 import VirtualMachineSnapshot from '../VirtualMachineSnapshot/VirtualMachineSnapshot';
+import SaveAsTemplateDialog from '../VirtualMachineTemplate/SaveAsTemplateDialog';
 import VMConsole from '../VMConsole/VMConsole';
 import VMDoctorDialog from '../VMDoctor/VMDoctorDialog';
 import CloneDialog from './CloneDialog';
@@ -131,6 +132,7 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
   const [showLaunchLikeThis, setShowLaunchLikeThis] = useState(false);
   const [migrateVolumeName, setMigrateVolumeName] = useState<string | undefined>(undefined);
   const [showMigrateDialog, setShowMigrateDialog] = useState(false);
+  const [showSaveAsTemplate, setShowSaveAsTemplate] = useState(false);
   const [showResolveDialog, setShowResolveDialog] = useState(false);
   const [vmItem] = VirtualMachine.useGet(name, namespace);
   const { actions: vmActions } = useVMActions(vmItem);
@@ -151,6 +153,7 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
 
   const snapshotEnabled = useFeatureGate('Snapshot');
   const vmExportEnabled = useFeatureGate('VMExport');
+  const templateEnabled = useFeatureGate('Template');
 
   const handleDeletePod = async (force: boolean) => {
     setPodDeleteConfirm(null);
@@ -519,6 +522,11 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
             </SimpleStyledTooltip>
           </>
         )}
+        <SimpleStyledTooltip title="Save as Template">
+          <IconButton size="small" onClick={() => setShowSaveAsTemplate(true)} sx={{ p: 0.5 }}>
+            <Icon icon="mdi:text-box-outline" width={18} />
+          </IconButton>
+        </SimpleStyledTooltip>
         <SimpleStyledTooltip title="Launch More Like This">
           <IconButton size="small" onClick={() => setShowLaunchLikeThis(true)} sx={{ p: 0.5 }}>
             <Icon icon="mdi:rocket-launch" width={18} />
@@ -1888,6 +1896,20 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                   },
                 ]
               : []),
+            ...(templateEnabled
+              ? [
+                  {
+                    id: 'save-as-template',
+                    action: (
+                      <ActionButton
+                        description="Save as Template"
+                        icon="mdi:text-box-outline"
+                        onClick={() => setShowSaveAsTemplate(true)}
+                      ></ActionButton>
+                    ),
+                  },
+                ]
+              : []),
             {
               id: 'launch-like-this',
               action: (
@@ -1953,6 +1975,12 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
       <CloneDialog
         open={showCloneDialog}
         onClose={() => setShowCloneDialog(false)}
+        vmName={name || ''}
+        namespace={namespace || ''}
+      />
+      <SaveAsTemplateDialog
+        open={showSaveAsTemplate}
+        onClose={() => setShowSaveAsTemplate(false)}
         vmName={name || ''}
         namespace={namespace || ''}
       />
