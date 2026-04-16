@@ -37,6 +37,10 @@ class VirtualMachineSnapshot extends KubeObject {
     return this.status?.snapshotVolumes?.excludedVolumes || [];
   }
 
+  getSourceIndications(): Array<{ indication: string; message: string }> {
+    return this.status?.sourceIndications || [];
+  }
+
   static kind = 'VirtualMachineSnapshot';
   static apiVersion = 'snapshot.kubevirt.io/v1beta1';
   static isNamespaced = true;

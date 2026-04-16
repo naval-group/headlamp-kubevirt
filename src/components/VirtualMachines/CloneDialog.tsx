@@ -21,6 +21,7 @@ import {
 import { useSnackbar } from 'notistack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { KubeCondition } from '../../types';
+import { isKubeVirt18OrNewer } from '../../utils/kubevirtVersion';
 import { safeError } from '../../utils/sanitize';
 import { findCondition } from '../../utils/statusColors';
 
@@ -50,6 +51,7 @@ interface CloneResourceSpec {
     annotationFilters?: string[];
     newMacAddresses?: Record<string, string>;
     newSMBiosSerial?: string;
+    volumeNamePolicy?: 'RandomizeNames' | 'PrefixTargetName';
   };
 }
 
@@ -71,6 +73,9 @@ export default function CloneDialog({ open, onClose, vmName, namespace }: CloneD
   const [stripFirmwareUUID, setStripFirmwareUUID] = useState(true);
   const [labelFilters, setLabelFilters] = useState('');
   const [annotationFilters, setAnnotationFilters] = useState('');
+  const [volumeNamePolicy, setVolumeNamePolicy] = useState<'RandomizeNames' | 'PrefixTargetName'>(
+    'RandomizeNames'
+  );
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Progress state
@@ -202,6 +207,9 @@ export default function CloneDialog({ open, onClose, vmName, namespace }: CloneD
           kind: 'VirtualMachine',
           name: trimmed,
         },
+        ...(isKubeVirt18OrNewer() && volumeNamePolicy !== 'RandomizeNames'
+          ? { volumeNamePolicy }
+          : {}),
       },
     };
 
@@ -451,6 +459,30 @@ export default function CloneDialog({ open, onClose, vmName, namespace }: CloneD
                 }
               />
             </Box>
+
+            {isKubeVirt18OrNewer() && (
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={volumeNamePolicy === 'PrefixTargetName'}
+                    onChange={e =>
+                      setVolumeNamePolicy(e.target.checked ? 'PrefixTargetName' : 'RandomizeNames')
+                    }
+                    size="small"
+                  />
+                }
+                label={
+                  <Tooltip
+                    title="Use predictable PVC names (<target-vm>-<volume-name>) instead of random suffixes"
+                    arrow
+                  >
+                    <Typography variant="body2" sx={{ cursor: 'help' }}>
+                      Predictable volume names
+                    </Typography>
+                  </Tooltip>
+                }
+              />
+            )}
 
             {/* Advanced */}
             <Box>

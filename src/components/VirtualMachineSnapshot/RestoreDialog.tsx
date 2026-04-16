@@ -7,6 +7,7 @@ import {
   Button,
   Card,
   CardContent,
+  Checkbox,
   CircularProgress,
   FormControl,
   FormControlLabel,
@@ -17,11 +18,13 @@ import {
   RadioGroup,
   Select,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import { useSnackbar } from 'notistack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { KubeCondition } from '../../types';
+import { isKubeVirt18OrNewer } from '../../utils/kubevirtVersion';
 import { safeError } from '../../utils/sanitize';
 import { findCondition } from '../../utils/statusColors';
 import { TOOLTIPS } from '../../utils/tooltips';
@@ -54,6 +57,7 @@ interface RestoreResourceSpec {
     target: { apiGroup: string; kind: string; name: string };
     virtualMachineSnapshotName: string;
     targetReadinessPolicy?: ReadinessPolicy;
+    volumeRestorePolicy?: string;
   };
 }
 
@@ -70,6 +74,7 @@ export default function RestoreDialog({
   const [restoreMode, setRestoreMode] = useState<'same' | 'new'>('same');
   const [newVmName, setNewVmName] = useState('');
   const [readinessPolicy, setReadinessPolicy] = useState<ReadinessPolicy>('StopTarget');
+  const [usePrefix, setUsePrefix] = useState(false);
 
   // Progress state
   const [creating, setCreating] = useState(false);
@@ -203,6 +208,10 @@ export default function RestoreDialog({
         virtualMachineSnapshotName: snapshotName,
       },
     };
+
+    if (isKubeVirt18OrNewer() && usePrefix) {
+      restoreSpec.spec.volumeRestorePolicy = 'PrefixTargetName';
+    }
 
     // Only set readiness policy when restoring to same VM
     if (restoreMode === 'same') {
@@ -450,6 +459,28 @@ export default function RestoreDialog({
                     </Select>
                   </FormControl>
                 </Box>
+              )}
+
+              {isKubeVirt18OrNewer() && (
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={usePrefix}
+                      onChange={e => setUsePrefix(e.target.checked)}
+                      size="small"
+                    />
+                  }
+                  label={
+                    <Tooltip
+                      title="Use predictable PVC names (<target-vm>-<volume-name>) instead of random suffixes"
+                      arrow
+                    >
+                      <Typography variant="body2" sx={{ cursor: 'help' }}>
+                        Predictable volume names
+                      </Typography>
+                    </Tooltip>
+                  }
+                />
               )}
 
               {restoreMode === 'same' && (

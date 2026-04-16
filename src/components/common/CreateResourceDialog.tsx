@@ -1,6 +1,6 @@
 import { Icon } from '@iconify/react';
 import { Resource } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
-import Editor from '@monaco-editor/react';
+import Editor, { DiffEditor } from '@monaco-editor/react';
 import {
   Box,
   Button,
@@ -73,6 +73,7 @@ export default function CreateResourceDialog({
   const [uploadMethod, setUploadMethod] = useState(0); // 0 = File, 1 = URL
   const [useMinimalEditor, setUseMinimalEditor] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [showDiffOnly, setShowDiffOnly] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
   const isValid = validate ? validate(resource) : true;
 
@@ -83,9 +84,17 @@ export default function CreateResourceDialog({
     }
   }, [open, initialTab]);
 
-  // Sync resource to YAML when resource changes or tab switches to Editor
+  // Track previous tab to detect tab switches (not resource changes).
+  // Initialize to 0 (Form tab) so that opening directly on Editor tab triggers sync.
+  const prevTabRef = React.useRef(0);
+
+  // Sync resource to YAML only when switching TO the Editor tab, not on every resource change.
+  // While the Editor tab is active, yamlContent is the source of truth.
   useEffect(() => {
-    if (activeTab === 1) {
+    const switchedToEditor = activeTab === 1 && prevTabRef.current !== 1;
+    prevTabRef.current = activeTab;
+
+    if (switchedToEditor) {
       try {
         const yamlStr = yaml.dump(resource, { lineWidth: -1, noRefs: true });
         setYamlContent(yamlStr);
@@ -311,8 +320,18 @@ export default function CreateResourceDialog({
               />
             </Box>
             {yamlError && (
-              <Box sx={{ p: 2, bgcolor: 'error.main', color: 'error.contrastText' }}>
-                <Typography variant="body2">{yamlError}</Typography>
+              <Box
+                sx={{
+                  px: 2,
+                  py: 0.5,
+                  bgcolor: 'action.hover',
+                  borderBottom: 1,
+                  borderColor: 'warning.main',
+                }}
+              >
+                <Typography variant="caption" color="warning.main" noWrap>
+                  {yamlError}
+                </Typography>
               </Box>
             )}
             <Box sx={{ flex: 1, minHeight: 0, position: 'relative', p: 2 }}>
@@ -519,9 +538,23 @@ export default function CreateResourceDialog({
 
             {/* YAML Preview */}
             <Box>
-              <Typography variant="overline" color="text.secondary" gutterBottom>
-                YAML Configuration
-              </Typography>
+              <Box display="flex" alignItems="center" justifyContent="space-between">
+                <Typography variant="overline" color="text.secondary" gutterBottom>
+                  {showDiffOnly ? 'Changes' : 'YAML Configuration'}
+                </Typography>
+                {editMode && (
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        size="small"
+                        checked={showDiffOnly}
+                        onChange={(_, checked) => setShowDiffOnly(checked)}
+                      />
+                    }
+                    label="Show diff only"
+                  />
+                )}
+              </Box>
               <Box
                 sx={{
                   border: 1,
@@ -531,21 +564,45 @@ export default function CreateResourceDialog({
                   bgcolor: 'action.hover',
                 }}
               >
-                <Editor
-                  height="400px"
-                  language="yaml"
-                  theme={theme.palette.mode === 'dark' ? 'vs-dark' : 'light'}
-                  value={yaml.dump(resource, { lineWidth: -1, noRefs: true })}
-                  options={{
-                    readOnly: true,
-                    minimap: { enabled: false },
-                    lineNumbers: 'on',
-                    scrollBeyondLastLine: false,
-                    wordWrap: 'on',
-                    fontSize: 12,
-                    tabSize: 2,
-                  }}
-                />
+                {showDiffOnly && editMode ? (
+                  <DiffEditor
+                    height="400px"
+                    language="yaml"
+                    theme={theme.palette.mode === 'dark' ? 'vs-dark' : 'light'}
+                    original={yaml.dump(initialResource, { lineWidth: -1, noRefs: true })}
+                    modified={yaml.dump(resource, { lineWidth: -1, noRefs: true })}
+                    options={{
+                      readOnly: true,
+                      minimap: { enabled: false },
+                      lineNumbers: 'on',
+                      scrollBeyondLastLine: false,
+                      fontSize: 12,
+                      renderSideBySide: false,
+                      hideUnchangedRegions: {
+                        enabled: true,
+                        contextLineCount: 5,
+                        minimumLineCount: 3,
+                        revealLineCount: 10,
+                      },
+                    }}
+                  />
+                ) : (
+                  <Editor
+                    height="400px"
+                    language="yaml"
+                    theme={theme.palette.mode === 'dark' ? 'vs-dark' : 'light'}
+                    value={yaml.dump(resource, { lineWidth: -1, noRefs: true })}
+                    options={{
+                      readOnly: true,
+                      minimap: { enabled: false },
+                      lineNumbers: 'on',
+                      scrollBeyondLastLine: false,
+                      wordWrap: 'on',
+                      fontSize: 12,
+                      tabSize: 2,
+                    }}
+                  />
+                )}
               </Box>
             </Box>
           </Box>

@@ -3,12 +3,25 @@ export interface TagOverride {
   defaultPreference?: string;
 }
 
+export type CatalogSourceType = 'containerdisk' | 'http';
+export type CatalogCategory = 'general' | 'coreos' | 'testing' | 'custom';
+export type CatalogSource = 'builtin' | 'configmap';
+
+export interface CatalogImageTag {
+  name: string;
+  default?: boolean;
+  url?: string; // For http sourceType
+  osLabel?: string;
+  defaultPreference?: string;
+}
+
 export interface CatalogImage {
   id: string;
   name: string;
   description: string;
   icon: string;
   iconColor?: string;
+  iconUrl?: string; // Base64 data URI or URL, takes precedence over icon
   registry: string;
   tags: string[];
   defaultTag: string;
@@ -16,7 +29,14 @@ export interface CatalogImage {
   osLabel: string;
   defaultPreference?: string;
   tagOverrides?: Record<string, TagOverride>;
-  category: 'general' | 'coreos' | 'testing';
+  category: CatalogCategory;
+  sourceType?: CatalogSourceType;
+  /** Where this entry came from */
+  source?: CatalogSource;
+  /** ConfigMap name/namespace if source=configmap */
+  sourceRef?: string;
+  /** Extended tag definitions for http sourceType */
+  extendedTags?: CatalogImageTag[];
 }
 
 /** Resolve osLabel and defaultPreference for a given image + tag. */
@@ -197,8 +217,9 @@ const IMAGE_CATALOG: CatalogImage[] = [
 
 export default IMAGE_CATALOG;
 
-export const CATALOG_CATEGORIES: Record<CatalogImage['category'], string> = {
+export const CATALOG_CATEGORIES: Record<CatalogCategory, string> = {
   general: 'General Purpose',
   coreos: 'CoreOS',
   testing: 'Testing / Demo',
+  custom: 'Custom',
 };
