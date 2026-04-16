@@ -12,6 +12,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import { useSnackbar } from 'notistack';
 import React, { useEffect, useState } from 'react';
 import useResourceEditor from '../../hooks/useResourceEditor';
 import { KubeListResponse } from '../../types';
@@ -41,6 +42,7 @@ export default function DataImportCronForm({
   editMode = false,
   showErrors = false,
 }: DataImportCronFormProps) {
+  const { enqueueSnackbar } = useSnackbar();
   const [namespaces, setNamespaces] = useState<string[]>([]);
   const [storageClasses, setStorageClasses] = useState<string[]>([]);
   const [preferences, setPreferences] = useState<string[]>([]);
@@ -48,6 +50,15 @@ export default function DataImportCronForm({
   const { updateMetadata, updateSpec } = useResourceEditor(resource, onChange);
 
   const handleCatalogSelect = (selection: CatalogSelection) => {
+    // HTTP sources not supported for DataImportCron
+    if (selection.sourceType === 'http') {
+      enqueueSnackbar(
+        'HTTP sources are not supported for DataImportCron. Use a DataVolume or VM form instead.',
+        { variant: 'warning' }
+      );
+      return;
+    }
+
     // Apply all catalog values at once
     const labels = { ...resource.metadata?.labels };
     if (selection.osLabel) {
@@ -359,8 +370,20 @@ export default function DataImportCronForm({
               }}
             >
               <FormControlLabel value="registry" control={<Radio />} label="Container Registry" />
-              <FormControlLabel value="http" control={<Radio />} label="HTTP" />
-              <FormControlLabel value="s3" control={<Radio />} label="S3" />
+              <FormControlLabel
+                value="http"
+                control={<Radio />}
+                label="HTTP"
+                disabled
+                title="HTTP source is not supported for DataImportCron. Use a DataVolume for HTTP imports."
+              />
+              <FormControlLabel
+                value="s3"
+                control={<Radio />}
+                label="S3"
+                disabled
+                title="S3 source is not supported for DataImportCron. Use a DataVolume for S3 imports."
+              />
               <FormControlLabel value="blank" control={<Radio />} label="Blank" />
             </RadioGroup>
           </FormControl>
@@ -627,6 +650,7 @@ export default function DataImportCronForm({
         open={catalogOpen}
         onClose={() => setCatalogOpen(false)}
         onSelect={handleCatalogSelect}
+        allowedSourceTypes={['containerdisk']}
       />
     </Box>
   );

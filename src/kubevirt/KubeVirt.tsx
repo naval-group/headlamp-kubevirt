@@ -185,6 +185,22 @@ class KubeVirt extends KubeObject {
     return this.update(updated);
   }
 
+  getRoleAggregationStrategy(): string {
+    return this.jsonData?.spec?.configuration?.roleAggregationStrategy || 'AggregateToDefault';
+  }
+
+  async updateRoleAggregationStrategy(strategy: 'AggregateToDefault' | 'Manual') {
+    const updated = { ...this.jsonData };
+    if (!updated.spec) updated.spec = {};
+    if (!updated.spec.configuration) updated.spec.configuration = {};
+    if (strategy === 'Manual') {
+      updated.spec.configuration.roleAggregationStrategy = 'Manual';
+    } else {
+      delete updated.spec.configuration.roleAggregationStrategy;
+    }
+    return this.update(updated);
+  }
+
   static kind = 'KubeVirt';
   static apiVersion = 'kubevirt.io/v1';
   static isNamespaced = true;

@@ -290,15 +290,22 @@ export default function DataImportCronList() {
         initialResource={emptyDataImportCron}
         initialTab={createInitialTab}
         formComponent={DataImportCronForm}
-        validate={r =>
-          !!(
+        validate={r => {
+          const source = r?.spec?.template?.spec?.source;
+          const hasSource =
+            (source?.registry?.url && source.registry.url.length > 0) ||
+            (source?.http?.url && source.http.url.length > 0) ||
+            (source?.s3?.url && source.s3.url.length > 0) ||
+            source?.blank !== undefined;
+          return !!(
             r?.metadata?.name &&
             r?.metadata?.namespace &&
             r?.spec?.managedDataSource &&
             r?.spec?.schedule &&
+            hasSource &&
             r?.spec?.template?.spec?.storage?.resources?.requests?.storage
-          )
-        }
+          );
+        }}
       />
     </>
   );
