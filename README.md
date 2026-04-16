@@ -23,7 +23,7 @@ Originally based on the excellent work from [buttahtoast](https://github.com/but
 
 ## Features
 
-- **Virtual Machines** - Full lifecycle management (create, start, stop, restart, force stop, migrate, pause, clone, snapshot, export, launch more like this, save as template), VNC console with send keys, serial terminal with auto-resize, live per-VM metrics, desktop/tablet device auto-detection
+- **Virtual Machines** - Full lifecycle management (create, start, stop, restart, force stop, migrate, pause, clone, snapshot, export, launch more like this, save as template), bulk actions, compare up to 3 VMs, VNC console with send keys, serial terminal with auto-resize, live per-VM metrics, desktop/tablet device auto-detection
 - **VM Doctor** - Per-VM diagnostic panel with conditions, events, metrics, PromQL querier, guest OS info, VM/pod shell with virsh command reference, logs, YAML, memory dump with Volatility3 forensic analysis, and disk inspector
 - **VM Templates** - Create, manage, and instantiate VirtualMachineTemplates with parameter substitution. One-click "Save as Template" from any VM
 - **Image Catalog** - Built-in OS images and custom entries via ConfigMaps, with hide/show toggle and icon picker. See [Image Catalog docs](docs/image-catalog/README.md)
@@ -45,9 +45,13 @@ Prometheus-powered top consumers for CPU, memory, network, and storage across al
 
 ### Virtual Machine Management
 
-Full lifecycle management with context menu actions: Start, Stop, Restart, Pause, Force Stop, Migrate, Protect, VM Doctor, Snapshot, Clone, Launch More Like This, Save as Template, Edit, View YAML, and Delete.
+Full lifecycle management with context menu actions: Start, Stop, Restart, Pause, Force Stop, Migrate, Protect, VM Doctor, Snapshot, Clone, Launch More Like This, Save as Template, Edit, View YAML, and Delete. Multi-select rows for bulk actions (start, stop, migrate, delete) or compare up to 3 VMs side-by-side across metadata, spec, and status fields.
 
 ![VM List](screenshots/vm-list-actions.png)
+
+![VM Bulk Actions & Compare](screenshots/vm-bulk-actions.png)
+
+![VM Compare](screenshots/vm-compare.png)
 
 ### VM Details
 
