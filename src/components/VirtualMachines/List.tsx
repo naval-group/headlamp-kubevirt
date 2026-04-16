@@ -23,6 +23,7 @@ import { SimpleStyledTooltip, TitledTooltip } from '../common/StyledTooltip';
 import ResourceEditorDialog from '../ResourceEditorDialog';
 import VirtualMachineInstance from '../VirtualMachineInstance/VirtualMachineInstance';
 import CreateSnapshotDialog from '../VirtualMachineSnapshot/CreateSnapshotDialog';
+import SaveAsTemplateDialog from '../VirtualMachineTemplate/SaveAsTemplateDialog';
 import VMDoctorDialog from '../VMDoctor/VMDoctorDialog';
 import BulkActionToolbar from './BulkActionToolbar';
 import CloneDialog from './CloneDialog';
@@ -54,6 +55,7 @@ function VMRowActionMenuItems({
   onClone,
   onSnapshot,
   onLaunchLikeThis,
+  onSaveAsTemplate,
   onEdit,
   onViewYaml,
   onDelete,
@@ -65,6 +67,7 @@ function VMRowActionMenuItems({
   onClone: (vm: VirtualMachine) => void;
   onSnapshot: (vm: VirtualMachine) => void;
   onLaunchLikeThis: (vm: VirtualMachine) => void;
+  onSaveAsTemplate: (vm: VirtualMachine) => void;
   onEdit: (vm: VirtualMachine) => void;
   onViewYaml: (vm: VirtualMachine) => void;
   onDelete: (vm: VirtualMachine) => void;
@@ -72,6 +75,7 @@ function VMRowActionMenuItems({
   // Use live VM data only when menu is open (one at a time, not per row)
   const [liveVM] = VirtualMachine.useGet(vm.getName(), vm.getNamespace());
   const { actions, isProtected } = useVMActions(liveVM || vm);
+  const templateEnabled = useFeatureGate('Template');
 
   return (
     <>
@@ -142,6 +146,20 @@ function VMRowActionMenuItems({
         </ListItemIcon>
         <ListItemText>Launch More Like This</ListItemText>
       </MenuItem>
+      {templateEnabled && (
+        <MenuItem
+          key="save-as-template"
+          onClick={() => {
+            closeMenu();
+            onSaveAsTemplate(vm);
+          }}
+        >
+          <ListItemIcon>
+            <Icon icon="mdi:text-box-outline" />
+          </ListItemIcon>
+          <ListItemText>Save as Template</ListItemText>
+        </MenuItem>
+      )}
       <Divider />
       <MenuItem
         key="edit"
@@ -234,6 +252,7 @@ export default function VirtualMachineList() {
   const [viewYamlVM, setViewYamlVM] = useState<VirtualMachine | null>(null);
   const [cloneVM, setCloneVM] = useState<VirtualMachine | null>(null);
   const [snapshotVM, setSnapshotVM] = useState<VirtualMachine | null>(null);
+  const [saveAsTemplateVM, setSaveAsTemplateVM] = useState<VirtualMachine | null>(null);
   const [launchLikeThisVM, setLaunchLikeThisVM] = useState<VirtualMachine | null>(null);
   useEffect(() => {
     setCustomLabelColumns(getLabelColumns());
@@ -514,6 +533,7 @@ export default function VirtualMachineList() {
         onClone={setCloneVM}
         onSnapshot={setSnapshotVM}
         onLaunchLikeThis={setLaunchLikeThisVM}
+        onSaveAsTemplate={setSaveAsTemplateVM}
         onEdit={setEditVM}
         onViewYaml={setViewYamlVM}
         onDelete={setDeleteVM}
@@ -641,6 +661,13 @@ export default function VirtualMachineList() {
         onClose={() => setCloneVM(null)}
         vmName={cloneVM?.getName() || ''}
         namespace={cloneVM?.getNamespace() || ''}
+      />
+
+      <SaveAsTemplateDialog
+        open={!!saveAsTemplateVM}
+        onClose={() => setSaveAsTemplateVM(null)}
+        vmName={saveAsTemplateVM?.getName() || ''}
+        namespace={saveAsTemplateVM?.getNamespace() || ''}
       />
 
       <CreateSnapshotDialog

@@ -1,0 +1,53 @@
+# ContainerPath VM Test
+#
+# A Fedora VM that mounts injected credentials via ContainerPath + virtiofs.
+# Requires the test webhook from containerpath-webhook-test.yaml to be running.
+#
+# Login: fedora / fedora
+#
+# After login, mount the credentials:
+#   sudo mkdir -p /mnt/creds
+#   sudo mount -t virtiofs creds /mnt/creds
+#   cat /mnt/creds/token      # -> my-fake-credential
+#   cat /mnt/creds/endpoint   # -> https://api.example.com
+---
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: testcvp
+  namespace: default
+spec:
+  runStrategy: Always
+  template:
+    spec:
+      domain:
+        devices:
+          disks:
+            - name: rootdisk
+              disk:
+                bus: virtio
+            - name: cloudinitdisk
+              disk:
+                bus: virtio
+          filesystems:
+            - name: creds
+              virtiofs: {}
+        resources:
+          requests:
+            memory: 1Gi
+      volumes:
+        - name: rootdisk
+          containerDisk:
+            image: quay.io/containerdisks/fedora:latest
+        - name: cloudinitdisk
+          cloudInitNoCloud:
+            userData: |
+              #cloud-config
+              password: fedora
+              chpasswd:
+                expire: false
+              ssh_pwauth: true
+        - name: creds
+          containerPath:
+            path: /var/run/test-creds
+            readOnly: true

@@ -317,6 +317,9 @@ export interface VMIVolumeStatus {
 /** Subset of VirtualMachineInstance used across views */
 export interface VMIData {
   [key: string]: unknown;
+  metadata?: {
+    creationTimestamp?: string;
+  };
   spec?: {
     domain?: {
       cpu?: VMCPUTopology;
@@ -335,6 +338,7 @@ export interface VMIData {
     memory?: {
       guestCurrent?: string;
       guestRequested?: string;
+      memoryOverhead?: string;
     };
     guestOSInfo?: {
       prettyName?: string;

@@ -32,6 +32,7 @@ import DataSourceList from './components/BootableVolumes/List';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import DataImportCronDetails from './components/DataImportCrons/Details';
 import DataImportCronList from './components/DataImportCrons/List';
+import CatalogPage from './components/ImageCatalog/CatalogPage';
 import InstanceTypeDetails from './components/InstanceTypes/Details';
 import InstanceTypeList from './components/InstanceTypes/List';
 import MigrationDetails from './components/Migrations/Details';
@@ -54,8 +55,11 @@ import VirtualMachineDetails from './components/VirtualMachines/Details';
 import VirtualMachineList from './components/VirtualMachines/List';
 import SnapshotDetails from './components/VirtualMachineSnapshot/Details';
 import SnapshotList from './components/VirtualMachineSnapshot/List';
+import VMTemplateDetails from './components/VirtualMachineTemplate/Details';
+import VMTemplateList from './components/VirtualMachineTemplate/List';
 import KubeVirtSettings from './kubevirt/Settings';
 import { areFeatureGatesLoaded, getFeatureGates, loadFeatureGates } from './utils/featureGates';
+import { detectKubeVirtCapabilities } from './utils/kubevirtVersion';
 
 // Route registration helper - DRY pattern for KubeVirt resources
 interface ResourceRoute {
@@ -108,8 +112,9 @@ function registerKubeVirtResource(config: ResourceRoute) {
   }
 }
 
-// Load feature gates on plugin initialization
+// Load feature gates and detect capabilities on plugin initialization
 loadFeatureGates();
+detectKubeVirtCapabilities();
 
 // Feature gates that affect sidebar visibility
 const SIDEBAR_AFFECTING_FEATURE_GATES = ['Snapshot', 'VMExport', 'DataVolumes'];
@@ -482,6 +487,17 @@ registerKubeVirtResource({
 });
 
 registerKubeVirtResource({
+  name: 'vmtemplates',
+  label: 'Templates',
+  path: 'templates',
+  icon: 'mdi:text-box-outline',
+  ListComponent: VMTemplateList,
+  DetailsComponent: VMTemplateDetails,
+  detailsRouteName: 'vmtemplate',
+  hasNamespace: true,
+});
+
+registerKubeVirtResource({
   name: 'datasources',
   label: 'DataSources',
   path: 'datasources',
@@ -567,6 +583,27 @@ registerKubeVirtResource({
   DetailsComponent: ExportDetails,
   detailsRouteName: 'export',
   hasNamespace: true,
+});
+
+// Image Catalog — not a CRD, registered as a simple page
+// NOTE: Using registerKubeVirtResource pattern with a dummy list component
+// to avoid Headlamp's _class resolution error on Cluster page
+registerSidebarEntry({
+  parent: 'kubevirt',
+  name: 'kubevirt-imagecatalog',
+  label: 'Image Catalog',
+  url: '/kubevirt/imagecatalog',
+  icon: 'mdi:image-multiple',
+});
+registerRoute({
+  path: '/kubevirt/imagecatalog',
+  sidebar: 'kubevirt',
+  component: () => (
+    <ErrorBoundary>
+      <CatalogPage />
+    </ErrorBoundary>
+  ),
+  exact: true,
 });
 
 registerKubeVirtResource({
