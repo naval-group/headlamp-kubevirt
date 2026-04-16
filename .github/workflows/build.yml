@@ -13,8 +13,6 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    outputs:
-      digest: ${{ steps.digest.outputs.digest }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -54,12 +52,8 @@ jobs:
           artifact-name: sbom-headlamp-kubevirt.spdx.json
           output-file: sbom-headlamp-kubevirt.spdx.json
 
-      - name: Compute artifact digest
-        id: digest
-        run: |
-          sha256sum headlamp-kubevirt-*.tar.gz > checksums.txt
-          digest=$(sha256sum headlamp-kubevirt-*.tar.gz | base64 -w0)
-          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - name: Compute checksums
+        run: sha256sum headlamp-kubevirt-*.tar.gz > checksums.txt
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -115,10 +109,20 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: headlamp-kubevirt
+
+      # Generate SLSA provenance attestation signed via Sigstore OIDC.
+      # Stored in GitHub's attestation store, verifiable with:
+      #   gh attestation verify headlamp-kubevirt-*.tar.gz --repo naval-group/headlamp-kubevirt
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@e8998f949152b543b01f04b428a8e20e29e01fc8 # v2.4.0
+        with:
+          subject-path: headlamp-kubevirt-*.tar.gz
 
       - uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
         with:
@@ -128,15 +132,3 @@ jobs:
             sbom-headlamp-kubevirt.spdx.json
           generate_release_notes: true
           prerelease: ${{ contains(github.ref, '-rc') }}
-
-  provenance:
-    needs: [build, release]
-    if: startsWith(github.ref, 'refs/tags/v')
-    permissions:
-      actions: read
-      id-token: write
-      contents: write
-    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@f7dd8c54c2067bafc12ca7a55595d5ee9b75204a # v2.1.0
-    with:
-      base64-subjects: "${{ needs.build.outputs.digest }}"
-      upload-assets: true
