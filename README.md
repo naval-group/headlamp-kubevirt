@@ -19,13 +19,16 @@ Originally based on the excellent work from [buttahtoast](https://github.com/but
 ## Features
 
 - **Virtual Machines** - Full lifecycle management (create, start, stop, restart, migrate, pause, snapshot, export), VNC console, serial terminal, live metrics
+- **VM Doctor** - Per-VM diagnostic panel with conditions, events, metrics, PromQL querier, guest OS info, VM/pod shell, logs, YAML, memory dump with Volatility3 forensic analysis, and disk inspector
+- **VM Templates** - Create, manage, and instantiate VirtualMachineTemplates with parameter substitution
+- **Image Catalog** - Built-in OS images and custom entries via ConfigMaps, with hide/show toggle and icon picker
 - **Instance Types & Preferences** - Browse and manage VirtualMachineClusterInstanceTypes and VirtualMachineClusterPreferences
-- **Bootable Volumes** - Manage DataSources, DataVolumes, and DataImportCrons for OS images
+- **Bootable Volumes** - Manage DataSources, DataVolumes (HTTP, Registry, S3, PVC, Upload), and DataImportCrons for OS images
 - **Networking** - Create and manage Network Attachment Definitions (Multus CNI)
 - **Live Migration** - Monitor VirtualMachineInstanceMigrations
 - **Snapshots & Exports** - Create and restore VM snapshots, export VMs
 - **Overview Dashboard** - Cluster-wide VM status, Prometheus-powered metrics (CPU, memory, network, storage top consumers)
-- **Settings** - KubeVirt/CDI version display, feature gate management, migration configuration, VM delete protection (ValidatingAdmissionPolicy)
+- **Settings** - KubeVirt/CDI version display, feature gate management with maturity labels (GA/Beta/Alpha/Deprecated), migration configuration, RBAC aggregation, VM delete protection
 
 ## Screenshots
 
@@ -94,6 +97,50 @@ Create and manage Network Attachment Definitions with support for Bridge, Macvla
 Monitor VirtualMachineInstanceMigrations with source/target node tracking and status.
 
 ![Migrations](screenshots/migrations.png)
+
+### VM Templates
+
+Create, edit, and instantiate VirtualMachineTemplates. Templates support parameter substitution for generating VMs from golden images.
+
+![VM Templates](docs/screenshots/vm-templates.png)
+
+### VM Doctor
+
+Per-VM diagnostic panel accessible from the VM details page. Provides a unified view of everything related to a VM across multiple tabs.
+
+**Conditions** - Aggregated conditions from the VirtualMachine, VirtualMachineInstance, Pod, and DataVolumes. Highlights conditions that need attention.
+
+![VM Doctor - Conditions](docs/screenshots/vm-doctor-conditions.png)
+
+**Events** - Filtered Kubernetes events related to the VM, with type filtering and search.
+
+![VM Doctor - Events](docs/screenshots/vm-doctor-events.png)
+
+**Metrics** - Live CPU, memory, network throughput, storage throughput, storage IOPS, and swap activity charts powered by Prometheus.
+
+![VM Doctor - Metrics](docs/screenshots/vm-doctor-metrics.png)
+
+**Guest Info** - Operating system details, logged-in users, filesystems with usage bars, and network interfaces. Requires the QEMU guest agent.
+
+![VM Doctor - Guest Info](docs/screenshots/vm-doctor-guest-info.png)
+
+**Pod Shell** - Direct shell access to the virt-launcher compute container with a command reference sidebar. Click-to-run virsh commands for VM status, resources, configuration, and diagnostics.
+
+![VM Doctor - Pod Shell](docs/screenshots/vm-doctor-pod-shell.png)
+
+**Memory Dump** - Trigger and download VM memory dumps. Launch a Volatility3 forensic analysis pod with ISF symbol auto-detection, interactive shell, and command reference sidebar.
+
+![VM Doctor - Memory Dump](docs/screenshots/vm-doctor-memory-dump.png)
+
+**Disk Inspector** - Boot a lightweight Alpine VM with the selected disk(s) attached as secondary block devices. Browse files, inspect partitions, repair bootloaders, and check installed packages.
+
+![VM Doctor - Disk Inspector](docs/screenshots/vm-doctor-disk-inspector.png)
+
+### Image Catalog
+
+Browse built-in OS images and add custom entries via ConfigMaps. Hide/show images from pickers, searchable by name and category. See [Image Catalog documentation](docs/image-catalog/README.md) for details on adding custom entries.
+
+![Image Catalog](docs/image-catalog/catalog-overview.png)
 
 ### Settings & Feature Gates
 
