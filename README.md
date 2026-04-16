@@ -18,17 +18,17 @@ Originally based on the excellent work from [buttahtoast](https://github.com/but
 
 ## Features
 
-- **Virtual Machines** - Full lifecycle management (create, start, stop, restart, migrate, pause, snapshot, export), VNC console, serial terminal, live metrics
-- **VM Doctor** - Per-VM diagnostic panel with conditions, events, metrics, PromQL querier, guest OS info, VM/pod shell, logs, YAML, memory dump with Volatility3 forensic analysis, and disk inspector
-- **VM Templates** - Create, manage, and instantiate VirtualMachineTemplates with parameter substitution
-- **Image Catalog** - Built-in OS images and custom entries via ConfigMaps, with hide/show toggle and icon picker
+- **Virtual Machines** - Full lifecycle management (create, start, stop, restart, force stop, migrate, pause, clone, snapshot, export, launch more like this, save as template), VNC console with send keys, serial terminal with auto-resize, live per-VM metrics, desktop/tablet device auto-detection
+- **VM Doctor** - Per-VM diagnostic panel with conditions, events, metrics, PromQL querier, guest OS info, VM/pod shell with virsh command reference, logs, YAML, memory dump with Volatility3 forensic analysis, and disk inspector
+- **VM Templates** - Create, manage, and instantiate VirtualMachineTemplates with parameter substitution. One-click "Save as Template" from any VM
+- **Image Catalog** - Built-in OS images and custom entries via ConfigMaps, with hide/show toggle and icon picker. See [Image Catalog docs](docs/image-catalog/README.md)
 - **Instance Types & Preferences** - Browse and manage VirtualMachineClusterInstanceTypes and VirtualMachineClusterPreferences
 - **Bootable Volumes** - Manage DataSources, DataVolumes (HTTP, Registry, S3, PVC, Upload), and DataImportCrons for OS images
 - **Networking** - Create and manage Network Attachment Definitions (Multus CNI)
-- **Live Migration** - Monitor VirtualMachineInstanceMigrations
+- **Live Migration** - Monitor VirtualMachineInstanceMigrations, volume live migration support (VolumeMigration)
 - **Snapshots & Exports** - Create and restore VM snapshots, export VMs
 - **Overview Dashboard** - Cluster-wide VM status, Prometheus-powered metrics (CPU, memory, network, storage top consumers)
-- **Settings** - KubeVirt/CDI version display, feature gate management with maturity labels (GA/Beta/Alpha/Deprecated), migration configuration, RBAC aggregation, VM delete protection
+- **Settings** - KubeVirt/CDI version info, system health monitoring (component status, REST errors, API latency, VMI phase transitions), configurable metrics endpoint (Prometheus, Thanos, Mimir), plugin features (VM delete protection, forensic toolbox, disk inspector), feature gates with maturity labels (GA/Beta/Alpha/Deprecated/Always On) and version-aware detection, RBAC aggregation, common instance types deployment, Prometheus monitoring (ServiceMonitor)
 
 ## Screenshots
 
@@ -40,23 +40,25 @@ Prometheus-powered top consumers for CPU, memory, network, and storage across al
 
 ### Virtual Machine Management
 
-Full lifecycle management with context menu actions: Start, Stop, Restart, Pause, Migrate, Protect, Edit, and Delete. Live migration notifications appear in the status bar.
+Full lifecycle management with context menu actions: Start, Stop, Restart, Pause, Force Stop, Migrate, Protect, VM Doctor, Snapshot, Clone, Launch More Like This, Save as Template, Edit, View YAML, and Delete.
 
 ![VM List](screenshots/vm-list-actions.png)
 
 ### VM Details
 
-Detailed view showing status, CPU, memory, node placement, guest OS info, and links to the VMI and virt-launcher pod.
+Detailed view showing status, CPU, memory, memory overhead, node placement, guest OS, kernel, reboot policy, and links to the VMI and virt-launcher pod. Action buttons in the top bar and a floating shortcut bar provide quick access to all VM operations. Provisioning status section tracks DataVolume import progress.
 
 ![VM Details](screenshots/vm-details.png)
 
-Scroll down for network interfaces, disks & volumes, and live CPU/memory metrics charts.
+Scroll down for network interfaces, disks and volumes with volume live migration button, GPUs and host devices, snapshots, exports, migrations, and live CPU/memory/network/storage metrics charts.
+
+![VM Details - Sections](screenshots/vm-details-sections.png)
 
 ![VM Details - Metrics](screenshots/vm-details-metrics.png)
 
 ### Console Access
 
-Built-in serial console and VNC console for direct VM interaction.
+Built-in serial console with auto-resize and VNC console with send keys support. Automatically detects desktop VMs and suggests tablet device attachment for proper mouse tracking.
 
 |                  Serial Console                   |                 VNC Console                 |
 | :-----------------------------------------------: | :-----------------------------------------: |
@@ -64,11 +66,9 @@ Built-in serial console and VNC console for direct VM interaction.
 
 ### Create Virtual Machine
 
-Guided VM creation wizard with Form, Editor, Documentation, and Upload tabs. Configure name, boot source, resources, network interfaces, disks, scheduling, and advanced options.
+Guided VM creation with Form, Editor, Documentation, and Upload tabs. Configure name, boot source (DataSource, Registry, HTTP, S3, PVC, Upload, Blank, Image Catalog), resources, network interfaces, disks, devices (GPU/PCI passthrough, vTPM, watchdog), scheduling, and advanced options.
 
-|             Create VM Form              |                 API Documentation                 |
-| :-------------------------------------: | :-----------------------------------------------: |
-| ![Create VM](screenshots/create-vm.png) | ![Create VM Docs](screenshots/create-vm-docs.png) |
+![Create VM](screenshots/create-vm.png)
 
 ### Instance Types & Preferences
 
@@ -100,7 +100,7 @@ Monitor VirtualMachineInstanceMigrations with source/target node tracking and st
 
 ### VM Templates
 
-Create, edit, and instantiate VirtualMachineTemplates. Templates support parameter substitution for generating VMs from golden images.
+Create, edit, and instantiate VirtualMachineTemplates with parameter substitution. Save any existing VM as a template with one click from the VM list or details page. Process templates to create new VMs by filling in parameter values.
 
 ![VM Templates](docs/screenshots/vm-templates.png)
 
@@ -142,13 +142,23 @@ Browse built-in OS images and add custom entries via ConfigMaps. Hide/show image
 
 ![Image Catalog](docs/image-catalog/catalog-overview.png)
 
-### Settings & Feature Gates
+### Settings
 
-View KubeVirt and CDI versions, manage feature gates with categorized toggle switches (Storage, Network, Compute, Devices, Security, Migration, Display).
+KubeVirt and CDI version information with system health monitoring powered by Prometheus (component status, REST client errors, API latency, VMI phase transitions, vCPU wait time).
 
-|               Settings                |                  Feature Gates                  |
-| :-----------------------------------: | :---------------------------------------------: |
-| ![Settings](screenshots/settings.png) | ![Feature Gates](screenshots/feature-gates.png) |
+![Settings](screenshots/settings.png)
+
+Plugin features section for VM delete protection (ValidatingAdmissionPolicy), forensic toolbox configuration (Volatility3 images), and disk inspector image settings.
+
+![Plugin Features](screenshots/settings-plugin-features.png)
+
+General configuration with configurable metrics endpoint (supports Prometheus, Thanos, Grafana Mimir via service picker or manual URL), Prometheus monitoring (ServiceMonitor), RBAC aggregation, common instance types deployment, and memory overcommit settings.
+
+![General Configuration](screenshots/settings-general-config.png)
+
+Feature gates with maturity labels (GA, Beta, Alpha, Deprecated) and "Always On" indicators for gates that are enabled by default based on the detected KubeVirt version. Categorized by Storage, Network, Compute, Devices, Security, Migration, Display, and Other.
+
+![Feature Gates](screenshots/feature-gates.png)
 
 ## Prerequisites
 
