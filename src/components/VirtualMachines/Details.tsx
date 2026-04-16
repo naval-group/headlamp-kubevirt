@@ -25,6 +25,7 @@ import useFeatureGate from '../../hooks/useFeatureGate';
 import useVMActions from '../../hooks/useVMActions';
 import { VMIData, VMIStatusNetworkInterface, VMIVolumeStatus } from '../../types';
 import { formatDuration } from '../../utils/formatDuration';
+import { hasFeature } from '../../utils/kubevirtVersion';
 import { buildLaunchTemplate } from '../../utils/launchTemplate';
 import { safeError } from '../../utils/sanitize';
 import { shortAccessModes } from '../../utils/volumeDialog';
@@ -39,6 +40,7 @@ import VirtualMachineExport from '../VirtualMachineExport/VirtualMachineExport';
 import CreateSnapshotDialog from '../VirtualMachineSnapshot/CreateSnapshotDialog';
 import RestoreDialog from '../VirtualMachineSnapshot/RestoreDialog';
 import VirtualMachineSnapshot from '../VirtualMachineSnapshot/VirtualMachineSnapshot';
+import SaveAsTemplateDialog from '../VirtualMachineTemplate/SaveAsTemplateDialog';
 import VMConsole from '../VMConsole/VMConsole';
 import VMDoctorDialog from '../VMDoctor/VMDoctorDialog';
 import CloneDialog from './CloneDialog';
@@ -130,6 +132,7 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
   const [showLaunchLikeThis, setShowLaunchLikeThis] = useState(false);
   const [migrateVolumeName, setMigrateVolumeName] = useState<string | undefined>(undefined);
   const [showMigrateDialog, setShowMigrateDialog] = useState(false);
+  const [showSaveAsTemplate, setShowSaveAsTemplate] = useState(false);
   const [showResolveDialog, setShowResolveDialog] = useState(false);
   const [vmItem] = VirtualMachine.useGet(name, namespace);
   const { actions: vmActions } = useVMActions(vmItem);
@@ -150,6 +153,7 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
 
   const snapshotEnabled = useFeatureGate('Snapshot');
   const vmExportEnabled = useFeatureGate('VMExport');
+  const templateEnabled = useFeatureGate('Template');
 
   const handleDeletePod = async (force: boolean) => {
     setPodDeleteConfirm(null);
@@ -206,6 +210,39 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
     const interval = setInterval(fetchVMI, 10000);
     return () => clearInterval(interval);
   }, [name, namespace]);
+
+  // Guest panic event detection — only show if panic happened during current VMI lifecycle
+  const [hasPanicEvent, setHasPanicEvent] = useState(false);
+
+  useEffect(() => {
+    const vmiCreation = vmiData?.metadata?.creationTimestamp;
+    if (!vmiCreation) {
+      setHasPanicEvent(false);
+      return;
+    }
+
+    const fetchPanicEvents = async () => {
+      try {
+        const resp = (await ApiProxy.request(
+          `/api/v1/namespaces/${namespace}/events?fieldSelector=` +
+            `involvedObject.name=${encodeURIComponent(name)},` +
+            `reason=GuestPanicked`
+        )) as {
+          items?: Array<{ lastTimestamp?: string; metadata?: { creationTimestamp?: string } }>;
+        };
+        const vmiStart = new Date(vmiCreation).getTime();
+        const hasRecent = (resp?.items || []).some(e => {
+          const ts = e.lastTimestamp || e.metadata?.creationTimestamp || '';
+          return new Date(ts).getTime() >= vmiStart;
+        });
+        setHasPanicEvent(hasRecent);
+      } catch {
+        setHasPanicEvent(false);
+      }
+    };
+
+    fetchPanicEvents();
+  }, [name, namespace, vmiData?.metadata?.creationTimestamp]);
 
   // Fetch PVC details for spec-only disk view (when VM is stopped / no VMI)
   const [pvcInfoMap, setPvcInfoMap] = useState<
@@ -485,6 +522,11 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
             </SimpleStyledTooltip>
           </>
         )}
+        <SimpleStyledTooltip title="Save as Template">
+          <IconButton size="small" onClick={() => setShowSaveAsTemplate(true)} sx={{ p: 0.5 }}>
+            <Icon icon="mdi:text-box-outline" width={18} />
+          </IconButton>
+        </SimpleStyledTooltip>
         <SimpleStyledTooltip title="Launch More Like This">
           <IconButton size="small" onClick={() => setShowLaunchLikeThis(true)} sx={{ p: 0.5 }}>
             <Icon icon="mdi:rocket-launch" width={18} />
@@ -577,6 +619,29 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                       }
                       return null;
                     })}
+                    {hasPanicEvent && (
+                      <SimpleStyledTooltip title="A kernel panic was detected on this VM. Requires pvpanic-isa kernel module (Linux) or Hyper-V crash support (Windows).">
+                        <Chip
+                          label="Guest Panicked"
+                          size="small"
+                          variant="outlined"
+                          icon={
+                            <Icon
+                              icon="mdi:alert-circle"
+                              width={14}
+                              style={{ verticalAlign: 'middle', marginTop: -2 }}
+                            />
+                          }
+                          sx={{
+                            borderColor: '#f44336',
+                            color: '#f44336',
+                            borderRadius: '16px',
+                            height: 26,
+                            '& .MuiChip-icon': { color: '#f44336' },
+                          }}
+                        />
+                      </SimpleStyledTooltip>
+                    )}
                     {status === 'Migrating' && activeMigration && (
                       <Link
                         routeName="migration"
@@ -666,6 +731,25 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                         }`
                       : item?.spec?.template?.spec?.domain?.memory?.guest || 'N/A',
                   },
+                  ...(vmiData.status?.memory?.memoryOverhead
+                    ? [
+                        {
+                          name: 'Memory Overhead',
+                          value: (
+                            <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+                              {vmiData.status.memory.memoryOverhead}
+                              <SimpleStyledTooltip title="Computed memory overhead reserved by KubeVirt for VM infrastructure (virtio, QEMU, libvirt)">
+                                <Icon
+                                  icon="mdi:information-outline"
+                                  width={16}
+                                  style={{ cursor: 'help', opacity: 0.6 }}
+                                />
+                              </SimpleStyledTooltip>
+                            </Box>
+                          ),
+                        },
+                      ]
+                    : []),
                   {
                     name: 'Node',
                     value: vmiData.status?.nodeName ? (
@@ -710,6 +794,35 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                       </Box>
                     ),
                   },
+                  ...(hasFeature('rebootPolicy')
+                    ? [
+                        {
+                          name: 'Reboot Policy',
+                          value: (() => {
+                            const policy =
+                              item?.spec?.template?.spec?.domain?.rebootPolicy || 'Reboot';
+                            return (
+                              <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+                                {policy}
+                                <SimpleStyledTooltip
+                                  title={
+                                    policy === 'Terminate'
+                                      ? 'VMI will terminate on guest reboot, allowing recreation with updated configuration'
+                                      : 'Guest is allowed to reboot silently without stopping the VMI'
+                                  }
+                                >
+                                  <Icon
+                                    icon="mdi:information-outline"
+                                    width={16}
+                                    style={{ cursor: 'help', opacity: 0.6 }}
+                                  />
+                                </SimpleStyledTooltip>
+                              </Box>
+                            );
+                          })(),
+                        },
+                      ]
+                    : []),
                 ]
               : []),
             {
@@ -1783,6 +1896,20 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                   },
                 ]
               : []),
+            ...(templateEnabled
+              ? [
+                  {
+                    id: 'save-as-template',
+                    action: (
+                      <ActionButton
+                        description="Save as Template"
+                        icon="mdi:text-box-outline"
+                        onClick={() => setShowSaveAsTemplate(true)}
+                      ></ActionButton>
+                    ),
+                  },
+                ]
+              : []),
             {
               id: 'launch-like-this',
               action: (
@@ -1848,6 +1975,12 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
       <CloneDialog
         open={showCloneDialog}
         onClose={() => setShowCloneDialog(false)}
+        vmName={name || ''}
+        namespace={namespace || ''}
+      />
+      <SaveAsTemplateDialog
+        open={showSaveAsTemplate}
+        onClose={() => setShowSaveAsTemplate(false)}
         vmName={name || ''}
         namespace={namespace || ''}
       />

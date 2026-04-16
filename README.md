@@ -1,11 +1,16 @@
 # Headlamp KubeVirt Plugin
 
+[![Build](https://github.com/naval-group/headlamp-kubevirt/actions/workflows/build.yml/badge.svg)](https://github.com/naval-group/headlamp-kubevirt/actions/workflows/build.yml)
+[![CodeQL](https://github.com/naval-group/headlamp-kubevirt/actions/workflows/codeql.yml/badge.svg)](https://github.com/naval-group/headlamp-kubevirt/actions/workflows/codeql.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/naval-group/headlamp-kubevirt/badge)](https://scorecard.dev/viewer/?uri=github.com/naval-group/headlamp-kubevirt)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/12240/badge)](https://www.bestpractices.dev/projects/12240)
 [![ArtifactHub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/headlamp-kubevirt)](https://artifacthub.io/packages/headlamp/headlamp-kubevirt/headlamp_kubevirt)
 [![GHCR](https://img.shields.io/badge/GHCR-naval--group%2Fheadlamp--kubevirt-blue?logo=github)](https://github.com/naval-group/headlamp-kubevirt/pkgs/container/headlamp-kubevirt)
 [![Release](https://img.shields.io/github/v/release/naval-group/headlamp-kubevirt?logo=github)](https://github.com/naval-group/headlamp-kubevirt/releases/latest)
 [![License](https://img.shields.io/github/license/naval-group/headlamp-kubevirt)](https://github.com/naval-group/headlamp-kubevirt/blob/main/LICENSE)
+[![KubeVirt](https://img.shields.io/badge/KubeVirt-v1.2--v1.8-326CE5?logo=kubernetes&logoColor=white)](https://kubevirt.io)
+[![Headlamp](https://img.shields.io/badge/Headlamp-%E2%89%A5%200.24.0-FFC107)](https://headlamp.dev)
+[![Stars](https://img.shields.io/github/stars/naval-group/headlamp-kubevirt)](https://github.com/naval-group/headlamp-kubevirt/stargazers)
 
 A comprehensive [Headlamp](https://headlamp.dev) plugin for managing [KubeVirt](https://kubevirt.io) virtual machines in Kubernetes.
 
@@ -18,14 +23,17 @@ Originally based on the excellent work from [buttahtoast](https://github.com/but
 
 ## Features
 
-- **Virtual Machines** - Full lifecycle management (create, start, stop, restart, migrate, pause, snapshot, export), VNC console, serial terminal, live metrics
+- **Virtual Machines** - Full lifecycle management (create, start, stop, restart, force stop, migrate, pause, clone, snapshot, export, launch more like this, save as template), bulk actions, compare up to 3 VMs, VNC console with send keys, serial terminal with auto-resize, live per-VM metrics, desktop/tablet device auto-detection
+- **VM Doctor** - Per-VM diagnostic panel with conditions, events, metrics, PromQL querier, guest OS info, VM/pod shell with virsh command reference, logs, YAML, memory dump with Volatility3 forensic analysis, and disk inspector
+- **VM Templates** - Create, manage, and instantiate VirtualMachineTemplates with parameter substitution. One-click "Save as Template" from any VM
+- **Image Catalog** - Built-in OS images and custom entries via ConfigMaps, with hide/show toggle and icon picker. See [Image Catalog docs](docs/image-catalog/README.md)
 - **Instance Types & Preferences** - Browse and manage VirtualMachineClusterInstanceTypes and VirtualMachineClusterPreferences
-- **Bootable Volumes** - Manage DataSources, DataVolumes, and DataImportCrons for OS images
+- **Bootable Volumes** - Manage DataSources, DataVolumes (HTTP, Registry, S3, PVC, Upload), and DataImportCrons for OS images
 - **Networking** - Create and manage Network Attachment Definitions (Multus CNI)
-- **Live Migration** - Monitor VirtualMachineInstanceMigrations
+- **Live Migration** - Monitor VirtualMachineInstanceMigrations, volume live migration support (VolumeMigration)
 - **Snapshots & Exports** - Create and restore VM snapshots, export VMs
 - **Overview Dashboard** - Cluster-wide VM status, Prometheus-powered metrics (CPU, memory, network, storage top consumers)
-- **Settings** - KubeVirt/CDI version display, feature gate management, migration configuration, VM delete protection (ValidatingAdmissionPolicy)
+- **Settings** - KubeVirt/CDI version info, system health monitoring (component status, REST errors, API latency, VMI phase transitions), configurable metrics endpoint (Prometheus, Thanos, Mimir), plugin features (VM delete protection, forensic toolbox, disk inspector), feature gates with maturity labels (GA/Beta/Alpha/Deprecated/Always On) and version-aware detection, RBAC aggregation, common instance types deployment, Prometheus monitoring (ServiceMonitor)
 
 ## Screenshots
 
@@ -37,23 +45,29 @@ Prometheus-powered top consumers for CPU, memory, network, and storage across al
 
 ### Virtual Machine Management
 
-Full lifecycle management with context menu actions: Start, Stop, Restart, Pause, Migrate, Protect, Edit, and Delete. Live migration notifications appear in the status bar.
+Full lifecycle management with context menu actions: Start, Stop, Restart, Pause, Force Stop, Migrate, Protect, VM Doctor, Snapshot, Clone, Launch More Like This, Save as Template, Edit, View YAML, and Delete. Multi-select rows for bulk actions (start, stop, migrate, delete) or compare up to 3 VMs side-by-side across metadata, spec, and status fields.
 
 ![VM List](screenshots/vm-list-actions.png)
 
+![VM Bulk Actions & Compare](screenshots/vm-bulk-actions.png)
+
+![VM Compare](screenshots/vm-compare.png)
+
 ### VM Details
 
-Detailed view showing status, CPU, memory, node placement, guest OS info, and links to the VMI and virt-launcher pod.
+Detailed view showing status, CPU, memory, memory overhead, node placement, guest OS, kernel, reboot policy, and links to the VMI and virt-launcher pod. Action buttons in the top bar and a floating shortcut bar provide quick access to all VM operations. Provisioning status section tracks DataVolume import progress.
 
 ![VM Details](screenshots/vm-details.png)
 
-Scroll down for network interfaces, disks & volumes, and live CPU/memory metrics charts.
+Scroll down for network interfaces, disks and volumes with volume live migration button, GPUs and host devices, snapshots, exports, migrations, and live CPU/memory/network/storage metrics charts.
+
+![VM Details - Sections](screenshots/vm-details-sections.png)
 
 ![VM Details - Metrics](screenshots/vm-details-metrics.png)
 
 ### Console Access
 
-Built-in serial console and VNC console for direct VM interaction.
+Built-in serial console with auto-resize and VNC console with send keys support. Automatically detects desktop VMs and suggests tablet device attachment for proper mouse tracking.
 
 |                  Serial Console                   |                 VNC Console                 |
 | :-----------------------------------------------: | :-----------------------------------------: |
@@ -61,11 +75,9 @@ Built-in serial console and VNC console for direct VM interaction.
 
 ### Create Virtual Machine
 
-Guided VM creation wizard with Form, Editor, Documentation, and Upload tabs. Configure name, boot source, resources, network interfaces, disks, scheduling, and advanced options.
+Guided VM creation with Form, Editor, Documentation, and Upload tabs. Configure name, boot source (DataSource, Registry, HTTP, S3, PVC, Upload, Blank, Image Catalog), resources, network interfaces, disks, devices (GPU/PCI passthrough, vTPM, watchdog), scheduling, and advanced options.
 
-|             Create VM Form              |                 API Documentation                 |
-| :-------------------------------------: | :-----------------------------------------------: |
-| ![Create VM](screenshots/create-vm.png) | ![Create VM Docs](screenshots/create-vm-docs.png) |
+![Create VM](screenshots/create-vm.png)
 
 ### Instance Types & Preferences
 
@@ -95,13 +107,67 @@ Monitor VirtualMachineInstanceMigrations with source/target node tracking and st
 
 ![Migrations](screenshots/migrations.png)
 
-### Settings & Feature Gates
+### VM Templates
 
-View KubeVirt and CDI versions, manage feature gates with categorized toggle switches (Storage, Network, Compute, Devices, Security, Migration, Display).
+Create, edit, and instantiate VirtualMachineTemplates with parameter substitution. Save any existing VM as a template with one click from the VM list or details page. Process templates to create new VMs by filling in parameter values.
 
-|               Settings                |                  Feature Gates                  |
-| :-----------------------------------: | :---------------------------------------------: |
-| ![Settings](screenshots/settings.png) | ![Feature Gates](screenshots/feature-gates.png) |
+![VM Templates](docs/screenshots/vm-templates.png)
+
+### VM Doctor
+
+Per-VM diagnostic panel accessible from the VM details page. Provides a unified view of everything related to a VM across multiple tabs.
+
+**Conditions** - Aggregated conditions from the VirtualMachine, VirtualMachineInstance, Pod, and DataVolumes. Highlights conditions that need attention.
+
+![VM Doctor - Conditions](docs/screenshots/vm-doctor-conditions.png)
+
+**Events** - Filtered Kubernetes events related to the VM, with type filtering and search.
+
+![VM Doctor - Events](docs/screenshots/vm-doctor-events.png)
+
+**Metrics** - Live CPU, memory, network throughput, storage throughput, storage IOPS, and swap activity charts powered by Prometheus.
+
+![VM Doctor - Metrics](docs/screenshots/vm-doctor-metrics.png)
+
+**Guest Info** - Operating system details, logged-in users, filesystems with usage bars, and network interfaces. Requires the QEMU guest agent.
+
+![VM Doctor - Guest Info](docs/screenshots/vm-doctor-guest-info.png)
+
+**Pod Shell** - Direct shell access to the virt-launcher compute container with a command reference sidebar. Click-to-run virsh commands for VM status, resources, configuration, and diagnostics.
+
+![VM Doctor - Pod Shell](docs/screenshots/vm-doctor-pod-shell.png)
+
+**Memory Dump** - Trigger and download VM memory dumps. Launch a Volatility3 forensic analysis pod with ISF symbol auto-detection, interactive shell, and command reference sidebar.
+
+![VM Doctor - Memory Dump](docs/screenshots/vm-doctor-memory-dump.png)
+
+**Disk Inspector** - Boot a lightweight Alpine VM with the selected disk(s) attached as secondary block devices. Browse files, inspect partitions, repair bootloaders, and check installed packages.
+
+![VM Doctor - Disk Inspector](docs/screenshots/vm-doctor-disk-inspector.png)
+
+### Image Catalog
+
+Browse built-in OS images and add custom entries via ConfigMaps. Hide/show images from pickers, searchable by name and category. See [Image Catalog documentation](docs/image-catalog/README.md) for details on adding custom entries.
+
+![Image Catalog](docs/image-catalog/catalog-overview.png)
+
+### Settings
+
+KubeVirt and CDI version information with system health monitoring powered by Prometheus (component status, REST client errors, API latency, VMI phase transitions, vCPU wait time).
+
+![Settings](screenshots/settings.png)
+
+Plugin features section for VM delete protection (ValidatingAdmissionPolicy), forensic toolbox configuration (Volatility3 images), and disk inspector image settings.
+
+![Plugin Features](screenshots/settings-plugin-features.png)
+
+General configuration with configurable metrics endpoint (supports Prometheus, Thanos, Grafana Mimir via service picker or manual URL), Prometheus monitoring (ServiceMonitor), RBAC aggregation, common instance types deployment, and memory overcommit settings.
+
+![General Configuration](screenshots/settings-general-config.png)
+
+Feature gates with maturity labels (GA, Beta, Alpha, Deprecated) and "Always On" indicators for gates that are enabled by default based on the detected KubeVirt version. Categorized by Storage, Network, Compute, Devices, Security, Migration, Display, and Other.
+
+![Feature Gates](screenshots/feature-gates.png)
 
 ## Prerequisites
 

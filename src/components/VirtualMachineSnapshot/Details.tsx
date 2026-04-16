@@ -106,6 +106,34 @@ export default function VirtualMachineSnapshotDetails() {
                 </Typography>
               </Box>
 
+              {snapshot.getSourceIndications().length > 0 && (
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="caption" color="text.secondary">
+                    Consistency
+                  </Typography>
+                  <Box sx={{ mt: 0.5, display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                    {snapshot.getSourceIndications().map((ind, i) => {
+                      const color =
+                        ind.indication === 'GuestAgent'
+                          ? 'success'
+                          : ind.indication === 'NoGuestAgent'
+                          ? 'warning'
+                          : 'default';
+                      return (
+                        <Chip
+                          key={i}
+                          label={ind.indication}
+                          size="small"
+                          color={color as 'success' | 'warning' | 'default'}
+                          variant="outlined"
+                          title={ind.message}
+                        />
+                      );
+                    })}
+                  </Box>
+                </Box>
+              )}
+
               {snapshot.getError() && (
                 <Box sx={{ mb: 2 }}>
                   <Typography variant="caption" color="text.secondary">
