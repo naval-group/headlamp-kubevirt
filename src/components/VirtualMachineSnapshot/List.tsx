@@ -6,7 +6,15 @@ import {
   SectionFilterHeader,
   Table,
 } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
-import { Box, Chip, ListItemIcon, ListItemText, MenuItem, Typography } from '@mui/material';
+import {
+  Box,
+  Chip,
+  ListItemIcon,
+  ListItemText,
+  MenuItem,
+  Tooltip,
+  Typography,
+} from '@mui/material';
 import { useState } from 'react';
 import useFeatureGate from '../../hooks/useFeatureGate';
 import useFilteredList from '../../hooks/useFilteredList';
@@ -248,6 +256,54 @@ export default function VirtualMachineSnapshotList() {
                   color={row.original.isReadyToUse() ? 'success' : 'default'}
                 />
               ),
+            },
+            {
+              id: 'consistency',
+              header: 'Consistency',
+              accessorFn: (snapshot: InstanceType<typeof VirtualMachineSnapshot>) => {
+                const indications = snapshot.getSourceIndications();
+                if (!indications.length) return '';
+                const hasAgent = indications.some(i => i.indication === 'GuestAgent');
+                return hasAgent ? 'App-consistent' : 'Crash-consistent';
+              },
+              Cell: ({
+                row,
+              }: {
+                row: { original: InstanceType<typeof VirtualMachineSnapshot> };
+              }) => {
+                const indications = row.original.getSourceIndications();
+                if (!indications.length) return null;
+                const hasAgent = indications.some(i => i.indication === 'GuestAgent');
+                const isOnline = indications.some(i => i.indication === 'Online');
+                return (
+                  <Box display="flex" gap={0.5} flexWrap="wrap">
+                    {hasAgent ? (
+                      <Tooltip title="Guest agent quiesced the filesystem before snapshot">
+                        <Chip
+                          label="App-consistent"
+                          size="small"
+                          color="success"
+                          variant="outlined"
+                        />
+                      </Tooltip>
+                    ) : (
+                      <Tooltip title="No guest agent — snapshot may have incomplete writes">
+                        <Chip
+                          label="Crash-consistent"
+                          size="small"
+                          color="warning"
+                          variant="outlined"
+                        />
+                      </Tooltip>
+                    )}
+                    {isOnline && (
+                      <Tooltip title="Snapshot taken while VM was running">
+                        <Chip label="Online" size="small" variant="outlined" />
+                      </Tooltip>
+                    )}
+                  </Box>
+                );
+              },
             },
             {
               id: 'age',

@@ -35,6 +35,7 @@ import ResourceEditorDialog from '../components/ResourceEditorDialog';
 import { INSPECTOR_IMAGE } from '../components/VMDoctor/constants';
 import { LiveUpdateConfig, NetworkConfig } from '../types';
 import { updateFeatureGates } from '../utils/featureGates';
+import { isKubeVirt18OrNewer } from '../utils/kubevirtVersion';
 import {
   addLabelColumn,
   defaultForensicSettings,
@@ -1409,6 +1410,88 @@ export default function KubeVirtSettings() {
                 </Box>
               </CardContent>
             </Card>
+
+            {/* RBAC Aggregation */}
+            {isKubeVirt18OrNewer() && (
+              <Card variant="outlined" sx={{ mb: 2 }}>
+                <CardContent>
+                  <Box display="flex" justifyContent="space-between" alignItems="center">
+                    <Box flex={1}>
+                      <Typography
+                        variant="body1"
+                        fontWeight={500}
+                        display="flex"
+                        alignItems="center"
+                        gap={1}
+                      >
+                        <Icon icon="mdi:shield-check" width={20} style={{ color: '#9c27b0' }} />
+                        RBAC Aggregation
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {kubeVirt?.getRoleAggregationStrategy() === 'Manual'
+                          ? 'KubeVirt roles are NOT aggregated to default Kubernetes roles (admin/edit/view).'
+                          : 'KubeVirt roles are aggregated to default Kubernetes roles (admin/edit/view).'}
+                      </Typography>
+                    </Box>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={kubeVirt?.getRoleAggregationStrategy() !== 'Manual'}
+                          onChange={async e => {
+                            try {
+                              await kubeVirt?.updateRoleAggregationStrategy(
+                                e.target.checked ? 'AggregateToDefault' : 'Manual'
+                              );
+                              enqueueSnackbar('RBAC aggregation updated', { variant: 'success' });
+                            } catch (err) {
+                              enqueueSnackbar(
+                                `Failed to update RBAC aggregation: ${
+                                  err instanceof Error ? err.message : err
+                                }`,
+                                { variant: 'error' }
+                              );
+                            }
+                          }}
+                          disabled={updating}
+                          sx={{
+                            '& .MuiSwitch-switchBase.Mui-checked': {
+                              color: '#4caf50',
+                            },
+                            '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                              backgroundColor: '#4caf50',
+                            },
+                            '& .MuiSwitch-track': {
+                              backgroundColor:
+                                kubeVirt?.getRoleAggregationStrategy() !== 'Manual'
+                                  ? '#4caf50'
+                                  : '#9e9e9e',
+                            },
+                          }}
+                        />
+                      }
+                      label={
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            color:
+                              kubeVirt?.getRoleAggregationStrategy() !== 'Manual'
+                                ? '#4caf50'
+                                : '#f44336',
+                            fontWeight:
+                              kubeVirt?.getRoleAggregationStrategy() !== 'Manual' ? 600 : 400,
+                            minWidth: 85,
+                          }}
+                        >
+                          {kubeVirt?.getRoleAggregationStrategy() !== 'Manual'
+                            ? 'Enabled'
+                            : 'Disabled'}
+                        </Typography>
+                      }
+                    />
+                  </Box>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Common Instance Types */}
             <Card variant="outlined" sx={{ mb: 2 }}>
