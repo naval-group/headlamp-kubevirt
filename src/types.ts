@@ -258,17 +258,21 @@ export interface NetworkConfig {
   [key: string]: unknown;
 }
 
+export interface PciDevice {
+  pciVendorSelector: string;
+  resourceName: string;
+  externalResourceProvider?: boolean;
+}
+
+export interface MediatedDevice {
+  mdevNameSelector: string;
+  resourceName: string;
+  externalResourceProvider?: boolean;
+}
+
 export interface PermittedHostDevices {
-  pciHostDevices?: Array<{
-    pciVendorSelector: string;
-    resourceName: string;
-    externalResourceProvider?: boolean;
-  }>;
-  mediatedDevices?: Array<{
-    mdevNameSelector: string;
-    resourceName: string;
-    externalResourceProvider?: boolean;
-  }>;
+  pciHostDevices?: PciDevice[];
+  mediatedDevices?: MediatedDevice[];
 }
 
 // ─── Prometheus ─────────────────────────────────────────────────────
@@ -313,6 +317,9 @@ export interface VMIVolumeStatus {
 /** Subset of VirtualMachineInstance used across views */
 export interface VMIData {
   [key: string]: unknown;
+  metadata?: {
+    creationTimestamp?: string;
+  };
   spec?: {
     domain?: {
       cpu?: VMCPUTopology;
@@ -331,6 +338,7 @@ export interface VMIData {
     memory?: {
       guestCurrent?: string;
       guestRequested?: string;
+      memoryOverhead?: string;
     };
     guestOSInfo?: {
       prettyName?: string;

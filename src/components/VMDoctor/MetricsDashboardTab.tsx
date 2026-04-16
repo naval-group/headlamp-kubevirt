@@ -1,5 +1,4 @@
 import { Icon } from '@iconify/react';
-import { ApiProxy } from '@kinvolk/headlamp-plugin/lib';
 import {
   Alert,
   Box,
@@ -22,7 +21,7 @@ import {
   YAxis,
 } from 'recharts';
 import { ChartTooltipProps, VMIData } from '../../types';
-import { discoverPrometheus } from '../../utils/prometheus';
+import { useMetricsEndpoint } from '../../utils/metricsEndpoint';
 import { sanitizePromQL } from '../../utils/sanitize';
 import VirtualMachine from '../VirtualMachines/VirtualMachine';
 
@@ -63,7 +62,7 @@ export default function MetricsDashboardTab({
   vmItem,
 }: MetricsDashboardTabProps) {
   const [timeRange, setTimeRange] = useState('1h');
-  const [prometheusAvailable, setPrometheusAvailable] = useState(false);
+  const metricsEndpoint = useMetricsEndpoint();
   const [loading, setLoading] = useState(true);
 
   // All metrics time series
@@ -91,15 +90,12 @@ export default function MetricsDashboardTab({
 
     const fetchMetrics = async () => {
       try {
-        // Find Prometheus
-        const prom = await discoverPrometheus();
-        if (!cancelled) setPrometheusAvailable(prom.available);
-        if (!prom.available) {
+        if (!metricsEndpoint.available || !metricsEndpoint.baseUrl) {
           if (!cancelled) setLoading(false);
           return;
         }
 
-        const promBaseUrl = prom.baseUrl;
+        const promBaseUrl = metricsEndpoint.baseUrl;
 
         const now = Math.floor(Date.now() / 1000);
         const rangeSeconds = getTimeRangeSeconds(timeRange);
@@ -120,11 +116,13 @@ export default function MetricsDashboardTab({
         }
 
         const queryRange = async (query: string) => {
-          const resp = await ApiProxy.request(
-            `${promBaseUrl}/api/v1/query_range?query=${encodeURIComponent(
-              query
-            )}&start=${start}&end=${now}&step=${step}`
-          ).catch(() => null);
+          const resp = await metricsEndpoint
+            .request(
+              `${promBaseUrl}/api/v1/query_range?query=${encodeURIComponent(
+                query
+              )}&start=${start}&end=${now}&step=${step}`
+            )
+            .catch(() => null);
           return resp?.data?.result?.[0]?.values || [];
         };
 
@@ -264,7 +262,6 @@ export default function MetricsDashboardTab({
         if (!cancelled) setLoading(false);
       } catch {
         if (!cancelled) {
-          setPrometheusAvailable(false);
           setLoading(false);
         }
       }
@@ -276,9 +273,17 @@ export default function MetricsDashboardTab({
       cancelled = true;
       clearInterval(interval);
     };
-  }, [vmName, namespace, timeRange, vmiData, vmItem]);
+  }, [
+    vmName,
+    namespace,
+    timeRange,
+    vmiData,
+    vmItem,
+    metricsEndpoint.available,
+    metricsEndpoint.baseUrl,
+  ]);
 
-  if (!prometheusAvailable && !loading) {
+  if (!metricsEndpoint.available && !loading) {
     return (
       <Alert severity="info" icon={<Icon icon="mdi:chart-line" />}>
         Prometheus not available. Install Prometheus to view VM metrics.

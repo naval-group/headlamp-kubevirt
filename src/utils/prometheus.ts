@@ -1,10 +1,16 @@
 import { ApiProxy } from '@kinvolk/headlamp-plugin/lib';
 
-/** Ports commonly used by Prometheus-compatible services */
-const PROMETHEUS_PORTS = [9090, 9091];
-
-/** Service name patterns for Prometheus-compatible APIs */
-const PROMETHEUS_NAME_PATTERNS = ['prometheus', 'thanos-querier'];
+/**
+ * Prometheus-compatible service patterns.
+ * Each entry pairs name patterns with valid ports to avoid false positives
+ * (e.g., kube-state-metrics has "prometheus" in its name but isn't a query API).
+ */
+const PROMETHEUS_SERVICES = [
+  { names: ['prometheus'], ports: [9090, 9091] },
+  { names: ['thanos-querier'], ports: [9090, 9091] },
+  { names: ['mimir-gateway'], ports: [80, 8080] },
+  { names: ['mimir-querier', 'mimir-query-frontend'], ports: [8080] },
+];
 
 interface PromService {
   metadata: { name: string; namespace: string };
@@ -21,8 +27,8 @@ export interface PrometheusDiscoveryResult {
  * Discovers and verifies a Prometheus-compatible service in the cluster.
  *
  * Searches all namespaces for services matching known Prometheus name patterns
- * (prometheus, thanos-querier) on standard ports (9090, 9091).
- * Supports both standard Prometheus and OpenShift monitoring (Thanos Querier).
+ * (prometheus, thanos-querier, mimir-querier) on standard ports (9090, 9091, 8080).
+ * Supports standard Prometheus, OpenShift monitoring (Thanos Querier), and Grafana Mimir.
  */
 export async function discoverPrometheus(): Promise<PrometheusDiscoveryResult> {
   const notFound: PrometheusDiscoveryResult = {
@@ -38,25 +44,32 @@ export async function discoverPrometheus(): Promise<PrometheusDiscoveryResult> {
   const promSvc = svcItems.find(svc => {
     const name = svc.metadata?.name || '';
     const ports = svc.spec?.ports || [];
-    const nameMatch = PROMETHEUS_NAME_PATTERNS.some(pattern => name.includes(pattern));
-    if (!nameMatch) return false;
-    const portMatch = ports.find(p => PROMETHEUS_PORTS.includes(p.port));
-    if (portMatch) {
-      matchedPort = portMatch.port;
-      return true;
+    for (const pattern of PROMETHEUS_SERVICES) {
+      const nameMatch = pattern.names.some(p => name.includes(p));
+      if (!nameMatch) continue;
+      const portMatch = ports.find(p => pattern.ports.includes(p.port));
+      if (portMatch) {
+        matchedPort = portMatch.port;
+        return true;
+      }
     }
     return false;
   });
 
   if (!promSvc) return notFound;
 
-  const baseUrl = `/api/v1/namespaces/${promSvc.metadata.namespace}/services/${promSvc.metadata.name}:${matchedPort}/proxy`;
+  const proxyBase = `/api/v1/namespaces/${promSvc.metadata.namespace}/services/${promSvc.metadata.name}:${matchedPort}/proxy`;
 
-  // Verify Prometheus is actually reachable
-  const healthCheck = await ApiProxy.request(`${baseUrl}/api/v1/query?query=up`).catch(() => null);
-  if (!(healthCheck as Record<string, unknown>)?.data) {
-    return { installed: true, available: false, baseUrl: '' };
+  // Try standard Prometheus path, then Mimir's /prometheus prefix
+  for (const prefix of ['', '/prometheus']) {
+    const baseUrl = `${proxyBase}${prefix}`;
+    const healthCheck = await ApiProxy.request(`${baseUrl}/api/v1/query?query=up`).catch(
+      () => null
+    );
+    if ((healthCheck as Record<string, unknown>)?.data) {
+      return { installed: true, available: true, baseUrl };
+    }
   }
 
-  return { installed: true, available: true, baseUrl };
+  return { installed: true, available: false, baseUrl: '' };
 }

@@ -1,5 +1,4 @@
 import { Icon } from '@iconify/react';
-import { ApiProxy } from '@kinvolk/headlamp-plugin/lib';
 import {
   Alert,
   Autocomplete,
@@ -29,7 +28,7 @@ import {
   YAxis,
 } from 'recharts';
 import { ChartTooltipProps } from '../../types';
-import { discoverPrometheus } from '../../utils/prometheus';
+import { useMetricsEndpoint } from '../../utils/metricsEndpoint';
 import { safeError, sanitizePromQL } from '../../utils/sanitize';
 
 interface PrometheusQuerierProps {
@@ -346,7 +345,8 @@ export default function PrometheusQuerier({ vmName, namespace }: PrometheusQueri
   const [inputValue, setInputValue] = useState('');
   const [timeRange, setTimeRange] = useState('30m');
   const [columns, setColumns] = useState<number>(1);
-  const [promBaseUrl, setPromBaseUrl] = useState<string | null>(null);
+  const metricsEndpoint = useMetricsEndpoint();
+  const promBaseUrl = metricsEndpoint.available ? metricsEndpoint.baseUrl : null;
   const executingRef = useRef<Set<string>>(new Set());
 
   // Drag state: source panel id + drop indicator
@@ -355,14 +355,6 @@ export default function PrometheusQuerier({ vmName, namespace }: PrometheusQueri
     col: number;
     index: number; // insert before this index in the column
   } | null>(null);
-
-  useEffect(() => {
-    discoverPrometheus()
-      .then(prom => {
-        if (prom.available) setPromBaseUrl(prom.baseUrl);
-      })
-      .catch(() => {});
-  }, []);
 
   const getTimeRangeSeconds = (range: string): number => {
     const value = parseInt(range);
@@ -392,7 +384,7 @@ export default function PrometheusQuerier({ vmName, namespace }: PrometheusQueri
         const rangeSeconds = getTimeRangeSeconds(range);
         const start = now - rangeSeconds;
         const step = Math.max(Math.floor(rangeSeconds / 60), 15);
-        const resp = await ApiProxy.request(
+        const resp = await metricsEndpoint.request(
           `${promBaseUrl}/api/v1/query_range?query=${encodeURIComponent(
             resolvedQuery
           )}&start=${start}&end=${now}&step=${step}`

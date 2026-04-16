@@ -4,8 +4,9 @@
  * Supports importing from:
  * 1. HTTP/HTTPS URL (ISO, qcow2, raw)
  * 2. Container Registry
- * 3. Upload (local file - requires virtctl or upload proxy)
- * 4. Blank (empty disk)
+ * 3. S3 Object Storage (AWS S3, MinIO, Ceph RGW)
+ * 4. Upload (local file - requires virtctl or upload proxy)
+ * 5. Blank (empty disk)
  */
 
 import { Icon } from '@iconify/react';
@@ -19,6 +20,7 @@ import {
   MenuItem,
   Select,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import React, { useState } from 'react';
@@ -52,11 +54,13 @@ export default function ImportVolumeForm({
   const namespace = resource.metadata?.namespace || 'default';
 
   // Determine source type
-  let sourceType: 'http' | 'registry' | 'upload' | 'blank' | 'pvc' | 'snapshot' = 'http';
+  let sourceType: 'http' | 'registry' | 's3' | 'upload' | 'blank' | 'pvc' | 'snapshot' = 'http';
   if (resource.spec?.source?.http) {
     sourceType = 'http';
   } else if (resource.spec?.source?.registry) {
     sourceType = 'registry';
+  } else if (resource.spec?.source?.s3) {
+    sourceType = 's3';
   } else if (resource.spec?.source?.upload) {
     sourceType = 'upload';
   } else if (resource.spec?.source?.blank) {
@@ -70,6 +74,7 @@ export default function ImportVolumeForm({
   // Source details
   const httpUrl = resource.spec?.source?.http?.url || '';
   const registryUrl = resource.spec?.source?.registry?.url || '';
+  const s3Url = resource.spec?.source?.s3?.url || '';
   const pvcName = resource.spec?.source?.pvc?.name || '';
   const pvcNamespace = resource.spec?.source?.pvc?.namespace || namespace;
   const snapshotName = resource.spec?.source?.snapshot?.name || '';
@@ -87,27 +92,55 @@ export default function ImportVolumeForm({
   // Content type
   const contentType = resource.spec?.contentType || 'kubevirt';
 
+  const s3SecretRef = resource.spec?.source?.s3?.secretRef || '';
+
   // Fetch available resources
   const [namespaces, setNamespaces] = useState<string[]>(['default']);
   const [storageClasses, setStorageClasses] = useState<string[]>([]);
   const [pvcs, setPvcs] = useState<string[]>([]);
   const [snapshots, setSnapshots] = useState<string[]>([]);
+  const [secrets, setSecrets] = useState<string[]>([]);
 
   React.useEffect(() => {
+    let cancelled = false;
+
     ApiProxy.request('/api/v1/namespaces')
       .then((response: KubeListResponse<KubeNamedItem>) => {
+        if (cancelled) return;
         const nsList = response?.items?.map(ns => ns.metadata.name) || ['default'];
         setNamespaces(nsList);
       })
-      .catch(err => console.error('Failed to fetch namespaces:', err));
+      .catch(err => !cancelled && console.error('Failed to fetch namespaces:', err));
 
     ApiProxy.request('/apis/storage.k8s.io/v1/storageclasses')
       .then((response: KubeListResponse<KubeNamedItem>) => {
+        if (cancelled) return;
         const scList = response?.items?.map(sc => sc.metadata.name) || [];
         setStorageClasses(scList);
       })
-      .catch(err => console.error('Failed to fetch storage classes:', err));
+      .catch(err => !cancelled && console.error('Failed to fetch storage classes:', err));
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  // Fetch secrets for the selected namespace (re-fetches when namespace changes)
+  React.useEffect(() => {
+    let cancelled = false;
+
+    ApiProxy.request(`/api/v1/namespaces/${namespace}/secrets`)
+      .then((response: KubeListResponse<KubeNamedItem>) => {
+        if (cancelled) return;
+        const secretList = response?.items?.map(s => s.metadata.name) || [];
+        setSecrets(secretList);
+      })
+      .catch(err => !cancelled && console.error('Failed to fetch secrets:', err));
+
+    return () => {
+      cancelled = true;
+    };
+  }, [namespace]);
 
   // Fetch PVCs for the source namespace
   React.useEffect(() => {
@@ -139,7 +172,7 @@ export default function ImportVolumeForm({
   const { updateMetadata } = useResourceEditor(resource, onChange);
 
   const updateSource = (
-    type: 'http' | 'registry' | 'upload' | 'blank' | 'pvc' | 'snapshot',
+    type: 'http' | 'registry' | 's3' | 'upload' | 'blank' | 'pvc' | 'snapshot',
     config: KubeResourceBuilder
   ) => {
     const newSource: KubeResourceBuilder = {};
@@ -284,7 +317,14 @@ export default function ImportVolumeForm({
             value={sourceType}
             onChange={e =>
               updateSource(
-                e.target.value as 'http' | 'registry' | 'upload' | 'blank' | 'pvc' | 'snapshot',
+                e.target.value as
+                  | 'http'
+                  | 'registry'
+                  | 's3'
+                  | 'upload'
+                  | 'blank'
+                  | 'pvc'
+                  | 'snapshot',
                 {}
               )
             }
@@ -314,6 +354,9 @@ export default function ImportVolumeForm({
             </MenuItem>
             <MenuItem value="registry" sx={{ pl: 4 }}>
               Registry (Container registry)
+            </MenuItem>
+            <MenuItem value="s3" sx={{ pl: 4 }}>
+              S3 (Object storage)
             </MenuItem>
 
             <MenuItem value="" disabled sx={{ fontWeight: 'bold', color: 'text.secondary', mt: 1 }}>
@@ -358,6 +401,67 @@ export default function ImportVolumeForm({
               showErrors={showErrors}
               helperText="Container registry URL (docker:// or oci-archive://)"
             />
+          </Box>
+        )}
+
+        {sourceType === 's3' && (
+          <Box>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Import disk image from S3-compatible object storage (AWS S3, MinIO, Ceph RGW).
+            </Typography>
+
+            <MandatoryTextField
+              fullWidth
+              label="S3 URL"
+              value={s3Url}
+              onChange={e =>
+                updateSource('s3', {
+                  url: e.target.value.trim(),
+                  ...(s3SecretRef ? { secretRef: s3SecretRef } : {}),
+                })
+              }
+              error={!!(s3Url && !s3Url.startsWith('https://') && !s3Url.startsWith('http://'))}
+              placeholder="https://s3.eu-west-1.amazonaws.com/bucket/disk-image.qcow2"
+              showErrors={showErrors}
+              helperText={
+                s3Url && !s3Url.startsWith('https://') && !s3Url.startsWith('http://')
+                  ? 'URL must start with https:// or http:// (not s3://)'
+                  : 'Format: https://s3.<region>.amazonaws.com/<bucket>/<object> or https://<minio-host>/<bucket>/<object>'
+              }
+              sx={{ mb: 2 }}
+            />
+
+            <Tooltip
+              title={
+                <span>
+                  Secret must contain keys:
+                  <br />
+                  <code>accessKeyId</code> and <code>secretKey</code>
+                </span>
+              }
+              arrow
+              placement="top-start"
+            >
+              <Autocomplete
+                fullWidth
+                options={secrets}
+                value={s3SecretRef}
+                onChange={(_, newValue) =>
+                  updateSource('s3', {
+                    url: s3Url,
+                    ...(newValue ? { secretRef: newValue } : {}),
+                  })
+                }
+                renderInput={params => (
+                  <TextField
+                    {...params}
+                    label="S3 Credentials Secret"
+                    placeholder="Select secret..."
+                    helperText="Secret with accessKeyId and secretKey (required)"
+                  />
+                )}
+              />
+            </Tooltip>
           </Box>
         )}
 

@@ -16,8 +16,10 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { useState } from 'react';
-import IMAGE_CATALOG, { CATALOG_CATEGORIES, CatalogImage, resolveTagValues } from './imageCatalog';
+import { useEffect, useMemo, useState } from 'react';
+import { getFullCatalog } from '../../utils/catalogLoader';
+import { filterCatalogImages, getHiddenImageIds } from '../../utils/catalogUtils';
+import { CATALOG_CATEGORIES, CatalogImage, resolveTagValues } from './imageCatalog';
 
 export interface CatalogSelection {
   registryUrl: string;
@@ -25,29 +27,50 @@ export interface CatalogSelection {
   osLabel: string;
   defaultPreference?: string;
   managedDataSourceSuggestion: string;
+  sourceType?: 'containerdisk' | 'http';
+  httpUrl?: string;
 }
 
 interface ImageCatalogPickerProps {
   open: boolean;
   onClose: () => void;
   onSelect: (selection: CatalogSelection) => void;
+  /** Filter to only show images with this source type. If not set, show all. */
+  allowedSourceTypes?: Array<'containerdisk' | 'http'>;
 }
 
-export default function ImageCatalogPicker({ open, onClose, onSelect }: ImageCatalogPickerProps) {
+export default function ImageCatalogPicker({
+  open,
+  onClose,
+  onSelect,
+  allowedSourceTypes,
+}: ImageCatalogPickerProps) {
+  const [catalog, setCatalog] = useState<CatalogImage[]>([]);
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [selectedImage, setSelectedImage] = useState<CatalogImage | null>(null);
   const [selectedTag, setSelectedTag] = useState('');
 
-  const filteredImages = IMAGE_CATALOG.filter(img => {
-    const matchesSearch =
-      !search ||
-      img.name.toLowerCase().includes(search.toLowerCase()) ||
-      img.description.toLowerCase().includes(search.toLowerCase()) ||
-      img.osLabel.toLowerCase().includes(search.toLowerCase());
-    const matchesCategory = categoryFilter === 'all' || img.category === categoryFilter;
-    return matchesSearch && matchesCategory;
-  });
+  // Load full catalog (built-in + ConfigMap entries) when picker opens
+  useEffect(() => {
+    if (open) {
+      getFullCatalog().then(setCatalog);
+    }
+  }, [open]);
+
+  const hiddenIds = useMemo(() => getHiddenImageIds(), [catalog]);
+
+  const filteredImages = useMemo(
+    () =>
+      filterCatalogImages(catalog, {
+        search,
+        categoryFilter,
+        showHidden: false,
+        hiddenIds,
+        allowedSourceTypes,
+      }),
+    [catalog, search, categoryFilter, hiddenIds, allowedSourceTypes]
+  );
 
   const handleSelect = (image: CatalogImage) => {
     setSelectedImage(image);
@@ -59,12 +82,18 @@ export default function ImageCatalogPicker({ open, onClose, onSelect }: ImageCat
 
     const tag = selectedTag || selectedImage.defaultTag;
     const resolved = resolveTagValues(selectedImage, tag);
+    const isHttp = selectedImage.sourceType === 'http';
+    // For HTTP sources, find the URL from extendedTags
+    const httpUrl = isHttp ? selectedImage.extendedTags?.find(t => t.name === tag)?.url || '' : '';
+
     onSelect({
-      registryUrl: `docker://${selectedImage.registry}:${tag}`,
+      registryUrl: isHttp ? '' : `docker://${selectedImage.registry}:${tag}`,
       storageSize: selectedImage.recommendedSize,
       osLabel: resolved.osLabel,
       defaultPreference: resolved.defaultPreference,
       managedDataSourceSuggestion: `${selectedImage.id}-${tag}`.replace(/[^a-z0-9-]/g, '-'),
+      sourceType: selectedImage.sourceType || 'containerdisk',
+      httpUrl,
     });
     handleClose();
   };
@@ -223,10 +252,20 @@ export default function ImageCatalogPicker({ open, onClose, onSelect }: ImageCat
                 <TextField
                   fullWidth
                   size="small"
-                  label="Registry URL (preview)"
-                  value={`docker://${selectedImage.registry}:${
-                    selectedTag || selectedImage.defaultTag
-                  }`}
+                  label={
+                    selectedImage.sourceType === 'http'
+                      ? 'Download URL (preview)'
+                      : 'Registry URL (preview)'
+                  }
+                  value={
+                    selectedImage.sourceType === 'http'
+                      ? selectedImage.extendedTags?.find(
+                          t => t.name === (selectedTag || selectedImage.defaultTag)
+                        )?.url || ''
+                      : `docker://${selectedImage.registry}:${
+                          selectedTag || selectedImage.defaultTag
+                        }`
+                  }
                   InputProps={{ readOnly: true }}
                 />
               </Grid>

@@ -17,8 +17,9 @@ import {
 } from '@mui/material';
 import React, { useState } from 'react';
 import { KubeListResponse, PrometheusQueryResult } from '../../types';
-import { discoverPrometheus } from '../../utils/prometheus';
+import { useMetricsEndpoint } from '../../utils/metricsEndpoint';
 import { sanitizePromQL } from '../../utils/sanitize';
+import MetricsEndpointConfig from '../common/MetricsEndpointConfig';
 import VirtualMachineInstanceMigration from '../Migrations/VirtualMachineInstanceMigration';
 import VirtualMachine from '../VirtualMachines/VirtualMachine';
 
@@ -37,9 +38,7 @@ export default function VirtualizationOverview() {
   const [namespaces, setNamespaces] = useState<string[]>([]);
   const [selectedNamespace, setSelectedNamespace] = useState<string>('all');
   const [timeRange, setTimeRange] = useState<string>('30m');
-  const [prometheusAvailable, setPrometheusAvailable] = useState(false);
-  const [prometheusInstalled, setPrometheusInstalled] = useState(false);
-  const [serviceMonitorConfigured, setServiceMonitorConfigured] = useState(false);
+  const metricsEndpoint = useMetricsEndpoint();
   const [topCpuConsumers, setTopCpuConsumers] = useState<
     Array<{ name: string; value: number; vcpus?: number }>
   >([]);
@@ -76,40 +75,22 @@ export default function VirtualizationOverview() {
       .catch(() => {});
   }, []);
 
-  // Check if KubeVirt ServiceMonitor is configured
-  React.useEffect(() => {
-    ApiProxy.request('/apis/kubevirt.io/v1/kubevirts')
-      .then(
-        (resp: {
-          items?: Array<{ spec?: { monitorNamespace?: string; monitorAccount?: string } }>;
-        }) => {
-          const kv = resp?.items?.[0];
-          setServiceMonitorConfigured(!!kv?.spec?.monitorNamespace && !!kv?.spec?.monitorAccount);
-        }
-      )
-      .catch(() => setServiceMonitorConfigured(false));
-  }, []);
-
-  // Check if Prometheus is available and fetch metrics
+  // Fetch metrics when endpoint is available
   React.useEffect(() => {
     const fetchPrometheusMetrics = async () => {
       try {
-        // Find Prometheus service dynamically
-        const prom = await discoverPrometheus();
-        setPrometheusInstalled(prom.installed);
-        setPrometheusAvailable(prom.available);
-        if (!prom.available) return;
+        if (!metricsEndpoint.available || !metricsEndpoint.baseUrl) return;
 
-        const promBaseUrl = prom.baseUrl;
+        const promBaseUrl = metricsEndpoint.baseUrl;
 
         // Build namespace filter — use shared sanitizer to prevent PromQL injection
         const nsFilter =
           selectedNamespace === 'all' ? '' : `namespace="${sanitizePromQL(selectedNamespace)}"`;
 
         const promQuery = (query: string) =>
-          ApiProxy.request(`${promBaseUrl}/api/v1/query?query=${encodeURIComponent(query)}`).catch(
-            () => null
-          );
+          metricsEndpoint
+            .request(`${promBaseUrl}/api/v1/query?query=${encodeURIComponent(query)}`)
+            .catch(() => null);
 
         // Phase 1: Fire all top-level queries in parallel
         const [
@@ -248,16 +229,14 @@ export default function VirtualizationOverview() {
           mergePair(throughputReadResp, throughputWriteResp, 'readValue', 'writeValue')
         );
         setTopStorageIOPS(mergePair(iopsReadResp, iopsWriteResp, 'readValue', 'writeValue'));
-      } catch (err) {
-        setPrometheusAvailable(false);
-      }
+      } catch (err) {}
     };
 
     fetchPrometheusMetrics();
     const interval = setInterval(fetchPrometheusMetrics, 30000); // Refresh every 30s
 
     return () => clearInterval(interval);
-  }, [selectedNamespace, timeRange]);
+  }, [selectedNamespace, timeRange, metricsEndpoint.available, metricsEndpoint.baseUrl]);
 
   const { items: allVms } = VirtualMachine.useList();
   const { items: migrations } = VirtualMachineInstanceMigration.useList();
@@ -410,26 +389,10 @@ export default function VirtualizationOverview() {
         </Box>
       </Box>
 
-      {/* Alert for Prometheus - tiered messages based on state */}
-      {stats.total > 0 && !prometheusAvailable && !prometheusInstalled && (
-        <Alert severity="info" sx={{ mb: 3 }} icon={<Icon icon="mdi:chart-line" />}>
-          <Typography variant="body2">
-            <strong>Enable metrics:</strong> Install Prometheus to view CPU, Memory, and Storage
-            usage charts for your VirtualMachines.
-          </Typography>
-        </Alert>
-      )}
-      {stats.total > 0 && prometheusInstalled && !serviceMonitorConfigured && (
-        <Alert
-          severity="warning"
-          sx={{ mb: 3, '& .MuiAlert-message': { color: '#ffb74d' } }}
-          icon={<Icon icon="mdi:monitor-eye" />}
-        >
-          <Typography variant="body2">
-            <strong>Prometheus detected</strong> but KubeVirt metrics are not enabled. Go to{' '}
-            <strong>Settings → General Configuration → Prometheus Monitoring</strong> to configure
-            the ServiceMonitor and start collecting VM metrics.
-          </Typography>
+      {/* Metrics endpoint configuration */}
+      {stats.total > 0 && !metricsEndpoint.available && !metricsEndpoint.loading && (
+        <Alert severity="info" sx={{ mb: 3, '& .MuiAlert-message': { width: '100%' } }}>
+          <MetricsEndpointConfig compact />
         </Alert>
       )}
 
@@ -514,7 +477,11 @@ export default function VirtualizationOverview() {
                           }}
                         >
                           <Typography variant="body2" color="text.secondary">
-                            {prometheusAvailable ? 'No metrics available' : 'Requires Prometheus'}
+                            {metricsEndpoint.loading
+                              ? 'Loading metrics...'
+                              : metricsEndpoint.available
+                              ? 'No metrics available'
+                              : 'Configure metrics endpoint'}
                           </Typography>
                         </Box>
                       )}
@@ -587,7 +554,9 @@ export default function VirtualizationOverview() {
                           }}
                         >
                           <Typography variant="body2" color="text.secondary">
-                            {prometheusAvailable ? 'No network activity' : 'Requires Prometheus'}
+                            {metricsEndpoint.available
+                              ? 'No network activity'
+                              : 'Configure metrics endpoint'}
                           </Typography>
                         </Box>
                       )}
@@ -660,7 +629,9 @@ export default function VirtualizationOverview() {
                           }}
                         >
                           <Typography variant="body2" color="text.secondary">
-                            {prometheusAvailable ? 'No network activity' : 'Requires Prometheus'}
+                            {metricsEndpoint.available
+                              ? 'No network activity'
+                              : 'Configure metrics endpoint'}
                           </Typography>
                         </Box>
                       )}
@@ -733,7 +704,9 @@ export default function VirtualizationOverview() {
                           }}
                         >
                           <Typography variant="body2" color="text.secondary">
-                            {prometheusAvailable ? 'No network errors' : 'Requires Prometheus'}
+                            {metricsEndpoint.available
+                              ? 'No network errors'
+                              : 'Configure metrics endpoint'}
                           </Typography>
                         </Box>
                       )}
@@ -821,7 +794,11 @@ export default function VirtualizationOverview() {
                           }}
                         >
                           <Typography variant="body2" color="text.secondary">
-                            {prometheusAvailable ? 'No metrics available' : 'Requires Prometheus'}
+                            {metricsEndpoint.loading
+                              ? 'Loading metrics...'
+                              : metricsEndpoint.available
+                              ? 'No metrics available'
+                              : 'Configure metrics endpoint'}
                           </Typography>
                         </Box>
                       )}
@@ -894,7 +871,9 @@ export default function VirtualizationOverview() {
                           }}
                         >
                           <Typography variant="body2" color="text.secondary">
-                            {prometheusAvailable ? 'No swap activity' : 'Requires Prometheus'}
+                            {metricsEndpoint.available
+                              ? 'No swap activity'
+                              : 'Configure metrics endpoint'}
                           </Typography>
                         </Box>
                       )}
@@ -967,7 +946,9 @@ export default function VirtualizationOverview() {
                           }}
                         >
                           <Typography variant="body2" color="text.secondary">
-                            {prometheusAvailable ? 'No storage activity' : 'Requires Prometheus'}
+                            {metricsEndpoint.available
+                              ? 'No storage activity'
+                              : 'Configure metrics endpoint'}
                           </Typography>
                         </Box>
                       )}
@@ -1040,7 +1021,9 @@ export default function VirtualizationOverview() {
                           }}
                         >
                           <Typography variant="body2" color="text.secondary">
-                            {prometheusAvailable ? 'No storage activity' : 'Requires Prometheus'}
+                            {metricsEndpoint.available
+                              ? 'No storage activity'
+                              : 'Configure metrics endpoint'}
                           </Typography>
                         </Box>
                       )}

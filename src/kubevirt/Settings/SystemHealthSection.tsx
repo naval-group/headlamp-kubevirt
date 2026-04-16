@@ -1,5 +1,4 @@
 import { Icon } from '@iconify/react';
-import ApiProxy from '@kinvolk/headlamp-plugin/lib/ApiProxy';
 import {
   Alert,
   Box,
@@ -24,7 +23,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { discoverPrometheus } from '../../utils/prometheus';
+import { useMetricsEndpoint } from '../../utils/metricsEndpoint';
 import { sanitizePromQL } from '../../utils/sanitize';
 
 type ChartDataPoint = { time: string; [key: string]: string | number };
@@ -59,7 +58,7 @@ const SystemHealthSection = React.memo(function SystemHealthSection({
 }: SystemHealthSectionProps) {
   const [expanded, setExpanded] = useState(false);
   const [healthTimeRange, setHealthTimeRange] = useState('1h');
-  const [healthPromAvailable, setHealthPromAvailable] = useState<boolean | null>(null);
+  const metricsEndpoint = useMetricsEndpoint();
   const [hiddenSeries, setHiddenSeries] = useState<Record<string, Set<string>>>({});
   const [healthComponents, setHealthComponents] = useState<HealthComponent[]>([]);
   const [healthCharts, setHealthCharts] = useState<HealthChartsState>({
@@ -99,12 +98,9 @@ const SystemHealthSection = React.memo(function SystemHealthSection({
 
     const fetchHealthCharts = async () => {
       try {
-        // Find Prometheus service
-        const prom = await discoverPrometheus();
-        setHealthPromAvailable(prom.available);
-        if (!prom.available) return;
+        if (!metricsEndpoint.available || !metricsEndpoint.baseUrl) return;
 
-        const promBase = prom.baseUrl;
+        const promBase = metricsEndpoint.baseUrl;
 
         const now = Math.floor(Date.now() / 1000);
         const rangeSeconds = getTimeRangeSeconds(healthTimeRange);
@@ -112,18 +108,20 @@ const SystemHealthSection = React.memo(function SystemHealthSection({
         const step = Math.max(Math.floor(rangeSeconds / 60), 15);
 
         const queryRange = async (query: string): Promise<RangeResult[]> => {
-          const resp = await ApiProxy.request(
-            `${promBase}/api/v1/query_range?query=${encodeURIComponent(
-              query
-            )}&start=${start}&end=${now}&step=${step}`
-          ).catch(() => null);
+          const resp = await metricsEndpoint
+            .request(
+              `${promBase}/api/v1/query_range?query=${encodeURIComponent(
+                query
+              )}&start=${start}&end=${now}&step=${step}`
+            )
+            .catch(() => null);
           return resp?.data?.result || [];
         };
 
         const queryInstant = async (query: string) => {
-          const resp = await ApiProxy.request(
-            `${promBase}/api/v1/query?query=${encodeURIComponent(query)}`
-          ).catch(() => null);
+          const resp = await metricsEndpoint
+            .request(`${promBase}/api/v1/query?query=${encodeURIComponent(query)}`)
+            .catch(() => null);
           return resp?.data?.result || [];
         };
 
@@ -263,14 +261,13 @@ const SystemHealthSection = React.memo(function SystemHealthSection({
         });
       } catch (err) {
         console.error('Failed to fetch health charts:', err);
-        setHealthPromAvailable(false);
       }
     };
 
     fetchHealthCharts();
     const interval = setInterval(fetchHealthCharts, 30000);
     return () => clearInterval(interval);
-  }, [expanded, healthTimeRange]);
+  }, [expanded, healthTimeRange, metricsEndpoint.available, metricsEndpoint.baseUrl]);
 
   return (
     <Box
@@ -303,13 +300,13 @@ const SystemHealthSection = React.memo(function SystemHealthSection({
       </Box>
       <Collapse in={expanded}>
         <Box p={2} pt={0}>
-          {healthPromAvailable === null ? (
+          {metricsEndpoint.loading ? (
             <Box display="flex" justifyContent="center" py={3}>
               <Typography variant="body2" color="text.secondary">
                 Checking Prometheus availability...
               </Typography>
             </Box>
-          ) : !healthPromAvailable ? (
+          ) : !metricsEndpoint.available ? (
             <Alert severity="info" sx={{ mb: 2 }}>
               <Typography variant="body2">
                 Prometheus is not available. Configure monitoring in{' '}

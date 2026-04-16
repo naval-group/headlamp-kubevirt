@@ -30,10 +30,12 @@ import {
 import { useSnackbar } from 'notistack';
 import { useEffect, useRef, useState } from 'react';
 import InfoTooltip from '../components/common/InfoTooltip';
+import MetricsEndpointConfig from '../components/common/MetricsEndpointConfig';
 import ResourceEditorDialog from '../components/ResourceEditorDialog';
 import { INSPECTOR_IMAGE } from '../components/VMDoctor/constants';
-import { LiveUpdateConfig, MigrationConfig, NetworkConfig, PermittedHostDevices } from '../types';
+import { LiveUpdateConfig, NetworkConfig } from '../types';
 import { updateFeatureGates } from '../utils/featureGates';
+import { isKubeVirt18OrNewer } from '../utils/kubevirtVersion';
 import {
   addLabelColumn,
   defaultForensicSettings,
@@ -61,8 +63,9 @@ import {
 import { TOOLTIPS } from '../utils/tooltips';
 import CDI from './CDI';
 import KubeVirt from './KubeVirt';
-import type { MediatedDevice, PciDevice } from './Settings/FeatureGatesSection';
 import FeatureGatesSection from './Settings/FeatureGatesSection';
+import HostDevicesCard from './Settings/HostDevicesCard';
+import MigrationConfigCard from './Settings/MigrationConfigCard';
 import SystemHealthSection from './Settings/SystemHealthSection';
 
 // ValidatingAdmissionPolicy for VM Delete Protection
@@ -431,28 +434,13 @@ export default function KubeVirtSettings() {
       updateFeatureGates(newFeatureGates);
 
       // Add inline warning for features that affect sidebar
-      const sidebarFeatures = ['Snapshot', 'VMExport', 'DataVolumes', 'LiveMigration'];
+      const sidebarFeatures = ['Snapshot', 'VMExport', 'DataVolumes'];
       if (sidebarFeatures.includes(featureGate) && !sidebarReloadWarnings.includes(featureGate)) {
         setSidebarReloadWarnings([...sidebarReloadWarnings, featureGate]);
       }
     } catch (error: unknown) {
       console.error('Failed to update feature gates', error);
       enqueueSnackbar('Failed to update feature gate.', {
-        variant: 'error',
-      });
-    } finally {
-      setUpdating(false);
-    }
-  };
-
-  const handleMigrationConfigUpdate = async (config: Record<string, unknown>) => {
-    setUpdating(true);
-    try {
-      await kubeVirt.updateMigrationConfig(config as MigrationConfig);
-      enqueueSnackbar('Migration configuration updated successfully', { variant: 'success' });
-    } catch (error: unknown) {
-      console.error('Failed to update migration configuration', error);
-      enqueueSnackbar('Failed to update migration configuration.', {
         variant: 'error',
       });
     } finally {
@@ -620,31 +608,6 @@ export default function KubeVirtSettings() {
     } catch (error: unknown) {
       console.error('Failed to update network configuration', error);
       enqueueSnackbar('Failed to update network configuration.', {
-        variant: 'error',
-      });
-    } finally {
-      setUpdating(false);
-    }
-  };
-
-  const handleHostDevicesConfigUpdate = async (pci: PciDevice[], mediated: MediatedDevice[]) => {
-    setUpdating(true);
-    try {
-      const permittedHostDevices: PermittedHostDevices = {};
-      if (pci.length > 0) {
-        permittedHostDevices.pciHostDevices = pci;
-      }
-      if (mediated.length > 0) {
-        permittedHostDevices.mediatedDevices = mediated;
-      }
-
-      await kubeVirt.updatePermittedHostDevices(
-        Object.keys(permittedHostDevices).length > 0 ? permittedHostDevices : undefined
-      );
-      enqueueSnackbar('Host devices configuration updated successfully', { variant: 'success' });
-    } catch (error: unknown) {
-      console.error('Failed to update host devices configuration', error);
-      enqueueSnackbar('Failed to update host devices configuration.', {
         variant: 'error',
       });
     } finally {
@@ -1320,6 +1283,13 @@ export default function KubeVirtSettings() {
 
         <Collapse in={generalConfigExpanded}>
           <Box p={2} pt={0}>
+            {/* Metrics Endpoint */}
+            <Card variant="outlined" sx={{ mb: 2 }}>
+              <CardContent>
+                <MetricsEndpointConfig />
+              </CardContent>
+            </Card>
+
             {/* Prometheus Monitoring */}
             <Card variant="outlined" sx={{ mb: 2 }}>
               <CardContent>
@@ -1441,12 +1411,101 @@ export default function KubeVirtSettings() {
               </CardContent>
             </Card>
 
+            {/* RBAC Aggregation */}
+            {isKubeVirt18OrNewer() && (
+              <Card variant="outlined" sx={{ mb: 2 }}>
+                <CardContent>
+                  <Box display="flex" justifyContent="space-between" alignItems="center">
+                    <Box flex={1}>
+                      <Typography
+                        variant="body1"
+                        fontWeight={500}
+                        display="flex"
+                        alignItems="center"
+                        gap={1}
+                      >
+                        <Icon icon="mdi:shield-check" width={20} style={{ color: '#9c27b0' }} />
+                        RBAC Aggregation
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {kubeVirt?.getRoleAggregationStrategy() === 'Manual'
+                          ? 'KubeVirt roles are NOT aggregated to default Kubernetes roles (admin/edit/view).'
+                          : 'KubeVirt roles are aggregated to default Kubernetes roles (admin/edit/view).'}
+                      </Typography>
+                    </Box>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={kubeVirt?.getRoleAggregationStrategy() !== 'Manual'}
+                          onChange={async e => {
+                            try {
+                              await kubeVirt?.updateRoleAggregationStrategy(
+                                e.target.checked ? 'AggregateToDefault' : 'Manual'
+                              );
+                              enqueueSnackbar('RBAC aggregation updated', { variant: 'success' });
+                            } catch (err) {
+                              enqueueSnackbar(
+                                `Failed to update RBAC aggregation: ${
+                                  err instanceof Error ? err.message : err
+                                }`,
+                                { variant: 'error' }
+                              );
+                            }
+                          }}
+                          disabled={updating}
+                          sx={{
+                            '& .MuiSwitch-switchBase.Mui-checked': {
+                              color: '#4caf50',
+                            },
+                            '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                              backgroundColor: '#4caf50',
+                            },
+                            '& .MuiSwitch-track': {
+                              backgroundColor:
+                                kubeVirt?.getRoleAggregationStrategy() !== 'Manual'
+                                  ? '#4caf50'
+                                  : '#9e9e9e',
+                            },
+                          }}
+                        />
+                      }
+                      label={
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            color:
+                              kubeVirt?.getRoleAggregationStrategy() !== 'Manual'
+                                ? '#4caf50'
+                                : '#f44336',
+                            fontWeight:
+                              kubeVirt?.getRoleAggregationStrategy() !== 'Manual' ? 600 : 400,
+                            minWidth: 85,
+                          }}
+                        >
+                          {kubeVirt?.getRoleAggregationStrategy() !== 'Manual'
+                            ? 'Enabled'
+                            : 'Disabled'}
+                        </Typography>
+                      }
+                    />
+                  </Box>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Common Instance Types */}
             <Card variant="outlined" sx={{ mb: 2 }}>
               <CardContent>
                 <Box display="flex" justifyContent="space-between" alignItems="center">
                   <Box flex={1}>
-                    <Typography variant="body1" fontWeight={500}>
+                    <Typography
+                      variant="body1"
+                      fontWeight={500}
+                      display="flex"
+                      alignItems="center"
+                      gap={1}
+                    >
+                      <Icon icon="mdi:package-variant" width={20} style={{ color: '#9c27b0' }} />
                       Common Instance Types Deployment
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
@@ -1492,7 +1551,15 @@ export default function KubeVirtSettings() {
             {/* Memory Overcommit */}
             <Card variant="outlined" sx={{ mb: 2 }}>
               <CardContent>
-                <Typography variant="body1" fontWeight={500} mb={1}>
+                <Typography
+                  variant="body1"
+                  fontWeight={500}
+                  mb={1}
+                  display="flex"
+                  alignItems="center"
+                  gap={1}
+                >
+                  <Icon icon="mdi:memory" width={20} style={{ color: '#ff9800' }} />
                   Memory Overcommit <InfoTooltip text={TOOLTIPS.memoryOvercommit} />
                 </Typography>
                 <Typography variant="body2" color="text.secondary" mb={2}>
@@ -1532,7 +1599,15 @@ export default function KubeVirtSettings() {
             {/* Eviction Strategy */}
             <Card variant="outlined" sx={{ mb: 2 }}>
               <CardContent>
-                <Typography variant="body1" fontWeight={500} mb={1}>
+                <Typography
+                  variant="body1"
+                  fontWeight={500}
+                  mb={1}
+                  display="flex"
+                  alignItems="center"
+                  gap={1}
+                >
+                  <Icon icon="mdi:exit-run" width={20} style={{ color: '#f44336' }} />
                   Eviction Strategy <InfoTooltip text={TOOLTIPS.evictionStrategy} />
                 </Typography>
                 <Typography variant="body2" color="text.secondary" mb={2}>
@@ -1581,7 +1656,7 @@ export default function KubeVirtSettings() {
                   onClick={() => setLiveUpdateConfigExpanded(!liveUpdateConfigExpanded)}
                 >
                   <Icon
-                    icon="mdi:cog"
+                    icon="mdi:cpu-64-bit"
                     width={20}
                     height={20}
                     style={{ color: liveUpdateConfigExpanded ? '#2196f3' : '#9e9e9e' }}
@@ -1662,7 +1737,7 @@ export default function KubeVirtSettings() {
             </Card>
 
             {/* Network Configuration */}
-            <Card variant="outlined">
+            <Card variant="outlined" sx={{ mb: 2 }}>
               <CardContent>
                 <Box
                   display="flex"
@@ -1673,7 +1748,7 @@ export default function KubeVirtSettings() {
                   onClick={() => setNetworkConfigExpanded(!networkConfigExpanded)}
                 >
                   <Icon
-                    icon="mdi:cog"
+                    icon="mdi:lan"
                     width={20}
                     height={20}
                     style={{ color: networkConfigExpanded ? '#2196f3' : '#9e9e9e' }}
@@ -1778,6 +1853,22 @@ export default function KubeVirtSettings() {
                 </Collapse>
               </CardContent>
             </Card>
+
+            <MigrationConfigCard
+              initialConfig={kubeVirt?.getMigrationConfig() || {}}
+              updating={updating}
+              onUpdate={async config => {
+                await kubeVirt.updateMigrationConfig(config);
+              }}
+            />
+            <HostDevicesCard
+              initialPciDevices={kubeVirt?.getPciHostDevices() || []}
+              initialMediatedDevices={kubeVirt?.getMediatedDevices() || []}
+              updating={updating}
+              onUpdate={async devices => {
+                await kubeVirt.updatePermittedHostDevices(devices);
+              }}
+            />
           </Box>
         </Collapse>
       </Box>
@@ -1787,8 +1878,6 @@ export default function KubeVirtSettings() {
         sidebarReloadWarnings={sidebarReloadWarnings}
         updating={updating}
         onToggleFeatureGate={handleFeatureGateToggle}
-        onUpdateMigrationConfig={handleMigrationConfigUpdate}
-        onUpdateHostDevices={handleHostDevicesConfigUpdate}
       />
 
       {/* CDI Feature Gates */}

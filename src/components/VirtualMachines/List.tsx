@@ -23,6 +23,7 @@ import { SimpleStyledTooltip, TitledTooltip } from '../common/StyledTooltip';
 import ResourceEditorDialog from '../ResourceEditorDialog';
 import VirtualMachineInstance from '../VirtualMachineInstance/VirtualMachineInstance';
 import CreateSnapshotDialog from '../VirtualMachineSnapshot/CreateSnapshotDialog';
+import SaveAsTemplateDialog from '../VirtualMachineTemplate/SaveAsTemplateDialog';
 import VMDoctorDialog from '../VMDoctor/VMDoctorDialog';
 import BulkActionToolbar from './BulkActionToolbar';
 import CloneDialog from './CloneDialog';
@@ -49,24 +50,24 @@ function DeleteProtectionBadge({ vm }: { vm: VirtualMachine }) {
 function VMRowActionMenuItems({
   vm,
   closeMenu,
-  liveMigrationEnabled,
   snapshotEnabled,
   onDoctor,
   onClone,
   onSnapshot,
   onLaunchLikeThis,
+  onSaveAsTemplate,
   onEdit,
   onViewYaml,
   onDelete,
 }: {
   vm: VirtualMachine;
   closeMenu: () => void;
-  liveMigrationEnabled: boolean;
   snapshotEnabled: boolean;
   onDoctor: (vm: VirtualMachine) => void;
   onClone: (vm: VirtualMachine) => void;
   onSnapshot: (vm: VirtualMachine) => void;
   onLaunchLikeThis: (vm: VirtualMachine) => void;
+  onSaveAsTemplate: (vm: VirtualMachine) => void;
   onEdit: (vm: VirtualMachine) => void;
   onViewYaml: (vm: VirtualMachine) => void;
   onDelete: (vm: VirtualMachine) => void;
@@ -74,11 +75,11 @@ function VMRowActionMenuItems({
   // Use live VM data only when menu is open (one at a time, not per row)
   const [liveVM] = VirtualMachine.useGet(vm.getName(), vm.getNamespace());
   const { actions, isProtected } = useVMActions(liveVM || vm);
-  const visibleActions = actions.filter(a => a.id !== 'migrate' || liveMigrationEnabled);
+  const templateEnabled = useFeatureGate('Template');
 
   return (
     <>
-      {visibleActions.map(a => (
+      {actions.map(a => (
         <MenuItem
           key={a.id}
           onClick={() => {
@@ -145,6 +146,20 @@ function VMRowActionMenuItems({
         </ListItemIcon>
         <ListItemText>Launch More Like This</ListItemText>
       </MenuItem>
+      {templateEnabled && (
+        <MenuItem
+          key="save-as-template"
+          onClick={() => {
+            closeMenu();
+            onSaveAsTemplate(vm);
+          }}
+        >
+          <ListItemIcon>
+            <Icon icon="mdi:text-box-outline" />
+          </ListItemIcon>
+          <ListItemText>Save as Template</ListItemText>
+        </MenuItem>
+      )}
       <Divider />
       <MenuItem
         key="edit"
@@ -237,12 +252,12 @@ export default function VirtualMachineList() {
   const [viewYamlVM, setViewYamlVM] = useState<VirtualMachine | null>(null);
   const [cloneVM, setCloneVM] = useState<VirtualMachine | null>(null);
   const [snapshotVM, setSnapshotVM] = useState<VirtualMachine | null>(null);
+  const [saveAsTemplateVM, setSaveAsTemplateVM] = useState<VirtualMachine | null>(null);
   const [launchLikeThisVM, setLaunchLikeThisVM] = useState<VirtualMachine | null>(null);
   useEffect(() => {
     setCustomLabelColumns(getLabelColumns());
   }, []);
 
-  const liveMigrationEnabled = useFeatureGate('LiveMigration');
   const snapshotEnabled = useFeatureGate('Snapshot');
 
   // Fetch VMs (all namespaces, filtered client-side for smooth switching)
@@ -344,7 +359,7 @@ export default function VirtualMachineList() {
           return (
             <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center', flexWrap: 'wrap' }}>
               <Chip label={status} size="small" color={color} icon={icon} />
-              {liveMigrationEnabled && !vm.isLiveMigratable() && status === 'Running' && (
+              {!vm.isLiveMigratable() && status === 'Running' && (
                 <TitledTooltip
                   title="Not Migratable"
                   rows={[{ label: 'Reason', value: vm.getLiveMigratableReason() }]}
@@ -467,7 +482,7 @@ export default function VirtualMachineList() {
     });
 
     return cols;
-  }, [liveMigrationEnabled, getVMI, customLabelColumns]);
+  }, [getVMI, customLabelColumns]);
 
   const openDoctor = useCallback(async (vm: VirtualMachine) => {
     const vmName = vm.getName();
@@ -513,18 +528,18 @@ export default function VirtualMachineList() {
         key="actions"
         vm={row.original}
         closeMenu={closeMenu}
-        liveMigrationEnabled={liveMigrationEnabled}
         snapshotEnabled={snapshotEnabled}
         onDoctor={openDoctor}
         onClone={setCloneVM}
         onSnapshot={setSnapshotVM}
         onLaunchLikeThis={setLaunchLikeThisVM}
+        onSaveAsTemplate={setSaveAsTemplateVM}
         onEdit={setEditVM}
         onViewYaml={setViewYamlVM}
         onDelete={setDeleteVM}
       />,
     ],
-    [liveMigrationEnabled, snapshotEnabled, openDoctor]
+    [snapshotEnabled, openDoctor]
   );
 
   return (
@@ -559,9 +574,7 @@ export default function VirtualMachineList() {
           enableFacetedValues
           enableFullScreenToggle={false}
           renderRowActionMenuItems={renderRowActionMenuItems}
-          renderRowSelectionToolbar={({ table }) => (
-            <BulkActionToolbar table={table} liveMigrationEnabled={liveMigrationEnabled} />
-          )}
+          renderRowSelectionToolbar={({ table }) => <BulkActionToolbar table={table} />}
           getRowId={(vm: VirtualMachine) => vm.metadata?.uid ?? vm.getName()}
         />
       </SectionBox>
@@ -648,6 +661,13 @@ export default function VirtualMachineList() {
         onClose={() => setCloneVM(null)}
         vmName={cloneVM?.getName() || ''}
         namespace={cloneVM?.getNamespace() || ''}
+      />
+
+      <SaveAsTemplateDialog
+        open={!!saveAsTemplateVM}
+        onClose={() => setSaveAsTemplateVM(null)}
+        vmName={saveAsTemplateVM?.getName() || ''}
+        namespace={saveAsTemplateVM?.getNamespace() || ''}
       />
 
       <CreateSnapshotDialog
