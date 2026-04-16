@@ -32,6 +32,7 @@ import DataSourceList from './components/BootableVolumes/List';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import DataImportCronDetails from './components/DataImportCrons/Details';
 import DataImportCronList from './components/DataImportCrons/List';
+import CatalogPage from './components/ImageCatalog/CatalogPage';
 import InstanceTypeDetails from './components/InstanceTypes/Details';
 import InstanceTypeList from './components/InstanceTypes/List';
 import MigrationDetails from './components/Migrations/Details';
@@ -582,6 +583,27 @@ registerKubeVirtResource({
   DetailsComponent: ExportDetails,
   detailsRouteName: 'export',
   hasNamespace: true,
+});
+
+// Image Catalog — not a CRD, registered as a simple page
+// NOTE: Using registerKubeVirtResource pattern with a dummy list component
+// to avoid Headlamp's _class resolution error on Cluster page
+registerSidebarEntry({
+  parent: 'kubevirt',
+  name: 'kubevirt-imagecatalog',
+  label: 'Image Catalog',
+  url: '/kubevirt/imagecatalog',
+  icon: 'mdi:image-multiple',
+});
+registerRoute({
+  path: '/kubevirt/imagecatalog',
+  sidebar: 'kubevirt',
+  component: () => (
+    <ErrorBoundary>
+      <CatalogPage />
+    </ErrorBoundary>
+  ),
+  exact: true,
 });
 
 registerKubeVirtResource({
