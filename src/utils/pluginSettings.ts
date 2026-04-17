@@ -9,8 +9,9 @@ export interface LabelColumn {
 
 export interface ForensicSettings {
   toolboxImage: string; // Forensic toolbox image (vol-qemu + vol3)
-  isfRegistry: string; // ISF image registry (e.g., 'localhost:5000')
-  isfRepo: string; // ISF image repository name (e.g., 'isf')
+  isfRegistry: string; // ISF image registry (e.g., 'ghcr.io')
+  isfRepo: string; // ISF image repository name (e.g., 'genesary/kernel-isf-oci')
+  isfSuffix: string; // Tag suffix appended after kernel version (e.g., '-busybox')
 }
 
 export interface GuestfsSettings {
@@ -25,8 +26,9 @@ export interface PluginSettings {
 
 export const defaultForensicSettings: ForensicSettings = {
   toolboxImage: 'sk4la/volatility3:2.26',
-  isfRegistry: 'localhost:5000',
-  isfRepo: 'isf',
+  isfRegistry: 'ghcr.io',
+  isfRepo: 'genesary/kernel-isf-oci',
+  isfSuffix: '-busybox',
 };
 
 export const defaultGuestfsSettings: GuestfsSettings = {
@@ -105,6 +107,7 @@ function validateSettings(parsed: unknown): PluginSettings {
         typeof f.isfRepo === 'string' && isValidRepo(f.isfRepo)
           ? f.isfRepo
           : defaultForensicSettings.isfRepo,
+      isfSuffix: typeof f.isfSuffix === 'string' ? f.isfSuffix : defaultForensicSettings.isfSuffix,
     };
   }
 

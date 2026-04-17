@@ -913,7 +913,7 @@ export default function KubeVirtSettings() {
                             sx={{ flex: 1 }}
                             error={!!registryErr}
                             helperText={
-                              registryErr || 'Registry hosting ISF images (e.g., localhost:5000)'
+                              registryErr || 'Registry hosting ISF images (e.g., ghcr.io)'
                             }
                           />
                           <TextField
@@ -923,11 +923,22 @@ export default function KubeVirtSettings() {
                               setLocalForensic({ ...localForensic, isfRepo: e.target.value })
                             }
                             size="small"
-                            sx={{ flex: 1 }}
+                            sx={{ flex: 2 }}
                             error={!!repoErr}
                             helperText={
-                              repoErr || 'Repository name (e.g., isf). Tag = kernel version'
+                              repoErr ||
+                              'Repository name (e.g., genesary/kernel-isf-oci). Tag = kernel version'
                             }
+                          />
+                          <TextField
+                            label="Tag Suffix"
+                            value={localForensic.isfSuffix}
+                            onChange={e =>
+                              setLocalForensic({ ...localForensic, isfSuffix: e.target.value })
+                            }
+                            size="small"
+                            sx={{ flex: 1 }}
+                            helperText="Appended after kernel version (e.g., -busybox)"
                           />
                         </Box>
                         <Box display="flex" gap={1} justifyContent="flex-end">
@@ -975,6 +986,7 @@ export default function KubeVirtSettings() {
                     >
                       ISF: {forensicSettings.isfRegistry || '(not set)'}/
                       {forensicSettings.isfRepo || '(not set)'}:&lt;kernel&gt;
+                      {forensicSettings.isfSuffix || ''}
                     </Typography>
                   </Box>
                 )}

@@ -251,8 +251,9 @@ describe('validateSettings (via getPluginSettings)', () => {
             customLabelColumns: columns,
             forensic: {
               toolboxImage: 'sk4la/volatility3:2.26',
-              isfRegistry: 'localhost:5000',
-              isfRepo: 'isf',
+              isfRegistry: 'ghcr.io',
+              isfRepo: 'genesary/kernel-isf-oci',
+              isfSuffix: '-busybox',
             },
             guestfs: { image: '' },
           };
