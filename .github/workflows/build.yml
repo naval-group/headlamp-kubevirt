@@ -117,17 +117,36 @@ jobs:
           name: headlamp-kubevirt
 
       # Generate SLSA provenance attestation signed via Sigstore OIDC.
-      # Stored in GitHub's attestation store, verifiable with:
-      #   gh attestation verify headlamp-kubevirt-*.tar.gz --repo naval-group/headlamp-kubevirt
+      # Stored in GitHub's attestation store and exported as .intoto.jsonl release asset.
+      # Verify with: gh attestation verify headlamp-kubevirt-*.tar.gz --repo naval-group/headlamp-kubevirt
       - name: Attest build provenance
+        id: attest
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
           subject-path: headlamp-kubevirt-*.tar.gz
+
+      # Export the attestation bundle as .intoto.jsonl (required by OpenSSF Scorecard)
+      - name: Export provenance bundle
+        run: |
+          TARBALL=$(ls headlamp-kubevirt-*.tar.gz)
+          cp "${{ steps.attest.outputs.bundle-path }}" "${TARBALL}.intoto.jsonl"
+
+      # Sign the tarball with cosign (keyless/Sigstore OIDC)
+      # Produces .sig file (required by OpenSSF Scorecard for signed releases)
+      - name: Install cosign
+        uses: sigstore/cosign-installer@3454372f43399081ed03b604cb2d021dabca52bb # v3.8.2
+
+      - name: Sign release artifacts
+        run: |
+          TARBALL=$(ls headlamp-kubevirt-*.tar.gz)
+          cosign sign-blob --yes --output-signature "${TARBALL}.sig" "${TARBALL}"
 
       - uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
         with:
           files: |
             headlamp-kubevirt-*.tar.gz
+            headlamp-kubevirt-*.tar.gz.intoto.jsonl
+            headlamp-kubevirt-*.tar.gz.sig
             checksums.txt
             sbom-headlamp-kubevirt.spdx.json
           generate_release_notes: true
