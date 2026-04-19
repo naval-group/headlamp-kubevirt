@@ -1,5 +1,5 @@
-version: 0.1.0
-digest: "2026-03-26T14:00:00Z"
+version: 0.2.0
+digest: "2026-04-18T12:00:00Z"
 name: headlamp_kubevirt
 displayName: KubeVirt
 createdAt: "2025-03-23T00:00:00Z"
@@ -7,7 +7,7 @@ description: A comprehensive Headlamp plugin for managing KubeVirt virtual machi
 license: Apache-2.0
 homeURL: https://github.com/naval-group/headlamp-kubevirt
 logoURL: https://raw.githubusercontent.com/kubevirt/community/main/logo/KubeVirt_icon.png
-containsSecurityUpdates: false
+containsSecurityUpdates: true
 operator: false
 prerelease: false
 keywords:
@@ -17,6 +17,9 @@ keywords:
   - virtualization
   - virtual-machine
   - vnc
+  - vm-templates
+  - forensics
+  - s3
 provider:
   name: Naval Group
 maintainers:
@@ -27,6 +30,8 @@ maintainers:
 links:
   - name: GitHub
     url: https://github.com/naval-group/headlamp-kubevirt
+  - name: Image Catalog Documentation
+    url: https://github.com/naval-group/headlamp-kubevirt/blob/main/docs/image-catalog/README.md
 screenshots:
   - title: Overview Dashboard
     url: https://raw.githubusercontent.com/naval-group/headlamp-kubevirt/main/screenshots/overview-dashboard.png
@@ -64,7 +69,7 @@ install: |
           mountPath: /headlamp-plugins
   ```
 annotations:
-  headlamp/plugin/archive-url: https://github.com/naval-group/headlamp-kubevirt/releases/download/v0.1.0/headlamp-kubevirt-0.1.0.tar.gz
-  headlamp/plugin/archive-checksum: sha256:37457194bf1c39825e4a564c369f1d7cc2badc6dc0dae398e990bd4825de9bd0
+  headlamp/plugin/archive-url: https://github.com/naval-group/headlamp-kubevirt/releases/download/v0.2.0/headlamp-kubevirt-0.2.0.tar.gz
+  headlamp/plugin/archive-checksum: sha256:4af97f653bd0ae53c49a43695f49632eda688f69c5055a726691de6b60f02c44
   headlamp/plugin/version-compat: ">=0.24.0"
   headlamp/plugin/distro-compat: in-cluster,desktop,docker-desktop,web
