@@ -33,6 +33,7 @@ import ErrorBoundary from './components/common/ErrorBoundary';
 import DataImportCronDetails from './components/DataImportCrons/Details';
 import DataImportCronList from './components/DataImportCrons/List';
 import CatalogPage from './components/ImageCatalog/CatalogPage';
+import InstallWizard from './components/InstallWizard/InstallWizard';
 import InstanceTypeDetails from './components/InstanceTypes/Details';
 import InstanceTypeList from './components/InstanceTypes/List';
 import IPAMClaimDetails from './components/IPAMClaims/Details';
@@ -62,6 +63,7 @@ import VMTemplateList from './components/VirtualMachineTemplate/List';
 import KubeVirtSettings from './kubevirt/Settings';
 import { areFeatureGatesLoaded, getFeatureGates, loadFeatureGates } from './utils/featureGates';
 import { detectKubeVirtCapabilities } from './utils/kubevirtVersion';
+import { detectInstalledOperators, isKubeVirtInstalled } from './utils/operatorDetection';
 
 // ── IPAM CRD detection ─────────────────────────────────────────────────
 let ipamCRDAvailable = false;
@@ -126,10 +128,11 @@ function registerKubeVirtResource(config: ResourceRoute) {
   }
 }
 
-// Load feature gates and detect capabilities on plugin initialization
+// Load feature gates, detect capabilities, and detect installed operators on plugin initialization
 loadFeatureGates();
 detectKubeVirtCapabilities();
 detectIPAMCRD();
+detectInstalledOperators();
 
 // Feature gates that affect sidebar visibility
 const SIDEBAR_AFFECTING_FEATURE_GATES = ['Snapshot', 'VMExport', 'DataVolumes'];
@@ -427,7 +430,26 @@ registerSidebarEntry({
   icon: 'mdi:cloud-outline',
 });
 
-// Overview
+// Install Wizard
+registerSidebarEntry({
+  parent: 'kubevirt',
+  name: 'kubevirt-install',
+  label: 'Install Wizard',
+  url: '/kubevirt/install-wizard',
+  icon: 'mdi:rocket-launch',
+});
+registerRoute({
+  path: '/kubevirt/install-wizard',
+  sidebar: 'kubevirt',
+  component: () => (
+    <ErrorBoundary>
+      <InstallWizard />
+    </ErrorBoundary>
+  ),
+  exact: true,
+});
+
+// Overview (redirects to install wizard if KubeVirt is not detected)
 registerSidebarEntry({
   parent: 'kubevirt',
   name: 'kubevirt-overview',
@@ -439,11 +461,13 @@ registerSidebarEntry({
 registerRoute({
   path: '/kubevirt/overview',
   sidebar: 'kubevirt-overview',
-  component: () => (
-    <ErrorBoundary>
-      <VirtualizationOverview />
-    </ErrorBoundary>
-  ),
+  component: () => {
+    return (
+      <ErrorBoundary>
+        <VirtualizationOverview />
+      </ErrorBoundary>
+    );
+  },
   exact: true,
 });
 
