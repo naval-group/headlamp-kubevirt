@@ -330,10 +330,25 @@ export default function MetricsEndpointConfig({ compact }: { compact?: boolean }
             InputLabelProps={{ shrink: true }}
             value={url}
             onChange={e => {
-              setUrl(e.target.value);
+              setUrl(e.target.value.trim());
               setTestResult(null);
             }}
-            helperText="K8s API proxy path — e.g., /api/v1/namespaces/monitoring/services/prometheus:9090/proxy"
+            error={
+              !!(
+                url &&
+                !url.startsWith('/api/') &&
+                !url.startsWith('https://') &&
+                !url.startsWith('http://')
+              )
+            }
+            helperText={
+              url &&
+              !url.startsWith('/api/') &&
+              !url.startsWith('https://') &&
+              !url.startsWith('http://')
+                ? 'URL must start with /api/ (K8s proxy) or https:// / http:// (external)'
+                : 'K8s proxy path (/api/v1/namespaces/.../proxy) or external URL (https://thanos.example.com/query)'
+            }
           />
         )}
 
@@ -420,7 +435,13 @@ export default function MetricsEndpointConfig({ compact }: { compact?: boolean }
                 variant="contained"
                 startIcon={<Icon icon="mdi:content-save" width={16} />}
                 onClick={handleSaveLocal}
-                disabled={saving || !url}
+                disabled={
+                  saving ||
+                  !url ||
+                  (!url.startsWith('/api/') &&
+                    !url.startsWith('https://') &&
+                    !url.startsWith('http://'))
+                }
               >
                 Save to Browser
               </Button>
