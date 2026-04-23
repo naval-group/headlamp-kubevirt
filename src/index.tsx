@@ -586,8 +586,6 @@ registerKubeVirtResource({
 });
 
 // Image Catalog — not a CRD, registered as a simple page
-// NOTE: Using registerKubeVirtResource pattern with a dummy list component
-// to avoid Headlamp's _class resolution error on Cluster page
 registerSidebarEntry({
   parent: 'kubevirt',
   name: 'kubevirt-imagecatalog',
@@ -597,7 +595,7 @@ registerSidebarEntry({
 });
 registerRoute({
   path: '/kubevirt/imagecatalog',
-  sidebar: 'kubevirt',
+  sidebar: 'kubevirt-imagecatalog',
   component: () => (
     <ErrorBoundary>
       <CatalogPage />

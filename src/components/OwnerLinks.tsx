@@ -55,6 +55,9 @@ function createStubClass(routeName: string, namespaced: boolean) {
     getNamespace() {
       return (this.jsonData?.metadata as Record<string, unknown>)?.namespace || '';
     }
+    _class() {
+      return Stub;
+    }
   }
   return Stub;
 }
