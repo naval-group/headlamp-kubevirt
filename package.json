@@ -1,6 +1,6 @@
 {
   "name": "kubevirt",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A comprehensive Headlamp plugin for managing KubeVirt virtual machines in Kubernetes",
   "author": "Alexandre Knecht",
   "homepage": "https://github.com/naval-group/headlamp-kubevirt",

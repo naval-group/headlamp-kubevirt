@@ -1,5 +1,5 @@
-version: 0.2.0
-digest: "2026-04-18T12:00:00Z"
+version: 0.2.1
+digest: "2026-04-22T20:00:00Z"
 name: headlamp_kubevirt
 displayName: KubeVirt
 createdAt: "2025-03-23T00:00:00Z"
@@ -69,7 +69,7 @@ install: |
           mountPath: /headlamp-plugins
   ```
 annotations:
-  headlamp/plugin/archive-url: https://github.com/naval-group/headlamp-kubevirt/releases/download/v0.2.0/headlamp-kubevirt-0.2.0.tar.gz
+  headlamp/plugin/archive-url: https://github.com/naval-group/headlamp-kubevirt/releases/download/v0.2.1/headlamp-kubevirt-0.2.1.tar.gz
   headlamp/plugin/archive-checksum: sha256:4af97f653bd0ae53c49a43695f49632eda688f69c5055a726691de6b60f02c44
   headlamp/plugin/version-compat: ">=0.24.0"
   headlamp/plugin/distro-compat: in-cluster,desktop,docker-desktop,web
