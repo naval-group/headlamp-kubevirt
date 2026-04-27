@@ -151,3 +151,48 @@ jobs:
             sbom-headlamp-kubevirt.spdx.json
           generate_release_notes: true
           prerelease: ${{ contains(github.ref, '-rc') }}
+
+  # After a pre-release, submit a PR to update the ArtifactHub checksum on main.
+  # The stable release uses the same tarball, so the checksum is already correct.
+  update-artifacthub:
+    needs: [build, release]
+    if: startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-rc')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: main
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: headlamp-kubevirt
+          path: artifacts
+
+      - name: Create PR with updated checksum
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TARBALL=$(ls artifacts/headlamp-kubevirt-*.tar.gz)
+          CHECKSUM=$(sha256sum "$TARBALL" | awk '{print $1}')
+          VERSION=$(basename "$TARBALL" | sed 's/headlamp-kubevirt-//;s/.tar.gz//')
+          TAG="${GITHUB_REF#refs/tags/}"
+
+          sed -i "s|headlamp/plugin/archive-checksum:.*|headlamp/plugin/archive-checksum: sha256:${CHECKSUM}|" artifacthub-pkg.yml
+          sed -i "s|headlamp/plugin/archive-url:.*|headlamp/plugin/archive-url: https://github.com/naval-group/headlamp-kubevirt/releases/download/${TAG}/headlamp-kubevirt-${VERSION}.tar.gz|" artifacthub-pkg.yml
+
+          if git diff --quiet artifacthub-pkg.yml; then
+            echo "No checksum change needed"
+            exit 0
+          fi
+
+          BRANCH="chore/artifacthub-checksum-${TAG}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add artifacthub-pkg.yml
+          git commit -m "chore: update artifacthub checksum for ${TAG}"
+          git push origin "$BRANCH"
+          gh pr create --title "chore: update artifacthub checksum for ${TAG}" --body "Auto-generated: updates ArtifactHub archive checksum to match the ${TAG} release tarball." --base main --head "$BRANCH"
