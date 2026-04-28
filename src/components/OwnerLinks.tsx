@@ -43,20 +43,72 @@ const KUBEVIRT_ROUTES: Record<string, string> = {
  */
 function createStubClass(routeName: string, namespaced: boolean) {
   class Stub {
-    static detailsRoute = routeName;
-    static isNamespaced = namespaced;
+    // ── Static (class-level) properties expected by Headlamp ──
+    static readonly detailsRoute = routeName;
+    static readonly isNamespaced = namespaced;
+    static readonly isScalable = false;
+    static readonly kind = '';
+    static readonly apiVersion = '';
+    static readonly pluralName = '';
+    static readonly listRoute = '';
+    static readonly apiGroupName = '';
+    static apiEndpoint = { apiInfo: [] };
+
+    static getBaseObject() {
+      return { metadata: {} };
+    }
+
+    // ── Instance properties expected by Headlamp ──
     jsonData: Record<string, unknown>;
-    constructor(json: Record<string, unknown>) {
-      this.jsonData = json;
+    metadata: { name: string; namespace: string; creationTimestamp?: string };
+    kind: string;
+    cluster: string;
+
+    constructor(json?: Record<string, unknown>) {
+      this.jsonData = json || {};
+      const meta = (this.jsonData?.metadata as Record<string, string>) || {};
+      this.metadata = {
+        name: meta.name || '',
+        namespace: meta.namespace || '',
+        creationTimestamp: meta.creationTimestamp || '',
+      };
+      this.kind = (this.jsonData?.kind as string) || '';
+      this.cluster = '';
     }
-    getName() {
-      return (this.jsonData?.metadata as Record<string, unknown>)?.name || '';
-    }
-    getNamespace() {
-      return (this.jsonData?.metadata as Record<string, unknown>)?.namespace || '';
-    }
+
+    // ── Instance methods expected by Headlamp ──
     _class() {
       return Stub;
+    }
+    getName() {
+      return this.metadata.name;
+    }
+    getNamespace() {
+      return this.metadata.namespace;
+    }
+    getDetailsLink() {
+      return '';
+    }
+    getAge() {
+      return '';
+    }
+    get detailsRoute() {
+      return routeName;
+    }
+    get pluralName() {
+      return '';
+    }
+    get listRoute() {
+      return '';
+    }
+    get isNamespaced() {
+      return namespaced;
+    }
+    get isScalable() {
+      return false;
+    }
+    delete() {
+      return Promise.resolve();
     }
   }
   return Stub;
