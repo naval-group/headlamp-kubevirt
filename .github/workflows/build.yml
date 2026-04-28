@@ -178,21 +178,22 @@ jobs:
           TARBALL=$(ls artifacts/headlamp-kubevirt-*.tar.gz)
           CHECKSUM=$(sha256sum "$TARBALL" | awk '{print $1}')
           VERSION=$(basename "$TARBALL" | sed 's/headlamp-kubevirt-//;s/.tar.gz//')
-          TAG="${GITHUB_REF#refs/tags/}"
+          # Use stable version tag (strip -rcN suffix) for ArtifactHub URL
+          STABLE_TAG="v${VERSION}"
 
           sed -i "s|headlamp/plugin/archive-checksum:.*|headlamp/plugin/archive-checksum: sha256:${CHECKSUM}|" artifacthub-pkg.yml
-          sed -i "s|headlamp/plugin/archive-url:.*|headlamp/plugin/archive-url: https://github.com/naval-group/headlamp-kubevirt/releases/download/${TAG}/headlamp-kubevirt-${VERSION}.tar.gz|" artifacthub-pkg.yml
+          sed -i "s|headlamp/plugin/archive-url:.*|headlamp/plugin/archive-url: https://github.com/naval-group/headlamp-kubevirt/releases/download/${STABLE_TAG}/headlamp-kubevirt-${VERSION}.tar.gz|" artifacthub-pkg.yml
 
           if git diff --quiet artifacthub-pkg.yml; then
             echo "No checksum change needed"
             exit 0
           fi
 
-          BRANCH="chore/artifacthub-checksum-${TAG}"
+          BRANCH="chore/artifacthub-checksum-${STABLE_TAG}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "$BRANCH"
           git add artifacthub-pkg.yml
-          git commit -m "chore: update artifacthub checksum for ${TAG}"
-          git push origin "$BRANCH"
-          gh pr create --title "chore: update artifacthub checksum for ${TAG}" --body "Auto-generated: updates ArtifactHub archive checksum to match the ${TAG} release tarball." --base main --head "$BRANCH"
+          git commit -m "chore: update artifacthub checksum for ${STABLE_TAG}"
+          git push origin "$BRANCH" --force
+          gh pr create --title "chore: update artifacthub checksum for ${STABLE_TAG}" --body "Auto-generated: updates ArtifactHub archive checksum to match the ${STABLE_TAG} release tarball." --base main --head "$BRANCH" || echo "PR already exists"

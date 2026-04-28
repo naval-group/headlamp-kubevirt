@@ -1,5 +1,5 @@
-version: 0.2.1
-digest: "2026-04-22T20:00:00Z"
+version: 0.2.2
+digest: "2026-04-28T10:00:00Z"
 name: headlamp_kubevirt
 displayName: KubeVirt
 createdAt: "2025-03-23T00:00:00Z"
