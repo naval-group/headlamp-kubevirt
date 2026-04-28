@@ -194,6 +194,6 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "$BRANCH"
           git add artifacthub-pkg.yml
-          git commit -m "chore: update artifacthub checksum for ${STABLE_TAG}"
+          git commit -s -m "chore: update artifacthub checksum for ${STABLE_TAG}"
           git push origin "$BRANCH" --force
           gh pr create --title "chore: update artifacthub checksum for ${STABLE_TAG}" --body "Auto-generated: updates ArtifactHub archive checksum to match the ${STABLE_TAG} release tarball." --base main --head "$BRANCH" || echo "PR already exists"
