@@ -69,7 +69,7 @@ install: |
           mountPath: /headlamp-plugins
   ```
 annotations:
-  headlamp/plugin/archive-url: https://github.com/naval-group/headlamp-kubevirt/releases/download/v0.2.2/headlamp-kubevirt-0.2.2.tar.gz
-  headlamp/plugin/archive-checksum: sha256:placeholder
+  headlamp/plugin/archive-url: https://github.com/naval-group/headlamp-kubevirt/releases/download/v0.2.2-rc6/headlamp-kubevirt-0.2.2.tar.gz
+  headlamp/plugin/archive-checksum: sha256:0f788e85a54d05a5d3ea38418c994fba09d41d1b02fff5c0237d2316cf8026a0
   headlamp/plugin/version-compat: ">=0.24.0"
   headlamp/plugin/distro-compat: in-cluster,desktop,docker-desktop,web
