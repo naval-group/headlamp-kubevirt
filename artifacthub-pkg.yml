@@ -70,5 +70,6 @@ install: |
   ```
 annotations:
   headlamp/plugin/archive-url: https://github.com/naval-group/headlamp-kubevirt/releases/download/v0.2.2/headlamp-kubevirt-0.2.2.tar.gz
+  headlamp/plugin/archive-checksum: sha256:placeholder
   headlamp/plugin/version-compat: ">=0.24.0"
   headlamp/plugin/distro-compat: in-cluster,desktop,docker-desktop,web
