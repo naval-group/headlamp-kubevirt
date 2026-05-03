@@ -34,6 +34,7 @@ import ConfirmDialog from '../common/ConfirmDialog';
 import CopyCodeBlock from '../common/CopyCodeBlock';
 import CreateResourceDialog from '../common/CreateResourceDialog';
 import { SimpleStyledTooltip, TitledTooltip } from '../common/StyledTooltip';
+import IPAMClaim from '../IPAMClaims/IPAMClaim';
 import VirtualMachineInstanceMigration from '../Migrations/VirtualMachineInstanceMigration';
 import CreateExportDialog from '../VirtualMachineExport/CreateExportDialog';
 import VirtualMachineExport from '../VirtualMachineExport/VirtualMachineExport';
@@ -140,6 +141,12 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
   const [podName, setPodName] = useState<string | null>(null);
   const [vmiData, setVmiData] = useState<VMIData | null>(null);
   const [podDeleteConfirm, setPodDeleteConfirm] = useState<'delete' | 'force' | null>(null);
+
+  // Fetch IPAMClaims for this VM (filtered by kubevirt.io/vm label)
+  const { items: allIPAMClaims } = IPAMClaim.useList({ namespace });
+  const vmIPAMClaims = allIPAMClaims?.filter(
+    (c: InstanceType<typeof IPAMClaim>) => c.getOwnerVMName() === name
+  );
 
   // Fetch migrations for this VM to find active migration
   const { items: allMigrations } = VirtualMachineInstanceMigration.useList({ namespace });
@@ -1438,13 +1445,44 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                                 getter: (row: NetRow) => {
                                   if (row.ips === 'N/A') return 'N/A';
                                   const ipArr = row.ipList || row.ips.split(', ');
+                                  // Check if this interface has an IPAMClaim
+                                  const claim = vmIPAMClaims?.find(
+                                    (c: InstanceType<typeof IPAMClaim>) =>
+                                      c.getNetwork() ===
+                                        specNetworks.find(n => n.name === row.name)?.multus
+                                          ?.networkName || c.getName().endsWith(`.${row.name}`)
+                                  );
                                   return (
-                                    <TitledTooltip
-                                      title="IP Addresses"
-                                      rows={ipArr.map(ip => ({ label: '', value: ip }))}
-                                    >
-                                      <span style={{ cursor: 'help' }}>{row.ips}</span>
-                                    </TitledTooltip>
+                                    <Box display="flex" alignItems="center" gap={0.5}>
+                                      <TitledTooltip
+                                        title="IP Addresses"
+                                        rows={ipArr.map(ip => ({ label: '', value: ip }))}
+                                      >
+                                        <span style={{ cursor: 'help' }}>{row.ips}</span>
+                                      </TitledTooltip>
+                                      {claim && (
+                                        <SimpleStyledTooltip title="Persistent IP (IPAMClaim)">
+                                          <span>
+                                            <Link
+                                              routeName="ipamclaim"
+                                              params={{
+                                                name: claim.getName(),
+                                                namespace: claim.getNamespace(),
+                                              }}
+                                            >
+                                              <Icon
+                                                icon="mdi:ip-network"
+                                                width={16}
+                                                style={{
+                                                  color: '#4caf50',
+                                                  verticalAlign: 'middle',
+                                                }}
+                                              />
+                                            </Link>
+                                          </span>
+                                        </SimpleStyledTooltip>
+                                      )}
+                                    </Box>
                                   );
                                 },
                               },

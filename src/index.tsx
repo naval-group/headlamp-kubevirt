@@ -35,6 +35,8 @@ import DataImportCronList from './components/DataImportCrons/List';
 import CatalogPage from './components/ImageCatalog/CatalogPage';
 import InstanceTypeDetails from './components/InstanceTypes/Details';
 import InstanceTypeList from './components/InstanceTypes/List';
+import IPAMClaimDetails from './components/IPAMClaims/Details';
+import IPAMClaimList from './components/IPAMClaims/List';
 import MigrationDetails from './components/Migrations/Details';
 import MigrationList from './components/Migrations/List';
 import NADDetails from './components/NetworkAttachmentDefinitions/Details';
@@ -60,6 +62,18 @@ import VMTemplateList from './components/VirtualMachineTemplate/List';
 import KubeVirtSettings from './kubevirt/Settings';
 import { areFeatureGatesLoaded, getFeatureGates, loadFeatureGates } from './utils/featureGates';
 import { detectKubeVirtCapabilities } from './utils/kubevirtVersion';
+
+// ── IPAM CRD detection ─────────────────────────────────────────────────
+let ipamCRDAvailable = false;
+
+async function detectIPAMCRD() {
+  try {
+    await ApiProxy.request('/apis/k8s.cni.cncf.io/v1alpha1/ipamclaims');
+    ipamCRDAvailable = true;
+  } catch {
+    ipamCRDAvailable = false;
+  }
+}
 
 // Route registration helper - DRY pattern for KubeVirt resources
 interface ResourceRoute {
@@ -115,6 +129,7 @@ function registerKubeVirtResource(config: ResourceRoute) {
 // Load feature gates and detect capabilities on plugin initialization
 loadFeatureGates();
 detectKubeVirtCapabilities();
+detectIPAMCRD();
 
 // Feature gates that affect sidebar visibility
 const SIDEBAR_AFFECTING_FEATURE_GATES = ['Snapshot', 'VMExport', 'DataVolumes'];
@@ -396,6 +411,10 @@ registerSidebarEntryFilter(entry => {
   if (entry.name === 'datavolumes' && loaded && !gates.includes('DataVolumes')) {
     return null;
   }
+  // Hide IPAMClaims if the CRD is not available
+  if (entry.name === 'ipamclaims' && !ipamCRDAvailable) {
+    return null;
+  }
   return entry;
 });
 
@@ -613,6 +632,38 @@ registerKubeVirtResource({
   DetailsComponent: DataImportCronDetails,
   detailsRouteName: 'dataimportcron',
   hasNamespace: true,
+});
+
+// IPAMClaims - child of Networks, conditionally shown based on CRD availability
+registerSidebarEntry({
+  parent: 'networks',
+  name: 'ipamclaims',
+  label: 'IPAMClaims',
+  url: '/kubevirt/ipamclaims',
+  icon: 'mdi:ip-network',
+});
+
+registerRoute({
+  path: '/kubevirt/ipamclaims',
+  sidebar: 'ipamclaims',
+  component: () => (
+    <ErrorBoundary>
+      <IPAMClaimList />
+    </ErrorBoundary>
+  ),
+  exact: true,
+});
+
+registerRoute({
+  path: '/kubevirt/ipamclaims/:namespace/:name',
+  sidebar: 'ipamclaims',
+  component: () => (
+    <ErrorBoundary>
+      <IPAMClaimDetails />
+    </ErrorBoundary>
+  ),
+  exact: true,
+  name: 'ipamclaim',
 });
 
 // Settings - Last in sidebar
