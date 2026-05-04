@@ -24,6 +24,8 @@ import ResourceEditorDialog from '../ResourceEditorDialog';
 import VirtualMachineInstance from '../VirtualMachineInstance/VirtualMachineInstance';
 import CreateSnapshotDialog from '../VirtualMachineSnapshot/CreateSnapshotDialog';
 import SaveAsTemplateDialog from '../VirtualMachineTemplate/SaveAsTemplateDialog';
+import MultiConsole from '../VMConsole/MultiConsole';
+import VMConsole from '../VMConsole/VMConsole';
 import VMDoctorDialog from '../VMDoctor/VMDoctorDialog';
 import BulkActionToolbar from './BulkActionToolbar';
 import CloneDialog from './CloneDialog';
@@ -52,6 +54,7 @@ function VMRowActionMenuItems({
   closeMenu,
   snapshotEnabled,
   onDoctor,
+  onConsole,
   onClone,
   onSnapshot,
   onLaunchLikeThis,
@@ -68,6 +71,7 @@ function VMRowActionMenuItems({
   onSnapshot: (vm: VirtualMachine) => void;
   onLaunchLikeThis: (vm: VirtualMachine) => void;
   onSaveAsTemplate: (vm: VirtualMachine) => void;
+  onConsole: (vm: VirtualMachine, tab: 'vnc' | 'terminal') => void;
   onEdit: (vm: VirtualMachine) => void;
   onViewYaml: (vm: VirtualMachine) => void;
   onDelete: (vm: VirtualMachine) => void;
@@ -76,9 +80,38 @@ function VMRowActionMenuItems({
   const [liveVM] = VirtualMachine.useGet(vm.getName(), vm.getNamespace());
   const { actions, isProtected } = useVMActions(liveVM || vm);
   const templateEnabled = useFeatureGate('Template');
+  const currentVM = liveVM || vm;
+  const isRunning = currentVM.status?.printableStatus === 'Running';
 
   return (
     <>
+      <MenuItem
+        key="vnc-console"
+        onClick={() => {
+          closeMenu();
+          onConsole(currentVM, 'vnc');
+        }}
+        disabled={!isRunning}
+      >
+        <ListItemIcon>
+          <Icon icon="mdi:monitor" />
+        </ListItemIcon>
+        <ListItemText>VNC Console</ListItemText>
+      </MenuItem>
+      <MenuItem
+        key="serial-console"
+        onClick={() => {
+          closeMenu();
+          onConsole(currentVM, 'terminal');
+        }}
+        disabled={!isRunning}
+      >
+        <ListItemIcon>
+          <Icon icon="mdi:console" />
+        </ListItemIcon>
+        <ListItemText>Serial Console</ListItemText>
+      </MenuItem>
+      <Divider />
       {actions.map(a => (
         <MenuItem
           key={a.id}
@@ -254,6 +287,9 @@ export default function VirtualMachineList() {
   const [snapshotVM, setSnapshotVM] = useState<VirtualMachine | null>(null);
   const [saveAsTemplateVM, setSaveAsTemplateVM] = useState<VirtualMachine | null>(null);
   const [launchLikeThisVM, setLaunchLikeThisVM] = useState<VirtualMachine | null>(null);
+  const [consoleVM, setConsoleVM] = useState<VirtualMachine | null>(null);
+  const [consoleTab, setConsoleTab] = useState<'vnc' | 'terminal'>('vnc');
+  const [multiConsoleVMs, setMultiConsoleVMs] = useState<VirtualMachine[]>([]);
   useEffect(() => {
     setCustomLabelColumns(getLabelColumns());
   }, []);
@@ -521,6 +557,11 @@ export default function VirtualMachineList() {
     setDoctorVM(vm);
   }, []);
 
+  const openConsole = useCallback((vm: VirtualMachine, tab: 'vnc' | 'terminal') => {
+    setConsoleTab(tab);
+    setConsoleVM(vm);
+  }, []);
+
   // Row action menu items (per-row three-dot menu)
   const renderRowActionMenuItems = useCallback(
     ({ row, closeMenu }: { row: { original: VirtualMachine }; closeMenu: () => void }) => [
@@ -530,6 +571,7 @@ export default function VirtualMachineList() {
         closeMenu={closeMenu}
         snapshotEnabled={snapshotEnabled}
         onDoctor={openDoctor}
+        onConsole={openConsole}
         onClone={setCloneVM}
         onSnapshot={setSnapshotVM}
         onLaunchLikeThis={setLaunchLikeThisVM}
@@ -539,7 +581,7 @@ export default function VirtualMachineList() {
         onDelete={setDeleteVM}
       />,
     ],
-    [snapshotEnabled, openDoctor]
+    [snapshotEnabled, openDoctor, openConsole]
   );
 
   return (
@@ -574,7 +616,9 @@ export default function VirtualMachineList() {
           enableFacetedValues
           enableFullScreenToggle={false}
           renderRowActionMenuItems={renderRowActionMenuItems}
-          renderRowSelectionToolbar={({ table }) => <BulkActionToolbar table={table} />}
+          renderRowSelectionToolbar={({ table }) => (
+            <BulkActionToolbar table={table} onMultiConsole={setMultiConsoleVMs} />
+          )}
           getRowId={(vm: VirtualMachine) => vm.metadata?.uid ?? vm.getName()}
         />
       </SectionBox>
@@ -686,6 +730,22 @@ export default function VirtualMachineList() {
           initialResource={buildLaunchTemplate(launchLikeThisVM.jsonData)}
           formComponent={VMFormWrapper}
           validate={r => !!(r?.metadata?.name && r?.metadata?.namespace)}
+        />
+      )}
+
+      <MultiConsole
+        open={multiConsoleVMs.length > 0}
+        vms={multiConsoleVMs}
+        onClose={() => setMultiConsoleVMs([])}
+      />
+
+      {consoleVM && (
+        <VMConsole
+          open={!!consoleVM}
+          item={consoleVM}
+          vm={consoleVM}
+          initialTab={consoleTab}
+          onClose={() => setConsoleVM(null)}
         />
       )}
     </>

@@ -119,14 +119,19 @@ export const TerminalPanel = React.forwardRef<
     active: boolean;
     onStatusChange: (status: 'connecting' | 'connected') => void;
     compact?: boolean;
+    onInput?: (text: string) => void;
   }
->(function TerminalPanel({ item, active, onStatusChange, compact }, ref) {
+>(function TerminalPanel({ item, active, onStatusChange, compact, onInput }, ref) {
   const { t } = useTranslation(['translation', 'glossary']);
   const execRef = useRef<execReturn | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const xtermRef = useRef<XTerminalConnected | null>(null);
   const [terminalRef, setTerminalRef] = useState<HTMLElement | null>(null);
   const [fontSize, setFontSize] = useState(14);
+  const onInputRef = useRef(onInput);
+  onInputRef.current = onInput;
+  const onStatusChangeRef = useRef(onStatusChange);
+  onStatusChangeRef.current = onStatusChange;
 
   const encoderRef = useRef(new TextEncoder());
   const decoderRef = useRef(new TextDecoder('utf-8'));
@@ -179,7 +184,10 @@ export const TerminalPanel = React.forwardRef<
   function setupTerminal(itemRef: HTMLElement, xterm: XTerminal, fitAddon: FitAddon) {
     if (!itemRef) return;
     xterm.open(itemRef);
-    xterm.onData(data => send(0, data));
+    xterm.onData(data => {
+      send(0, data);
+      onInputRef.current?.(data);
+    });
     xterm.attachCustomKeyEventHandler(arg => {
       if (arg.ctrlKey && arg.type === 'keydown') {
         if (arg.code === 'KeyC') {
@@ -227,7 +235,7 @@ export const TerminalPanel = React.forwardRef<
     xtermRef.current.xterm.loadAddon(fitAddonRef.current);
 
     (async function () {
-      onStatusChange('connecting');
+      onStatusChangeRef.current('connecting');
       execRef.current = await item.exec(items => onData(xtermRef.current!, items), {
         reconnectOnFailure: false,
         failCb: () => {
@@ -235,7 +243,7 @@ export const TerminalPanel = React.forwardRef<
         },
         connectCb: () => {
           if (xtermRef.current) xtermRef.current.connected = true;
-          onStatusChange('connected');
+          onStatusChangeRef.current('connected');
           setTimeout(() => send(0, '\x15\r'), 500);
         },
         tty: false,
@@ -287,7 +295,7 @@ export const TerminalPanel = React.forwardRef<
             overflowY: 'hidden !important',
           },
         },
-        '& #xterm-container': {
+        '& .xterm-container': {
           overflow: 'hidden',
           width: '100%',
           '& .terminal.xterm': {
@@ -358,7 +366,7 @@ export const TerminalPanel = React.forwardRef<
         })}
       >
         <div
-          id="xterm-container"
+          className="xterm-container"
           ref={x => setTerminalRef(x)}
           style={{ flex: 1, display: 'flex', flexDirection: 'column-reverse' }}
         />
