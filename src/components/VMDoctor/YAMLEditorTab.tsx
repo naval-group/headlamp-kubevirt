@@ -207,6 +207,7 @@ export default function YAMLEditorTab({
       await ApiProxy.request(`/apis/kubevirt.io/v1/namespaces/${ns}/virtualmachines/${name}`, {
         method: 'PUT',
         body: JSON.stringify(parsed),
+        headers: { 'Content-Type': 'application/json' },
       });
       enqueueSnackbar('VM updated successfully', { variant: 'success' });
       setDirty(false);
