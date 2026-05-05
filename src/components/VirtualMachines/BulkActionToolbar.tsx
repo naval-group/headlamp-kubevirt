@@ -109,6 +109,14 @@ export default function BulkActionToolbar({ table, onMultiConsole }: BulkActionT
   return (
     <>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+        <Tooltip title="Clear selection">
+          <span>
+            <IconButton onClick={() => table.resetRowSelection()} sx={{ fontSize: '1.5rem' }}>
+              <Icon icon="mdi:select-remove" />
+            </IconButton>
+          </span>
+        </Tooltip>
+
         <Tooltip title="Start">
           <span>
             <IconButton

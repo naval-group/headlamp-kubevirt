@@ -676,103 +676,139 @@ export const VNCPanel = React.forwardRef<
     setErrorMessage('');
     setTabletWarning(false);
 
-    // Build WebSocket URL matching Headlamp's ApiProxy.stream() format
+    // Build WebSocket URL matching Headlamp's getAppUrl() logic exactly
     const ns = item.getNamespace();
     const name = item.getName();
-    const backendPort = (window as any).headlampBackendPort || 4466;
-    const isDesktop = !!(window as any).desktopApi || window.location.protocol === 'file:';
-    const wsBase = isDesktop
+
+    // Replicate isElectron() — checks renderer process, electron version, or user agent
+    const isElectron =
+      (typeof window !== 'undefined' &&
+        typeof (window as any).process === 'object' &&
+        (window as any).process.type === 'renderer') ||
+      (typeof process !== 'undefined' &&
+        typeof process.versions === 'object' &&
+        !!(process.versions as any).electron) ||
+      (typeof navigator === 'object' && navigator.userAgent.indexOf('Electron') >= 0);
+    const isDockerDesktop = navigator.userAgent.indexOf('Docker Desktop') >= 0;
+
+    let backendPort = 4466;
+    let useLocalhost = false;
+    if (isElectron) {
+      if ((window as any).headlampBackendPort) {
+        backendPort = (window as any).headlampBackendPort;
+      }
+      useLocalhost = true;
+    }
+    if (isDockerDesktop) {
+      backendPort = 64446;
+      useLocalhost = true;
+    }
+
+    const wsBase = useLocalhost
       ? `ws://localhost:${backendPort}`
       : window.location.origin.replace(/^http/, 'ws');
     const cluster = (item as any).cluster || 'default';
     const vncPath = `/apis/subresources.kubevirt.io/v1/namespaces/${ns}/virtualmachineinstances/${name}/vnc`;
     const wsUrl = `${wsBase}/clusters/${cluster}${vncPath}`;
 
-    // Include auth protocols matching what ApiProxy.stream() sends
     const userId = localStorage.getItem('headlamp-userId') || '';
-    const wsProtocols = [
-      'base64.binary.k8s.io',
-      'plain.kubevirt.io',
-      ...(userId ? [`base64url.headlamp.authorization.k8s.io.${userId}`] : []),
-    ];
+    let cancelled = false;
+    let retried = false;
 
-    try {
-      const rfb = new RFBCreate(vncDisplayRef.current, wsUrl, {
-        wsProtocols,
-        scaleViewport: true,
-      });
+    function connectVNC(protocols: string[]) {
+      if (cancelled || !vncDisplayRef.current) return;
 
-      rfb.addEventListener('connect', () => {
-        setLocalStatus('connected');
-        onStatusChange('connected');
+      try {
+        const rfb = new RFBCreate(vncDisplayRef.current, wsUrl, {
+          wsProtocols: protocols,
+          scaleViewport: true,
+        });
 
-        // Periodically check if this is a desktop VM without tablet
-        if (vmRef.current) {
-          const devices = (vmRef.current as any).jsonData?.spec?.template?.spec?.domain?.devices;
-          const hasTablet = devices?.inputs?.some((i: any) => i.type === 'tablet');
-          const hasAutoAttach = devices?.autoattachInputDevice === true;
-          if (!hasTablet && !hasAutoAttach) {
-            let checkCount = 0;
-            const maxChecks = 10; // check for up to ~5 minutes
-            const checkDesktop = () => {
-              checkCount++;
-              const canvas = vncDisplayRef.current?.querySelector('canvas') as HTMLCanvasElement;
-              if (!canvas) return;
-              const ctx = canvas.getContext('2d');
-              if (!ctx) return;
-              const w = canvas.width;
-              const h = canvas.height;
-              if (w === 0 || h === 0) return;
-              const imgData = ctx.getImageData(0, 0, w, h).data;
-              const step = Math.max(1, Math.floor(Math.min(w, h) / 20));
-              let colorfulPixels = 0;
-              let totalSampled = 0;
-              for (let y = step; y < h - step; y += step) {
-                for (let x = step; x < w - step; x += step) {
-                  const i = (y * w + x) * 4;
-                  const r = imgData[i];
-                  const g = imgData[i + 1];
-                  const b = imgData[i + 2];
-                  const max = Math.max(r, g, b);
-                  const min = Math.min(r, g, b);
-                  const saturation = max === 0 ? 0 : (max - min) / max;
-                  if (saturation > 0.15 && max > 30) colorfulPixels++;
-                  totalSampled++;
+        rfb.addEventListener('connect', () => {
+          setLocalStatus('connected');
+          onStatusChange('connected');
+
+          // Periodically check if this is a desktop VM without tablet
+          if (vmRef.current) {
+            const devices = (vmRef.current as any).jsonData?.spec?.template?.spec?.domain?.devices;
+            const hasTablet = devices?.inputs?.some((i: any) => i.type === 'tablet');
+            const hasAutoAttach = devices?.autoattachInputDevice === true;
+            if (!hasTablet && !hasAutoAttach) {
+              let checkCount = 0;
+              const maxChecks = 10;
+              const checkDesktop = () => {
+                checkCount++;
+                const canvas = vncDisplayRef.current?.querySelector('canvas') as HTMLCanvasElement;
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) return;
+                const w = canvas.width;
+                const h = canvas.height;
+                if (w === 0 || h === 0) return;
+                const imgData = ctx.getImageData(0, 0, w, h).data;
+                const step = Math.max(1, Math.floor(Math.min(w, h) / 20));
+                let colorfulPixels = 0;
+                let totalSampled = 0;
+                for (let y = step; y < h - step; y += step) {
+                  for (let x = step; x < w - step; x += step) {
+                    const i = (y * w + x) * 4;
+                    const r = imgData[i];
+                    const g = imgData[i + 1];
+                    const b = imgData[i + 2];
+                    const max = Math.max(r, g, b);
+                    const min = Math.min(r, g, b);
+                    const saturation = max === 0 ? 0 : (max - min) / max;
+                    if (saturation > 0.15 && max > 30) colorfulPixels++;
+                    totalSampled++;
+                  }
                 }
-              }
-              const colorRatio = totalSampled > 0 ? colorfulPixels / totalSampled : 0;
-              if (colorRatio > 0.05) {
-                setTabletWarning(true);
-                // Stop checking — desktop detected
-              } else if (checkCount < maxChecks) {
-                desktopCheckTimerRef.current = window.setTimeout(checkDesktop, 30000);
-              }
-            };
-            desktopCheckTimerRef.current = window.setTimeout(checkDesktop, 3000);
+                const colorRatio = totalSampled > 0 ? colorfulPixels / totalSampled : 0;
+                if (colorRatio > 0.05) {
+                  setTabletWarning(true);
+                } else if (checkCount < maxChecks) {
+                  desktopCheckTimerRef.current = window.setTimeout(checkDesktop, 30000);
+                }
+              };
+              desktopCheckTimerRef.current = window.setTimeout(checkDesktop, 3000);
+            }
           }
-        }
-      });
+        });
 
-      rfb.addEventListener('disconnect', (e: { detail: { clean: boolean } }) => {
+        rfb.addEventListener('disconnect', (e: { detail: { clean: boolean } }) => {
+          // If first attempt with auth protocol fails, retry without it
+          if (!retried && !e.detail.clean && protocols.length > 2) {
+            retried = true;
+            rfbRef.current = null;
+            connectVNC(['base64.binary.k8s.io', 'plain.kubevirt.io']);
+            return;
+          }
+          setLocalStatus('disconnected');
+          onStatusChange('disconnected');
+          if (!e.detail.clean) {
+            setErrorMessage('VNC connection lost.');
+          }
+        });
+
+        rfb.scaleViewport = true;
+        rfb.resizeSession = false;
+        rfbRef.current = rfb;
+      } catch (error) {
+        console.error('VNC connection error:', error);
         setLocalStatus('disconnected');
         onStatusChange('disconnected');
-        if (!e.detail.clean) {
-          setErrorMessage('VNC connection lost.');
-        }
-      });
-
-      rfb.scaleViewport = true;
-      rfb.resizeSession = false;
-
-      rfbRef.current = rfb;
-    } catch (error) {
-      console.error('VNC connection error:', error);
-      setLocalStatus('disconnected');
-      onStatusChange('disconnected');
-      setErrorMessage('Failed to create VNC connection.');
+        setErrorMessage('Failed to create VNC connection.');
+      }
     }
 
+    // Try with auth protocol first, falls back to without on disconnect
+    const protocols = ['base64.binary.k8s.io', 'plain.kubevirt.io'];
+    if (userId) {
+      protocols.push(`base64url.headlamp.authorization.k8s.io.${userId}`);
+    }
+    connectVNC(protocols);
+
     return () => {
+      cancelled = true;
       if (desktopCheckTimerRef.current) {
         clearTimeout(desktopCheckTimerRef.current);
         desktopCheckTimerRef.current = null;
