@@ -1637,14 +1637,14 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                               setMigrateVolumeName(undefined);
                               setShowMigrateDialog(true);
                             }}
-                            sx={{
-                              bgcolor: '#fff',
-                              color: '#222',
+                            sx={theme => ({
+                              bgcolor: theme.palette.primary.main,
+                              color: theme.palette.primary.contrastText,
                               fontWeight: 600,
                               cursor: 'pointer',
-                              '& .MuiChip-icon': { color: '#222' },
-                              '&:hover': { bgcolor: '#e0e0e0' },
-                            }}
+                              '& .MuiChip-icon': { color: theme.palette.primary.contrastText },
+                              '&:hover': { bgcolor: theme.palette.primary.dark },
+                            })}
                           />,
                         ]
                       : [];
@@ -1804,14 +1804,14 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                                 size="small"
                                 icon={<Icon icon="mdi:camera" width={16} />}
                                 onClick={() => setShowSnapshotDialog(true)}
-                                sx={{
-                                  bgcolor: '#fff',
-                                  color: '#222',
+                                sx={theme => ({
+                                  bgcolor: theme.palette.primary.main,
+                                  color: theme.palette.primary.contrastText,
                                   fontWeight: 600,
                                   cursor: 'pointer',
-                                  '& .MuiChip-icon': { color: '#222' },
-                                  '&:hover': { bgcolor: '#e0e0e0' },
-                                }}
+                                  '& .MuiChip-icon': { color: theme.palette.primary.contrastText },
+                                  '&:hover': { bgcolor: theme.palette.primary.dark },
+                                })}
                               />,
                             ],
                           }}
