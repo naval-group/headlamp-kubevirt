@@ -73,12 +73,12 @@ function QuickActions({ vm }: { vm?: VirtualMachine }) {
   return (
     <Box display="flex" alignItems="center" gap={0.5} sx={{ ml: 2 }}>
       <Box
-        sx={{
+        sx={theme => ({
           width: '1px',
           height: 24,
-          backgroundColor: 'rgba(255,255,255,0.3)',
+          backgroundColor: theme.palette.divider,
           mx: 0.5,
-        }}
+        })}
       />
       {quickActions.map(a => (
         <Tooltip key={a.id} title={a.label}>
@@ -90,11 +90,14 @@ function QuickActions({ vm }: { vm?: VirtualMachine }) {
                 e.stopPropagation();
                 a.handler();
               }}
-              sx={{
-                color: a.disabled ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.8)',
-                '&:hover': { color: '#fff', backgroundColor: 'rgba(255,255,255,0.1)' },
+              sx={theme => ({
+                color: a.disabled ? theme.palette.action.disabled : theme.palette.text.secondary,
+                '&:hover': {
+                  color: theme.palette.text.primary,
+                  backgroundColor: theme.palette.action.hover,
+                },
                 padding: '4px',
-              }}
+              })}
             >
               <Icon icon={a.icon} width={18} />
             </IconButton>
@@ -1127,7 +1130,12 @@ export default function VMConsole(props: VMConsoleProps) {
               }}
             />
             <Box
-              sx={{ width: '1px', height: 24, backgroundColor: 'rgba(255,255,255,0.3)', mx: 0.5 }}
+              sx={theme => ({
+                width: '1px',
+                height: 24,
+                backgroundColor: theme.palette.divider,
+                mx: 0.5,
+              })}
             />
             <ToggleButtonGroup
               value={activeTab}
@@ -1139,24 +1147,24 @@ export default function VMConsole(props: VMConsoleProps) {
                 }
               }}
               size="small"
-              sx={{
+              sx={theme => ({
                 height: 28,
                 '& .MuiToggleButton-root': {
-                  color: 'rgba(255,255,255,0.6)',
-                  borderColor: 'rgba(255,255,255,0.3)',
+                  color: theme.palette.text.secondary,
+                  borderColor: theme.palette.divider,
                   textTransform: 'none',
                   fontSize: '0.8rem',
                   px: 1.5,
                   py: 0,
                   gap: 0.5,
                   '&.Mui-selected': {
-                    color: '#fff',
-                    backgroundColor: 'rgba(255,255,255,0.15)',
-                    '&:hover': { backgroundColor: 'rgba(255,255,255,0.2)' },
+                    color: theme.palette.text.primary,
+                    backgroundColor: theme.palette.action.selected,
+                    '&:hover': { backgroundColor: theme.palette.action.hover },
                   },
-                  '&:hover': { backgroundColor: 'rgba(255,255,255,0.08)' },
+                  '&:hover': { backgroundColor: theme.palette.action.hover },
                 },
-              }}
+              })}
             >
               <ToggleButton value="vnc">
                 <Icon icon="mdi:monitor" width={14} />
