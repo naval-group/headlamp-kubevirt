@@ -689,24 +689,27 @@ export default function VMFormFull({
 
   // Parse Cloud-Init data
   const cloudInitUserData = cloudInitVolume?.cloudInitNoCloud?.userData || '';
+  const cloudInitUserDataBase64 = cloudInitVolume?.cloudInitNoCloud?.userDataBase64 || '';
   const cloudInitNetworkData = cloudInitVolume?.cloudInitNoCloud?.networkData || '';
+  const cloudInitNetworkDataBase64 = cloudInitVolume?.cloudInitNoCloud?.networkDataBase64 || '';
   const cloudInitUserDataSecret = cloudInitVolume?.cloudInitNoCloud?.secretRef?.name || '';
   const cloudInitNetworkDataSecret =
     cloudInitVolume?.cloudInitNoCloud?.networkDataSecretRef?.name || '';
 
   // Parse Ignition data
   const ignitionData = ignitionVolume?.cloudInitConfigDrive?.userData || '';
+  const ignitionDataBase64 = ignitionVolume?.cloudInitConfigDrive?.userDataBase64 || '';
   const ignitionDataSecret = ignitionVolume?.cloudInitConfigDrive?.secretRef?.name || '';
 
   // Local state for UI interactions (disk form, user data types, etc.)
   const [cloudInitUserDataType, setCloudInitUserDataType] = useState<
     'inline' | 'base64' | 'secret'
-  >(cloudInitUserDataSecret ? 'secret' : 'inline');
+  >(cloudInitUserDataSecret ? 'secret' : cloudInitUserDataBase64 ? 'base64' : 'inline');
   const [cloudInitNetworkDataType, setCloudInitNetworkDataType] = useState<
     'inline' | 'base64' | 'secret'
-  >(cloudInitNetworkDataSecret ? 'secret' : 'inline');
+  >(cloudInitNetworkDataSecret ? 'secret' : cloudInitNetworkDataBase64 ? 'base64' : 'inline');
   const [ignitionDataType, setIgnitionDataType] = useState<'inline' | 'base64' | 'secret'>(
-    ignitionDataSecret ? 'secret' : 'inline'
+    ignitionDataSecret ? 'secret' : ignitionDataBase64 ? 'base64' : 'inline'
   );
   const [showDiskForm, setShowDiskForm] = useState(false);
   const [diskEditIndex, setDiskEditIndex] = useState<number | null>(null);
@@ -5228,12 +5231,12 @@ export default function VMFormFull({
                   {cloudInitUserDataType === 'base64' && (
                     <TextField
                       fullWidth
-                      value={cloudInitUserData}
+                      value={cloudInitUserDataBase64}
                       onChange={e => handleCloudInitUserDataChange('base64', e.target.value)}
                       placeholder="Base64-encoded user data"
                       inputProps={{ maxLength: 2000 }}
-                      helperText={`${cloudInitUserData.length}/2000 characters`}
-                      error={cloudInitUserData.length > 2000}
+                      helperText={`${cloudInitUserDataBase64.length}/2000 characters`}
+                      error={cloudInitUserDataBase64.length > 2000}
                     />
                   )}
 
@@ -5290,12 +5293,12 @@ export default function VMFormFull({
                   {cloudInitNetworkDataType === 'base64' && (
                     <TextField
                       fullWidth
-                      value={cloudInitNetworkData}
+                      value={cloudInitNetworkDataBase64}
                       onChange={e => handleCloudInitNetworkDataChange('base64', e.target.value)}
                       placeholder="Base64-encoded network data"
                       inputProps={{ maxLength: 2000 }}
-                      helperText={`${cloudInitNetworkData.length}/2000 characters`}
-                      error={cloudInitNetworkData.length > 2000}
+                      helperText={`${cloudInitNetworkDataBase64.length}/2000 characters`}
+                      error={cloudInitNetworkDataBase64.length > 2000}
                     />
                   )}
 
@@ -5352,12 +5355,12 @@ export default function VMFormFull({
                 {ignitionDataType === 'base64' && (
                   <TextField
                     fullWidth
-                    value={ignitionData}
+                    value={ignitionDataBase64}
                     onChange={e => handleIgnitionDataChange('base64', e.target.value)}
                     placeholder="Base64-encoded Ignition config"
                     inputProps={{ maxLength: 2000 }}
-                    helperText={`${ignitionData.length}/2000 characters`}
-                    error={ignitionData.length > 2000}
+                    helperText={`${ignitionDataBase64.length}/2000 characters`}
+                    error={ignitionDataBase64.length > 2000}
                   />
                 )}
 

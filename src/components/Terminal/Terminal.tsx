@@ -240,7 +240,7 @@ export default function Terminal(props: TerminalProps) {
               width: 'initial !important', // BugFix: https://github.com/xtermjs/xterm.js/issues/3564#issuecomment-1004417440
             },
           },
-          '& #xterm-container': {
+          '& .kv-xterm-container': {
             overflow: 'hidden',
             width: '100%',
             '& .terminal.xterm': {
@@ -260,7 +260,7 @@ export default function Terminal(props: TerminalProps) {
           })}
         >
           <div
-            id="xterm-container"
+            className="kv-xterm-container"
             ref={x => setTerminalRef(x)}
             style={{ flex: 1, display: 'flex', flexDirection: 'column-reverse' }}
           />
