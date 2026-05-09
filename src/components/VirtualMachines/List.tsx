@@ -290,8 +290,61 @@ export default function VirtualMachineList() {
   const [consoleVM, setConsoleVM] = useState<VirtualMachine | null>(null);
   const [consoleTab, setConsoleTab] = useState<'vnc' | 'terminal'>('vnc');
   const [multiConsoleVMs, setMultiConsoleVMs] = useState<VirtualMachine[]>([]);
+  const [vmMetrics, setVmMetrics] = useState<Map<string, { podCpu?: string; podMem?: string }>>(
+    new Map()
+  );
   useEffect(() => {
     setCustomLabelColumns(getLabelColumns());
+  }, []);
+
+  // Fetch pod-level metrics from metrics-server for CPU/Memory usage
+  useEffect(() => {
+    const fetchAll = async () => {
+      const map = new Map<string, { podCpu?: string; podMem?: string }>();
+
+      // 1. Metrics-server (pod-level)
+      try {
+        const resp = (await ApiProxy.request(
+          '/apis/metrics.k8s.io/v1beta1/pods?labelSelector=vm.kubevirt.io/name'
+        )) as {
+          items?: Array<{
+            metadata: { namespace: string; labels?: Record<string, string> };
+            containers: Array<{ usage: { cpu: string; memory: string } }>;
+          }>;
+        };
+        for (const pod of resp?.items || []) {
+          const vmName = pod.metadata.labels?.['vm.kubevirt.io/name'];
+          if (!vmName) continue;
+          const key = `${pod.metadata.namespace}/${vmName}`;
+          let cpuNano = 0;
+          let memKi = 0;
+          for (const c of pod.containers || []) {
+            const cpuStr = c.usage?.cpu || '0';
+            if (cpuStr.endsWith('n')) cpuNano += parseInt(cpuStr) || 0;
+            else if (cpuStr.endsWith('m')) cpuNano += (parseInt(cpuStr) || 0) * 1e6;
+            else cpuNano += (parseFloat(cpuStr) || 0) * 1e9;
+            const memStr = c.usage?.memory || '0';
+            if (memStr.endsWith('Ki')) memKi += parseInt(memStr) || 0;
+            else if (memStr.endsWith('Mi')) memKi += (parseInt(memStr) || 0) * 1024;
+            else if (memStr.endsWith('Gi')) memKi += (parseInt(memStr) || 0) * 1024 * 1024;
+          }
+          const cpuMillis = Math.round(cpuNano / 1e6);
+          const memMi = Math.round(memKi / 1024);
+          const entry = map.get(key) || {};
+          entry.podCpu = cpuMillis >= 1000 ? `${(cpuMillis / 1000).toFixed(1)}` : `${cpuMillis}m`;
+          entry.podMem = memMi >= 1024 ? `${(memMi / 1024).toFixed(1)} GiB` : `${memMi} MiB`;
+          map.set(key, entry);
+        }
+      } catch {
+        // metrics-server not available
+      }
+
+      setVmMetrics(map);
+    };
+
+    fetchAll();
+    const id = setInterval(fetchAll, 30000);
+    return () => clearInterval(id);
   }, []);
 
   const snapshotEnabled = useFeatureGate('Snapshot');
@@ -494,6 +547,70 @@ export default function VirtualMachineList() {
       }
     );
 
+    // CPU column — clean vCPU count, tooltip with topology + pod usage
+    cols.push({
+      id: 'cpu',
+      header: 'CPU',
+      accessorFn: (vm: VirtualMachine) => {
+        const cpu = vm.spec?.template?.spec?.domain?.cpu;
+        if (!cpu) return '-';
+        return `${(cpu.sockets || 1) * (cpu.cores || 1) * (cpu.threads || 1)} vCPU`;
+      },
+      Cell: ({ row }: { row: { original: VirtualMachine } }) => {
+        const vm = row.original;
+        const cpu = vm.spec?.template?.spec?.domain?.cpu;
+        if (!cpu) return '-';
+        const s = cpu.sockets || 1;
+        const c = cpu.cores || 1;
+        const t = cpu.threads || 1;
+        const total = s * c * t;
+        const key = `${vm.getNamespace()}/${vm.getName()}`;
+        const m = vmMetrics.get(key);
+        const rows = [
+          { label: 'Sockets', value: s },
+          { label: 'Cores', value: c },
+          { label: 'Threads', value: t },
+          ...(m?.podCpu ? [{ label: 'Pod Usage', value: m.podCpu }] : []),
+        ];
+        return (
+          <TitledTooltip title="CPU Topology" rows={rows}>
+            <span style={{ cursor: 'help' }}>{total} vCPU</span>
+          </TitledTooltip>
+        );
+      },
+    });
+
+    // Memory column — clean allocated, tooltip with pod usage
+    cols.push({
+      id: 'memory',
+      header: 'Memory',
+      accessorFn: (vm: VirtualMachine) => {
+        return (
+          vm.spec?.template?.spec?.domain?.resources?.requests?.memory ||
+          vm.spec?.template?.spec?.domain?.memory?.guest ||
+          '-'
+        );
+      },
+      Cell: ({ row }: { row: { original: VirtualMachine } }) => {
+        const vm = row.original;
+        const mem =
+          vm.spec?.template?.spec?.domain?.resources?.requests?.memory ||
+          vm.spec?.template?.spec?.domain?.memory?.guest ||
+          '-';
+        const key = `${vm.getNamespace()}/${vm.getName()}`;
+        const m = vmMetrics.get(key);
+        const rows = [
+          { label: 'Allocated', value: mem },
+          ...(m?.podMem ? [{ label: 'Pod Usage', value: m.podMem }] : []),
+        ];
+        return (
+          <TitledTooltip title="Memory Details" rows={rows}>
+            <span style={{ cursor: 'help' }}>{mem}</span>
+          </TitledTooltip>
+        );
+      },
+    });
+
     // Custom label columns from settings
     customLabelColumns.forEach(col => {
       cols.push({
@@ -518,7 +635,7 @@ export default function VirtualMachineList() {
     });
 
     return cols;
-  }, [getVMI, customLabelColumns]);
+  }, [getVMI, customLabelColumns, vmMetrics]);
 
   const openDoctor = useCallback(async (vm: VirtualMachine) => {
     const vmName = vm.getName();
