@@ -44,7 +44,7 @@
     "lodash": "^4.18.1"
   },
   "devDependencies": {
-    "@kinvolk/headlamp-plugin": "^0.13.1",
+    "@kinvolk/headlamp-plugin": "^0.14.0",
     "@storybook/addon-webpack5-compiler-swc": "^1.0.6",
     "@types/js-yaml": "^4.0.9",
     "fast-check": "^4.6.0",
