@@ -4,6 +4,7 @@
  */
 
 import yaml from 'js-yaml';
+import OPERATORS, { getHelmKey } from './operatorRegistry';
 
 export interface WizardState {
   /** Map of operator ID -> enabled/disabled */
@@ -12,6 +13,8 @@ export interface WizardState {
   versions: Record<string, string>;
   /** Global configuration */
   global: GlobalConfig;
+  /** Per-operator values (from schema form) */
+  operatorValues: Record<string, Record<string, unknown>>;
 }
 
 export interface GlobalConfig {
@@ -24,6 +27,32 @@ export interface GlobalConfig {
     value?: string;
     effect?: string;
   }>;
+}
+
+/** Deep merge two objects (b overrides a) */
+function deepMerge(
+  a: Record<string, unknown>,
+  b: Record<string, unknown>
+): Record<string, unknown> {
+  const result = { ...a };
+  for (const [key, val] of Object.entries(b)) {
+    if (
+      val &&
+      typeof val === 'object' &&
+      !Array.isArray(val) &&
+      result[key] &&
+      typeof result[key] === 'object' &&
+      !Array.isArray(result[key])
+    ) {
+      result[key] = deepMerge(
+        result[key] as Record<string, unknown>,
+        val as Record<string, unknown>
+      );
+    } else {
+      result[key] = val;
+    }
+  }
+  return result;
 }
 
 /** Build a complete values.yaml object from wizard state */
@@ -42,91 +71,44 @@ export function buildHelmValues(state: WizardState): Record<string, unknown> {
     tolerations: state.global.tolerations.length > 0 ? state.global.tolerations : [],
   };
 
-  // KubeVirt (always present)
-  if (state.operators.kubevirt !== false) {
-    values.kubevirt = {
-      version: state.versions.kubevirt || 'v1.8.1',
-    };
+  // Build per-operator values from registry (single source of truth)
+  for (const op of OPERATORS) {
+    const key = getHelmKey(op.id);
+    const enabled = state.operators[op.id] ?? op.defaultEnabled;
+
+    // KubeVirt is always present (no enabled flag)
+    if (op.id === 'kubevirt') {
+      values[key] = {
+        ...(state.versions[op.id] ? { version: state.versions[op.id] } : {}),
+      };
+    } else {
+      values[key] = {
+        enabled,
+        ...(state.versions[op.id] ? { version: state.versions[op.id] } : {}),
+      };
+    }
+
+    // Deep merge per-operator values from schema form
+    const opValues = state.operatorValues[op.id];
+    if (opValues && values[key] && typeof values[key] === 'object') {
+      values[key] = deepMerge(values[key] as Record<string, unknown>, opValues);
+    }
   }
-
-  // CDI
-  values.cdi = {
-    enabled: state.operators.cdi ?? true,
-    ...(state.versions.cdi ? { version: state.versions.cdi } : {}),
-  };
-
-  // Multus
-  values.multus = {
-    enabled: state.operators.multus ?? true,
-  };
-
-  // KubeMacPool
-  values.kubemacpool = {
-    enabled: state.operators.kubemacpool ?? true,
-  };
-
-  // AAQ
-  values.aaq = {
-    enabled: state.operators.aaq ?? false,
-    ...(state.versions.aaq ? { version: state.versions.aaq } : {}),
-  };
-
-  // HostPath Provisioner
-  values.hostpathProvisioner = {
-    enabled: state.operators.hostpathProvisioner ?? false,
-  };
-
-  // Butane Operator
-  values.butaneOperator = {
-    enabled: state.operators.butaneOperator ?? true,
-  };
-
-  // VM Console Proxy
-  values.vmConsoleProxy = {
-    enabled: state.operators.vmConsoleProxy ?? true,
-  };
-
-  // Forklift
-  values.forklift = {
-    enabled: state.operators.forklift ?? false,
-  };
-
-  // Cloud Provider
-  values.cloudProvider = {
-    enabled: state.operators.cloudProvider ?? false,
-  };
-
-  // Monitoring
-  values.monitoring = {
-    enabled: state.operators.monitoring ?? true,
-  };
-
-  // Delete Protection
-  values.deleteProtection = {
-    enabled: state.operators.deleteProtection ?? true,
-  };
 
   return values;
 }
 
-/** Create a default wizard state with default-enabled operators */
+/** Create a default wizard state from the operator registry */
 export function createDefaultWizardState(): WizardState {
+  const operators: Record<string, boolean> = {};
+  for (const op of OPERATORS) {
+    operators[op.id] = op.defaultEnabled;
+  }
+
   return {
-    operators: {
-      kubevirt: true,
-      cdi: true,
-      multus: true,
-      kubemacpool: true,
-      aaq: false,
-      hostpathProvisioner: false,
-      butaneOperator: true,
-      vmConsoleProxy: true,
-      forklift: false,
-      cloudProvider: false,
-      monitoring: true,
-      deleteProtection: true,
-    },
+    operators,
     versions: {},
+    operatorValues: {},
     global: {
       imageRegistry: '',
       imagePullSecrets: [],

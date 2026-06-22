@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "VM Templates Helm Chart Values",
+  "description": "Configuration values for the VM Templates Helm chart.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "global": {
+      "title": "Global Configuration",
+      "description": "Global settings shared across all subcharts.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "imageRegistry": {
+          "title": "Image Registry",
+          "description": "Global container image registry override. When set, all images will be pulled from this registry.",
+          "type": "string",
+          "default": ""
+        },
+        "imagePullSecrets": {
+          "title": "Image Pull Secrets",
+          "description": "Global list of image pull secrets for authenticating to private registries.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "object"
+          }
+        },
+        "nodeSelector": {
+          "title": "Node Selector",
+          "description": "Global node selector applied to all pods.",
+          "type": "object",
+          "default": {},
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "tolerations": {
+          "title": "Tolerations",
+          "description": "Global tolerations applied to all pods.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "object"
+          }
+        },
+        "kubevirtNamespace": {
+          "title": "KubeVirt Namespace",
+          "description": "Global KubeVirt namespace. Used by subcharts that deploy into the KubeVirt namespace.",
+          "type": "string",
+          "default": "kubevirt"
+        }
+      }
+    },
+    "vmTemplates": {
+      "title": "VM Templates",
+      "description": "Configuration for common VM templates.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "title": "Enabled",
+          "description": "Whether to deploy the common VM templates.",
+          "type": "boolean",
+          "default": true
+        },
+        "namespace": {
+          "title": "Namespace",
+          "description": "Namespace where VM templates will be created. Defaults to global.kubevirtNamespace when left empty.",
+          "type": "string",
+          "default": ""
+        }
+      }
+    }
+  }
+}

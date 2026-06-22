@@ -42,6 +42,7 @@ import MigrationDetails from './components/Migrations/Details';
 import MigrationList from './components/Migrations/List';
 import NADDetails from './components/NetworkAttachmentDefinitions/Details';
 import NADList from './components/NetworkAttachmentDefinitions/List';
+import OperatorCatalog from './components/OperatorCatalog/OperatorCatalog';
 import VirtualizationOverview from './components/Overview/Overview';
 import { getPluginLib, registerOwnerLinksProcessor } from './components/OwnerLinks';
 import PreferenceDetails from './components/Preferences/Details';
@@ -63,7 +64,7 @@ import VMTemplateList from './components/VirtualMachineTemplate/List';
 import KubeVirtSettings from './kubevirt/Settings';
 import { areFeatureGatesLoaded, getFeatureGates, loadFeatureGates } from './utils/featureGates';
 import { detectKubeVirtCapabilities } from './utils/kubevirtVersion';
-import { detectInstalledOperators, isKubeVirtInstalled } from './utils/operatorDetection';
+import { detectInstalledOperators, detectStackInfo } from './utils/operatorDetection';
 
 // ── IPAM CRD detection ─────────────────────────────────────────────────
 let ipamCRDAvailable = false;
@@ -133,6 +134,7 @@ loadFeatureGates();
 detectKubeVirtCapabilities();
 detectIPAMCRD();
 detectInstalledOperators();
+detectStackInfo();
 
 // Feature gates that affect sidebar visibility
 const SIDEBAR_AFFECTING_FEATURE_GATES = ['Snapshot', 'VMExport', 'DataVolumes'];
@@ -688,6 +690,25 @@ registerRoute({
   ),
   exact: true,
   name: 'ipamclaim',
+});
+
+// Operator Catalog — before Settings
+registerSidebarEntry({
+  parent: 'kubevirt',
+  name: 'kubevirt-catalog',
+  label: 'Operator Catalog',
+  url: '/kubevirt/catalog',
+  icon: 'mdi:store',
+});
+registerRoute({
+  path: '/kubevirt/catalog',
+  sidebar: 'kubevirt',
+  component: () => (
+    <ErrorBoundary>
+      <OperatorCatalog />
+    </ErrorBoundary>
+  ),
+  exact: true,
 });
 
 // Settings - Last in sidebar

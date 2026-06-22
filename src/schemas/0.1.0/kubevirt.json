@@ -1,0 +1,409 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "KubeVirt Helm Chart Values",
+  "description": "Configuration values for the KubeVirt Helm chart, which deploys the KubeVirt operator and custom resource without HCO.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "global": {
+      "title": "Global Settings",
+      "description": "Global values shared across all sub-charts in the umbrella chart.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "imageRegistry": {
+          "title": "Image Registry",
+          "description": "Global container image registry to use for all images. When set, overrides the registry portion of image references.",
+          "type": "string",
+          "default": ""
+        },
+        "imagePullSecrets": {
+          "title": "Image Pull Secrets",
+          "description": "Global list of image pull secret names to add to all pods.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "object"
+          }
+        },
+        "nodeSelector": {
+          "title": "Node Selector",
+          "description": "Global node selector applied to all operator pods.",
+          "type": "object",
+          "default": {},
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "tolerations": {
+          "title": "Tolerations",
+          "description": "Global tolerations applied to all operator pods.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "operator": {
+                "type": "string",
+                "enum": ["Exists", "Equal"]
+              },
+              "value": {
+                "type": "string"
+              },
+              "effect": {
+                "type": "string",
+                "enum": ["", "NoSchedule", "PreferNoSchedule", "NoExecute"]
+              },
+              "tolerationSeconds": {
+                "type": "integer"
+              }
+            }
+          }
+        },
+        "kubevirtNamespace": {
+          "title": "KubeVirt Namespace",
+          "description": "Default namespace for KubeVirt components, used by this sub-chart and others that need to reference KubeVirt.",
+          "type": "string",
+          "default": ""
+        }
+      }
+    },
+    "namespace": {
+      "title": "Namespace",
+      "description": "Namespace for KubeVirt components. Defaults to global.kubevirtNamespace if left empty.",
+      "type": "string",
+      "default": ""
+    },
+    "version": {
+      "title": "KubeVirt Version",
+      "description": "Version tag of the KubeVirt release to deploy.",
+      "type": "string",
+      "default": "v1.8.1"
+    },
+    "operator": {
+      "title": "Operator Settings",
+      "description": "Configuration for the virt-operator Deployment.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "replicas": {
+          "title": "Replicas",
+          "description": "Number of virt-operator pod replicas.",
+          "type": "integer",
+          "minimum": 1,
+          "default": 2
+        },
+        "image": {
+          "title": "Image",
+          "description": "Container image settings for virt-operator.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "repository": {
+              "title": "Repository",
+              "description": "Container image repository for virt-operator.",
+              "type": "string",
+              "default": "quay.io/kubevirt/virt-operator"
+            }
+          }
+        },
+        "resources": {
+          "title": "Resource Requirements",
+          "description": "CPU and memory resource requests and limits.",
+          "type": "object",
+          "properties": {
+            "requests": {
+              "title": "Resource Requests",
+              "description": "Minimum resources required for scheduling.",
+              "type": "object",
+              "properties": {
+                "cpu": {
+                  "title": "CPU Request",
+                  "description": "CPU request (e.g. 100m, 1).",
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ],
+                  "default": "10m"
+                },
+                "memory": {
+                  "title": "Memory Request",
+                  "description": "Memory request (e.g. 128Mi, 1Gi).",
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ],
+                  "default": "450Mi"
+                }
+              }
+            },
+            "limits": {
+              "title": "Resource Limits",
+              "description": "Maximum resources the container can use.",
+              "type": "object",
+              "properties": {
+                "cpu": {
+                  "title": "CPU Limit",
+                  "description": "CPU limit (e.g. 500m, 2).",
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "memory": {
+                  "title": "Memory Limit",
+                  "description": "Memory limit (e.g. 512Mi, 2Gi).",
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "nodeSelector": {
+          "title": "Node Selector",
+          "description": "Node selector for virt-operator pods. Merged with global.nodeSelector.",
+          "type": "object",
+          "default": {},
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "tolerations": {
+          "title": "Tolerations",
+          "description": "Tolerations for virt-operator pods. Merged with global.tolerations.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "operator": {
+                "type": "string",
+                "enum": ["Exists", "Equal"]
+              },
+              "value": {
+                "type": "string"
+              },
+              "effect": {
+                "type": "string",
+                "enum": ["", "NoSchedule", "PreferNoSchedule", "NoExecute"]
+              },
+              "tolerationSeconds": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      }
+    },
+    "exportProxy": {
+      "title": "Export Proxy",
+      "description": "Settings for virt-exportproxy external access. Required for Forklift cross-cluster cold migration via VMExport.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "externalMode": {
+          "title": "External Mode",
+          "description": "Creates an Ingress and TLS certificate so that VMExport external links are populated. Requires an Ingress controller with backend HTTPS support and cert-manager.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "title": "Enabled",
+              "description": "Enable external access to the export proxy via Ingress.",
+              "type": "boolean",
+              "default": false
+            },
+            "hostname": {
+              "title": "Hostname",
+              "description": "FQDN for the export proxy. Must be resolvable from remote clusters.",
+              "type": "string",
+              "default": ""
+            },
+            "ingressClassName": {
+              "title": "Ingress Class Name",
+              "description": "Ingress class to use for the export proxy Ingress resource (e.g. \"nginx\").",
+              "type": "string",
+              "default": ""
+            },
+            "certManager": {
+              "title": "cert-manager Settings",
+              "description": "cert-manager integration for automatic TLS certificate generation.",
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "issuerRef": {
+                  "title": "Issuer Reference",
+                  "description": "cert-manager issuer reference. If empty, a self-signed Issuer is created automatically.",
+                  "type": "object",
+                  "default": {},
+                  "properties": {
+                    "name": {
+                      "title": "Issuer Name",
+                      "description": "Name of the cert-manager Issuer or ClusterIssuer.",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "title": "Issuer Kind",
+                      "description": "Kind of the issuer resource.",
+                      "type": "string",
+                      "enum": ["Issuer", "ClusterIssuer"]
+                    },
+                    "group": {
+                      "title": "Issuer Group",
+                      "description": "API group of the issuer resource.",
+                      "type": "string",
+                      "default": "cert-manager.io"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "cr": {
+      "title": "KubeVirt Custom Resource",
+      "description": "Settings applied to the KubeVirt CR that the operator reconciles.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "configuration": {
+          "title": "Configuration",
+          "description": "KubeVirtConfiguration spec passed directly into the KubeVirt CR.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "developerConfiguration": {
+              "title": "Developer Configuration",
+              "description": "Developer-oriented configuration options.",
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "featureGates": {
+                  "title": "Feature Gates",
+                  "description": "List of KubeVirt feature gates to enable.",
+                  "type": "array",
+                  "default": [],
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "LiveMigration",
+                      "Snapshot",
+                      "HotplugVolumes",
+                      "VMExport",
+                      "ExpandDisks",
+                      "HotplugNICs",
+                      "VMLiveUpdateFeatures",
+                      "NetworkBindingPlugins",
+                      "VolumesUpdateStrategy",
+                      "VolumeMigration",
+                      "Passt",
+                      "VMPersistentState",
+                      "AutoResourceLimitsGate",
+                      "AlignCPUs",
+                      "NodeRestriction"
+                    ]
+                  }
+                }
+              }
+            },
+            "network": {
+              "title": "Network Configuration",
+              "description": "Network-related configuration for KubeVirt (e.g. default network interface, binding plugins).",
+              "type": "object",
+              "default": {}
+            },
+            "migrations": {
+              "title": "Migration Configuration",
+              "description": "Live migration tuning parameters (bandwidth, timeouts, parallelism, etc.).",
+              "type": "object",
+              "default": {}
+            },
+            "liveUpdateConfiguration": {
+              "title": "Live Update Configuration",
+              "description": "Configuration for live-updating VM workloads (CPU, memory hotplug limits).",
+              "type": "object",
+              "default": {}
+            },
+            "evictionStrategy": {
+              "title": "Eviction Strategy",
+              "description": "Default eviction strategy for VMs when a node is drained.",
+              "type": "string",
+              "default": "",
+              "enum": ["", "LiveMigrate", "LiveMigrateIfPossible", "External"]
+            },
+            "permittedHostDevices": {
+              "title": "Permitted Host Devices",
+              "description": "Host devices (PCI, mediated devices) that may be exposed to VMs.",
+              "type": "object",
+              "default": {}
+            }
+          }
+        },
+        "imagePullPolicy": {
+          "title": "Image Pull Policy",
+          "description": "Image pull policy for KubeVirt component images managed by the operator.",
+          "type": "string",
+          "default": "IfNotPresent",
+          "enum": ["Always", "IfNotPresent", "Never"]
+        },
+        "monitorNamespace": {
+          "title": "Monitor Namespace",
+          "description": "Namespace where monitoring resources (ServiceMonitors) are created. Leave empty to use the KubeVirt namespace.",
+          "type": "string",
+          "default": ""
+        },
+        "monitorAccount": {
+          "title": "Monitor Service Account",
+          "description": "ServiceAccount name used by the monitoring stack (e.g. Prometheus) to scrape KubeVirt metrics.",
+          "type": "string",
+          "default": ""
+        },
+        "customizeComponents": {
+          "title": "Customize Components",
+          "description": "Patches to apply to KubeVirt-managed Deployments, DaemonSets, and other resources.",
+          "type": "object",
+          "default": {}
+        },
+        "workloadUpdateStrategy": {
+          "title": "Workload Update Strategy",
+          "description": "Strategy for updating running VM workloads when KubeVirt is upgraded.",
+          "type": "object",
+          "default": {}
+        },
+        "certificateRotateStrategy": {
+          "title": "Certificate Rotate Strategy",
+          "description": "Strategy for rotating internal TLS certificates used by KubeVirt components.",
+          "type": "object",
+          "default": {}
+        }
+      }
+    }
+  }
+}

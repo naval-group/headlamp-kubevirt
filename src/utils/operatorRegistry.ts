@@ -24,6 +24,8 @@ export interface OperatorInfo {
   dependencies: string[];
   /** Enabled by default in the umbrella chart */
   defaultEnabled: boolean;
+  /** Helm values.yaml key (kebab-case). Defaults to id if not set. */
+  helmKey?: string;
   /** How to detect if already installed */
   detection: OperatorDetection;
   /** Resources to count before allowing uninstall */
@@ -39,6 +41,12 @@ export interface OperatorDetection {
   deployment?: { name: string; namespace: string };
   /** DaemonSet name + namespace to check */
   daemonSet?: { name: string; namespace: string };
+  /** Alternative DaemonSet names (e.g. RKE2 variants) */
+  altDaemonSets?: Array<{ name: string; namespace: string }>;
+  /** Alternative CRD names */
+  altCrds?: string[];
+  /** Specific resource to check via API path (e.g. a named ValidatingAdmissionPolicy) */
+  apiPath?: string;
 }
 
 export interface UninstallCheck {
@@ -54,6 +62,15 @@ export const OPERATOR_CATEGORIES: Record<OperatorCategory, string> = {
   storage: 'Storage',
   migration: 'Migration',
   extras: 'Extras',
+};
+
+// Colors match the FeatureGatesSection category convention in Settings
+export const CATEGORY_COLORS: Record<OperatorCategory, string> = {
+  core: '#9c27b0',
+  networking: '#2196f3',
+  storage: '#ff9800',
+  migration: '#00bcd4',
+  extras: '#4caf50',
 };
 
 const OPERATORS: OperatorInfo[] = [
@@ -129,6 +146,7 @@ const OPERATORS: OperatorInfo[] = [
     defaultEnabled: true,
     detection: {
       daemonSet: { name: 'kube-multus-ds', namespace: 'kube-system' },
+      altDaemonSets: [{ name: 'rke2-multus', namespace: 'kube-system' }],
     },
     uninstallProtection: [
       {
@@ -156,6 +174,7 @@ const OPERATORS: OperatorInfo[] = [
   // ── Storage ────────────────────────────────────────────────────────
   {
     id: 'hostpathProvisioner',
+    helmKey: 'hostpath-provisioner',
     name: 'HostPath Provisioner',
     description: 'Local storage for development and testing',
     details:
@@ -207,6 +226,7 @@ const OPERATORS: OperatorInfo[] = [
   },
   {
     id: 'butaneOperator',
+    helmKey: 'butane-operator',
     name: 'Butane Operator',
     description: 'Butane to Ignition conversion for CoreOS and Flatcar VMs',
     details:
@@ -218,10 +238,12 @@ const OPERATORS: OperatorInfo[] = [
     defaultEnabled: true,
     detection: {
       crd: 'butaneconfigs.butane.unstable.cloud',
+      altCrds: ['butaneconfigs.butane.operators.naval-group.com'],
     },
   },
   {
     id: 'vmConsoleProxy',
+    helmKey: 'vm-console-proxy',
     name: 'VM Console Proxy',
     description: 'Token-based console access for VMs',
     details:
@@ -237,6 +259,7 @@ const OPERATORS: OperatorInfo[] = [
   },
   {
     id: 'cloudProvider',
+    helmKey: 'cloud-provider-kubevirt',
     name: 'Cloud Provider KubeVirt',
     description: 'Kubernetes cloud provider for KubeVirt',
     details:
@@ -250,6 +273,71 @@ const OPERATORS: OperatorInfo[] = [
       deployment: { name: 'cloud-provider-kubevirt', namespace: 'kube-system' },
     },
   },
+  {
+    id: 'ipamController',
+    helmKey: 'ipam-controller',
+    name: 'IPAM Controller',
+    description: 'Persistent IP addresses for VMs',
+    details:
+      'Manages IPAMClaim resources to provide persistent IP addresses for KubeVirt VMs across reboots and migrations. Requires cert-manager for webhook TLS.',
+    version: 'v0.6.1',
+    icon: 'mdi:ip-network',
+    category: 'networking',
+    dependencies: ['kubevirt'],
+    defaultEnabled: true,
+    detection: {
+      deployment: { name: 'kubevirt-ipam-controller', namespace: 'kubevirt' },
+    },
+  },
+  {
+    id: 'monitoring',
+    name: 'KubeVirt Monitoring',
+    description: 'ServiceMonitors and PrometheusRules for KubeVirt',
+    details:
+      'Deploys ServiceMonitor resources to scrape KubeVirt component metrics and PrometheusRules for alerting. Requires kube-prometheus-stack or a compatible Prometheus Operator.',
+    version: 'v1.8.1',
+    icon: 'mdi:chart-line',
+    category: 'extras',
+    dependencies: ['kubevirt'],
+    defaultEnabled: false,
+    detection: {
+      crd: 'servicemonitors.monitoring.coreos.com',
+      namespace: 'kubevirt',
+    },
+  },
+  {
+    id: 'deleteProtection',
+    helmKey: 'delete-protection',
+    name: 'Delete Protection',
+    description: 'ValidatingAdmissionPolicy to prevent accidental VM deletion',
+    details:
+      'Installs a ValidatingAdmissionPolicy that blocks deletion of VirtualMachines annotated with kubevirt.io/delete-protection=true. Requires Kubernetes 1.30+.',
+    version: 'v1.8.1',
+    icon: 'mdi:shield-lock',
+    category: 'extras',
+    dependencies: ['kubevirt'],
+    defaultEnabled: true,
+    detection: {
+      apiPath:
+        '/apis/admissionregistration.k8s.io/v1/validatingadmissionpolicies/kubevirt-vm-delete-protection',
+    },
+  },
+  {
+    id: 'vmTemplates',
+    helmKey: 'vm-templates',
+    name: 'VM Templates',
+    description: 'Pre-configured VirtualMachineTemplate resources',
+    details:
+      'Deploys a set of ready-to-use VirtualMachineTemplate resources for common OS types (Fedora, Ubuntu, Windows). Uses native KubeVirt 1.8+ template CRDs.',
+    version: 'v1.8.1',
+    icon: 'mdi:text-box-multiple',
+    category: 'extras',
+    dependencies: ['kubevirt'],
+    defaultEnabled: false,
+    detection: {
+      crd: 'virtualmachinetemplates.kubevirt.io',
+    },
+  },
 ];
 
 export default OPERATORS;
@@ -257,6 +345,12 @@ export default OPERATORS;
 /** Get operator by ID */
 export function getOperator(id: string): OperatorInfo | undefined {
   return OPERATORS.find(op => op.id === id);
+}
+
+/** Get the Helm values.yaml key for an operator (kebab-case) */
+export function getHelmKey(id: string): string {
+  const op = OPERATORS.find(o => o.id === id);
+  return op?.helmKey || id;
 }
 
 /** Get operators grouped by category */

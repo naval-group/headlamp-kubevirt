@@ -1,0 +1,317 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Multus CNI Helm Values",
+  "description": "Configuration for the Multus CNI Helm chart",
+  "type": "object",
+  "properties": {
+    "global": {
+      "title": "Global settings",
+      "description": "Global values shared across all subcharts",
+      "type": "object",
+      "properties": {
+        "imageRegistry": {
+          "title": "Global image registry",
+          "description": "Override the image registry for all images",
+          "type": "string",
+          "default": ""
+        },
+        "imagePullSecrets": {
+          "title": "Global image pull secrets",
+          "description": "List of image pull secret names for all images",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "object"
+          }
+        },
+        "nodeSelector": {
+          "title": "Global node selector",
+          "description": "Node selector applied to all pods",
+          "type": "object",
+          "default": {}
+        },
+        "tolerations": {
+          "title": "Global tolerations",
+          "description": "Tolerations applied to all pods",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "object"
+          }
+        },
+        "kubevirtNamespace": {
+          "title": "KubeVirt Namespace",
+          "description": "Global KubeVirt namespace. Used by subcharts that deploy into the KubeVirt namespace.",
+          "type": "string",
+          "default": "kubevirt"
+        }
+      }
+    },
+    "rke2": {
+      "title": "RKE2 mode",
+      "description": "When enabled, deploys a HelmChartConfig instead of standalone Multus resources",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "title": "Enable RKE2 mode",
+          "description": "If true, Multus is assumed pre-installed by RKE2 and a HelmChartConfig is deployed instead",
+          "type": "boolean",
+          "default": false
+        },
+        "criSocket": {
+          "title": "CRI socket path",
+          "description": "Path to the CRI socket on RKE2 nodes",
+          "type": "string",
+          "default": "/run/k3s/containerd/containerd.sock"
+        },
+        "multusSocket": {
+          "title": "Multus socket path (RKE2)",
+          "description": "Path to the Multus socket on RKE2 nodes",
+          "type": "string",
+          "default": "/run/multus/multus.sock"
+        }
+      }
+    },
+    "namespace": {
+      "title": "Namespace",
+      "description": "Namespace for standalone Multus resources",
+      "type": "string",
+      "default": "kube-system"
+    },
+    "thick": {
+      "title": "Thick plugin mode",
+      "description": "Deploy Multus in thick plugin mode (recommended for KubeVirt)",
+      "type": "boolean",
+      "default": true
+    },
+    "cniVersion": {
+      "title": "CNI specification version",
+      "description": "Version of the CNI specification to use in generated configs",
+      "type": "string",
+      "default": "0.3.1"
+    },
+    "image": {
+      "title": "Multus image",
+      "description": "Container image for the Multus CNI daemonset",
+      "type": "object",
+      "properties": {
+        "repository": {
+          "title": "Image repository",
+          "description": "Multus CNI image repository",
+          "type": "string",
+          "default": "ghcr.io/k8snetworkplumbingwg/multus-cni"
+        },
+        "tag": {
+          "title": "Image tag",
+          "description": "Multus CNI image tag",
+          "type": "string",
+          "default": "v4.1.4"
+        }
+      }
+    },
+    "resources": {
+      "title": "Resource Requirements",
+      "description": "CPU and memory resource requests and limits.",
+      "type": "object",
+      "properties": {
+        "requests": {
+          "title": "Resource Requests",
+          "description": "Minimum resources required for scheduling.",
+          "type": "object",
+          "properties": {
+            "cpu": {
+              "title": "CPU Request",
+              "description": "CPU request (e.g. 100m, 1).",
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "default": "10m"
+            },
+            "memory": {
+              "title": "Memory Request",
+              "description": "Memory request (e.g. 128Mi, 1Gi).",
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "default": "50Mi"
+            }
+          }
+        },
+        "limits": {
+          "title": "Resource Limits",
+          "description": "Maximum resources the container can use.",
+          "type": "object",
+          "properties": {
+            "cpu": {
+              "title": "CPU Limit",
+              "description": "CPU limit (e.g. 500m, 2).",
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "memory": {
+              "title": "Memory Limit",
+              "description": "Memory limit (e.g. 512Mi, 2Gi).",
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "tolerations": {
+      "title": "Tolerations",
+      "description": "Tolerations for the Multus daemonset pods",
+      "type": "array",
+      "default": [
+        {
+          "operator": "Exists"
+        }
+      ],
+      "items": {
+        "type": "object"
+      }
+    },
+    "dynamicNetworks": {
+      "title": "Dynamic Networks Controller",
+      "description": "Configuration for the Multus dynamic networks controller sidecar",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "title": "Enable dynamic networks controller",
+          "description": "Deploy the dynamic networks controller alongside Multus",
+          "type": "boolean",
+          "default": true
+        },
+        "image": {
+          "title": "Dynamic networks controller image",
+          "description": "Container image for the dynamic networks controller",
+          "type": "object",
+          "properties": {
+            "repository": {
+              "title": "Image repository",
+              "description": "Dynamic networks controller image repository",
+              "type": "string",
+              "default": "ghcr.io/k8snetworkplumbingwg/multus-dynamic-networks-controller"
+            },
+            "tag": {
+              "title": "Image tag",
+              "description": "Dynamic networks controller image tag",
+              "type": "string",
+              "default": "v0.3.7"
+            }
+          }
+        },
+        "criSocket": {
+          "title": "CRI socket path",
+          "description": "Path to the CRI socket for the dynamic networks controller",
+          "type": "string",
+          "default": "/run/containerd/containerd.sock"
+        },
+        "multusSocket": {
+          "title": "Multus socket path",
+          "description": "Path to the Multus socket for the dynamic networks controller",
+          "type": "string",
+          "default": "/run/multus/multus.sock"
+        },
+        "resources": {
+          "title": "Resource Requirements",
+          "description": "CPU and memory resource requests and limits.",
+          "type": "object",
+          "properties": {
+            "requests": {
+              "title": "Resource Requests",
+              "description": "Minimum resources required for scheduling.",
+              "type": "object",
+              "properties": {
+                "cpu": {
+                  "title": "CPU Request",
+                  "description": "CPU request (e.g. 100m, 1).",
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ],
+                  "default": "100m"
+                },
+                "memory": {
+                  "title": "Memory Request",
+                  "description": "Memory request (e.g. 128Mi, 1Gi).",
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ],
+                  "default": "50Mi"
+                }
+              }
+            },
+            "limits": {
+              "title": "Resource Limits",
+              "description": "Maximum resources the container can use.",
+              "type": "object",
+              "properties": {
+                "cpu": {
+                  "title": "CPU Limit",
+                  "description": "CPU limit (e.g. 500m, 2).",
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "memory": {
+                  "title": "Memory Limit",
+                  "description": "Memory limit (e.g. 512Mi, 2Gi).",
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "enabled": {
+      "title": "Enabled",
+      "description": "Whether this component is enabled. Controlled by the parent chart.",
+      "type": "boolean"
+    }
+  }
+}

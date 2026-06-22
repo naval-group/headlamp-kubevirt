@@ -15,7 +15,8 @@ import {
   Typography,
 } from '@mui/material';
 import { OperatorStatus } from '../../utils/operatorDetection';
-import { getOperator, OperatorInfo } from '../../utils/operatorRegistry';
+import { OperatorInfo } from '../../utils/operatorRegistry';
+import DependencyChips from '../common/DependencyChips';
 
 interface OperatorCardProps {
   operator: OperatorInfo;
@@ -28,16 +29,21 @@ interface OperatorCardProps {
   locked?: boolean;
   /** Show version editor */
   showVersion?: boolean;
+  /** Hide the toggle (catalog mode) */
+  readOnly?: boolean;
+  /** Category color for the card border/background */
+  categoryColor?: string;
 }
 
 const STATUS_CHIP: Record<
-  OperatorStatus,
-  { label: string; color: 'success' | 'default' | 'warning' | 'info' }
+  string,
+  { label: string; color: 'success' | 'default' | 'warning' | 'info' | 'primary' }
 > = {
   installed: { label: 'Installed', color: 'success' },
-  available: { label: 'Available', color: 'default' },
+  staged: { label: 'Staged', color: 'primary' },
+  available: { label: 'Available', color: 'info' },
   'requires-deps': { label: 'Requires dependencies', color: 'warning' },
-  checking: { label: 'Checking...', color: 'info' },
+  checking: { label: 'Checking...', color: 'default' },
 };
 
 export default function OperatorCard({
@@ -49,7 +55,12 @@ export default function OperatorCard({
   status,
   locked,
   showVersion,
+  readOnly,
+  categoryColor,
 }: OperatorCardProps) {
+  const isInstalled = status === 'installed';
+  const isStaged = !isInstalled && enabled;
+  const cc = categoryColor || 'divider';
   return (
     <Card
       variant="outlined"
@@ -57,9 +68,12 @@ export default function OperatorCard({
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        borderColor: enabled ? 'primary.main' : 'divider',
-        borderWidth: enabled ? 2 : 1,
-        opacity: enabled ? 1 : 0.7,
+        borderLeft: `3px solid ${cc}`,
+        borderColor: isStaged ? cc : isInstalled ? cc : 'divider',
+        borderLeftColor: cc,
+        borderWidth: isStaged ? 2 : isInstalled ? 1 : 1,
+        opacity: isInstalled ? 1 : isStaged ? 1 : 0.5,
+        bgcolor: isStaged ? `${cc}15` : 'background.paper',
         transition: 'all 0.2s',
       }}
     >
@@ -74,36 +88,27 @@ export default function OperatorCard({
               {operator.description}
             </Typography>
           </Box>
-          {status && (
-            <Chip
-              label={STATUS_CHIP[status].label}
-              color={STATUS_CHIP[status].color}
-              size="small"
-              variant="outlined"
-            />
-          )}
+          {(() => {
+            // Show "Staged" when enabled in wizard but not installed on cluster
+            const displayStatus =
+              status === 'installed' ? 'installed' : enabled ? 'staged' : status;
+            const chip = displayStatus ? STATUS_CHIP[displayStatus] : null;
+            return chip ? (
+              <Chip
+                label={chip.label}
+                color={chip.color}
+                size="small"
+                variant={displayStatus === 'installed' ? 'filled' : 'outlined'}
+              />
+            ) : null;
+          })()}
         </Box>
 
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5, fontSize: '0.8rem' }}>
           {operator.details}
         </Typography>
 
-        {operator.dependencies.length > 0 && (
-          <Box display="flex" gap={0.5} flexWrap="wrap" mb={1}>
-            <Typography variant="caption" color="text.secondary">
-              Requires:
-            </Typography>
-            {operator.dependencies.map(dep => (
-              <Chip
-                key={dep}
-                label={getOperator(dep)?.name || dep}
-                size="small"
-                variant="outlined"
-                sx={{ height: 20, fontSize: '0.7rem' }}
-              />
-            ))}
-          </Box>
-        )}
+        <DependencyChips dependencies={operator.dependencies} />
 
         {showVersion && (
           <TextField
@@ -118,32 +123,37 @@ export default function OperatorCard({
         )}
       </CardContent>
 
-      <Box px={2} pb={1.5} display="flex" justifyContent="flex-end">
-        <Tooltip
-          title={
-            locked
-              ? `Required by other selected operators`
-              : operator.id === 'kubevirt' || operator.id === 'cdi'
-              ? `${operator.name} is always required`
-              : ''
-          }
-        >
-          <span>
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={enabled}
-                  onChange={(_, checked) => onToggle(operator.id, checked)}
-                  disabled={locked || operator.id === 'kubevirt' || operator.id === 'cdi'}
-                  size="small"
-                />
-              }
-              label={enabled ? 'Enabled' : 'Disabled'}
-              sx={{ '& .MuiFormControlLabel-label': { fontSize: '0.8rem' } }}
-            />
-          </span>
-        </Tooltip>
-      </Box>
+      {!readOnly && (
+        <Box px={2} pb={1.5} display="flex" justifyContent="flex-end">
+          <Tooltip
+            title={
+              status === 'installed'
+                ? 'Already installed on this cluster'
+                : locked
+                ? 'Required by other selected operators'
+                : operator.id === 'kubevirt' || operator.id === 'cdi'
+                ? `${operator.name} is always required`
+                : ''
+            }
+          >
+            <span>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={enabled}
+                    onChange={(_, checked) => onToggle(operator.id, checked)}
+                    disabled={locked || operator.id === 'kubevirt' || operator.id === 'cdi'}
+                    size="small"
+                    color="success"
+                  />
+                }
+                label={enabled ? 'Enabled' : 'Disabled'}
+                sx={{ '& .MuiFormControlLabel-label': { fontSize: '0.8rem' } }}
+              />
+            </span>
+          </Tooltip>
+        </Box>
+      )}
     </Card>
   );
 }

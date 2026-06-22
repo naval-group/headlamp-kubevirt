@@ -1,0 +1,181 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "VM Console Proxy Helm Chart Values",
+  "description": "Configuration values for the VM Console Proxy Helm chart.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "global": {
+      "title": "Global Configuration",
+      "description": "Global settings shared across all subcharts.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "imageRegistry": {
+          "title": "Image Registry",
+          "description": "Global container image registry override. When set, all images will be pulled from this registry.",
+          "type": "string",
+          "default": ""
+        },
+        "imagePullSecrets": {
+          "title": "Image Pull Secrets",
+          "description": "Global list of image pull secrets for authenticating to private registries.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "object"
+          }
+        },
+        "nodeSelector": {
+          "title": "Node Selector",
+          "description": "Global node selector applied to all pods.",
+          "type": "object",
+          "default": {},
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "tolerations": {
+          "title": "Tolerations",
+          "description": "Global tolerations applied to all pods.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "object"
+          }
+        },
+        "kubevirtNamespace": {
+          "title": "KubeVirt Namespace",
+          "description": "Global KubeVirt namespace. Used by subcharts that deploy into the KubeVirt namespace.",
+          "type": "string",
+          "default": "kubevirt"
+        }
+      }
+    },
+    "namespace": {
+      "title": "Namespace",
+      "description": "Kubernetes namespace where the VM Console Proxy will be deployed. Defaults to global.kubevirtNamespace when left empty.",
+      "type": "string",
+      "default": ""
+    },
+    "image": {
+      "title": "Image",
+      "description": "Container image settings for the VM Console Proxy.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "repository": {
+          "title": "Repository",
+          "description": "Container image repository for the VM Console Proxy.",
+          "type": "string",
+          "default": "quay.io/kubevirt/vm-console-proxy"
+        },
+        "tag": {
+          "title": "Tag",
+          "description": "Container image tag for the VM Console Proxy.",
+          "type": "string",
+          "default": "v0.8.0"
+        }
+      }
+    },
+    "replicas": {
+      "title": "Replicas",
+      "description": "Number of VM Console Proxy pod replicas.",
+      "type": "integer",
+      "default": 1,
+      "minimum": 0
+    },
+    "resources": {
+      "title": "Resource Requirements",
+      "description": "CPU and memory resource requests and limits.",
+      "type": "object",
+      "properties": {
+        "requests": {
+          "title": "Resource Requests",
+          "description": "Minimum resources required for scheduling.",
+          "type": "object",
+          "properties": {
+            "cpu": {
+              "title": "CPU Request",
+              "description": "CPU request (e.g. 100m, 1).",
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "memory": {
+              "title": "Memory Request",
+              "description": "Memory request (e.g. 128Mi, 1Gi).",
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            }
+          }
+        },
+        "limits": {
+          "title": "Resource Limits",
+          "description": "Maximum resources the container can use.",
+          "type": "object",
+          "properties": {
+            "cpu": {
+              "title": "CPU Limit",
+              "description": "CPU limit (e.g. 500m, 2).",
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "memory": {
+              "title": "Memory Limit",
+              "description": "Memory limit (e.g. 512Mi, 2Gi).",
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "nodeSelector": {
+      "title": "Node Selector",
+      "description": "Node selector for scheduling the VM Console Proxy pods.",
+      "type": "object",
+      "default": {},
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "tolerations": {
+      "title": "Tolerations",
+      "description": "Tolerations for the VM Console Proxy pods.",
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "object"
+      }
+    },
+    "enabled": {
+      "title": "Enabled",
+      "description": "Whether this component is enabled. Controlled by the parent chart.",
+      "type": "boolean"
+    }
+  }
+}

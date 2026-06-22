@@ -1,0 +1,169 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "Monitoring Helm Chart Values",
+  "description": "Configuration values for the KubeVirt monitoring Helm chart (ServiceMonitors and PrometheusRules).",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "global": {
+      "title": "Global Configuration",
+      "description": "Global settings shared across all subcharts.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "imageRegistry": {
+          "title": "Image Registry",
+          "description": "Global container image registry override. When set, all images will be pulled from this registry.",
+          "type": "string",
+          "default": ""
+        },
+        "imagePullSecrets": {
+          "title": "Image Pull Secrets",
+          "description": "Global list of image pull secrets for authenticating to private registries.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "object"
+          }
+        },
+        "nodeSelector": {
+          "title": "Node Selector",
+          "description": "Global node selector applied to all pods.",
+          "type": "object",
+          "default": {},
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "tolerations": {
+          "title": "Tolerations",
+          "description": "Global tolerations applied to all pods.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "object"
+          }
+        },
+        "kubevirtNamespace": {
+          "title": "KubeVirt Namespace",
+          "description": "Global KubeVirt namespace. Used by subcharts that deploy into the KubeVirt namespace.",
+          "type": "string",
+          "default": "kubevirt"
+        }
+      }
+    },
+    "kubevirt": {
+      "title": "KubeVirt Monitoring",
+      "description": "Monitoring settings for KubeVirt components.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "namespace": {
+          "title": "Namespace",
+          "description": "Namespace where KubeVirt is deployed. Defaults to global.kubevirtNamespace when left empty.",
+          "type": "string",
+          "default": ""
+        }
+      }
+    },
+    "cdi": {
+      "title": "CDI Monitoring",
+      "description": "Monitoring settings for CDI components.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "title": "Enabled",
+          "description": "Whether to create monitoring resources for CDI.",
+          "type": "boolean",
+          "default": true
+        },
+        "namespace": {
+          "title": "Namespace",
+          "description": "Namespace where CDI is deployed.",
+          "type": "string",
+          "default": "cdi"
+        }
+      }
+    },
+    "monitoring": {
+      "title": "Monitoring Configuration",
+      "description": "Global monitoring feature toggles and configuration.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "title": "Enabled",
+          "description": "Whether monitoring is enabled globally for this chart.",
+          "type": "boolean",
+          "default": true
+        },
+        "serviceMonitor": {
+          "title": "ServiceMonitor",
+          "description": "Configuration for Prometheus ServiceMonitor resources.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "title": "Enabled",
+              "description": "Whether to create ServiceMonitor resources.",
+              "type": "boolean",
+              "default": true
+            },
+            "namespace": {
+              "title": "Namespace",
+              "description": "Namespace where ServiceMonitor resources will be created. Defaults to the target component namespace when left empty.",
+              "type": "string",
+              "default": ""
+            },
+            "interval": {
+              "title": "Scrape Interval",
+              "description": "Prometheus scrape interval for the ServiceMonitors (e.g. 30s, 1m, 5m).",
+              "type": "string",
+              "default": "30s",
+              "pattern": "^[0-9]+[smh]$"
+            },
+            "labels": {
+              "title": "Labels",
+              "description": "Additional labels to add to ServiceMonitor resources for Prometheus discovery.",
+              "type": "object",
+              "default": {},
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "prometheusRules": {
+          "title": "PrometheusRules",
+          "description": "Configuration for PrometheusRule resources (alerting and recording rules).",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "title": "Enabled",
+              "description": "Whether to create PrometheusRule resources.",
+              "type": "boolean",
+              "default": true
+            },
+            "namespace": {
+              "title": "Namespace",
+              "description": "Namespace where PrometheusRule resources will be created. Defaults to the target component namespace when left empty.",
+              "type": "string",
+              "default": ""
+            },
+            "labels": {
+              "title": "Labels",
+              "description": "Additional labels to add to PrometheusRule resources for Prometheus discovery.",
+              "type": "object",
+              "default": {},
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

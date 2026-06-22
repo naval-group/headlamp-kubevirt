@@ -8,6 +8,9 @@ import { ApiProxy } from '@kinvolk/headlamp-plugin/lib';
 import { SectionBox } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
 import Editor from '@monaco-editor/react';
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Alert,
   Box,
   Button,
@@ -26,6 +29,7 @@ import {
 import { useTheme } from '@mui/material/styles';
 import { useSnackbar } from 'notistack';
 import React, { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
+import { getGlobalSchema, getOperatorSchema } from '../../utils/chartSchemas';
 import {
   applyResources,
   DEPLOYMENT_METHODS,
@@ -38,15 +42,23 @@ import {
 import {
   buildHelmValues,
   createDefaultWizardState,
+  GlobalConfig,
   valuesToYaml,
   WizardState,
 } from '../../utils/helmValues';
-import { detectInstalledOperators } from '../../utils/operatorDetection';
+import {
+  detectInstalledOperators,
+  getStackInfo,
+  readStackValues,
+  useOperatorDetection,
+} from '../../utils/operatorDetection';
 import OPERATORS, {
+  CATEGORY_COLORS,
   getOperatorsByCategory,
   OPERATOR_CATEGORIES,
   OperatorCategory,
 } from '../../utils/operatorRegistry';
+import SchemaForm from '../common/SchemaForm';
 import OperatorCard from './OperatorCard';
 
 const STEPS = ['Welcome', 'Operators', 'Configuration', 'Deployment', 'Review'];
@@ -63,6 +75,7 @@ type Action =
   | { type: 'SET_OPERATOR'; id: string; enabled: boolean }
   | { type: 'SET_VERSION'; id: string; version: string }
   | { type: 'SET_GLOBAL'; global: Partial<WizardState['global']> }
+  | { type: 'SET_OPERATOR_VALUES'; id: string; values: Record<string, unknown> }
   | { type: 'SET_METHOD'; method: DeploymentMethod }
   | { type: 'SET_MODE'; mode: DeploymentMode }
   | { type: 'RESET' };
@@ -102,6 +115,17 @@ function reducer(state: FullState, action: Action): FullState {
         wizard: {
           ...state.wizard,
           global: { ...state.wizard.global, ...action.global },
+        },
+      };
+    case 'SET_OPERATOR_VALUES':
+      return {
+        ...state,
+        wizard: {
+          ...state.wizard,
+          operatorValues: {
+            ...state.wizard.operatorValues,
+            [action.id]: action.values,
+          },
         },
       };
     case 'SET_METHOD':
@@ -158,6 +182,58 @@ export default function InstallWizard() {
   const [checkingPrereqs, setCheckingPrereqs] = useState(false);
 
   const operatorsByCategory = useMemo(() => getOperatorsByCategory(), []);
+  const detection = useOperatorDetection();
+  const kvInstalled = detection.operators.kubevirt?.status === 'installed';
+
+  // Sync wizard state with detection: only enable installed operators + query params
+  useEffect(() => {
+    if (detection.loading) return;
+
+    // Set operator enabled state based on detection
+    for (const op of OPERATORS) {
+      const isInstalled = detection.operators[op.id]?.status === 'installed';
+      dispatch({ type: 'SET_OPERATOR', id: op.id, enabled: isInstalled });
+    }
+
+    // Handle ?enable= query param from catalog (pre-select additional operators)
+    const params = new URLSearchParams(
+      window.location.search || window.location.hash.split('?')[1] || ''
+    );
+    const enableParam = params.get('enable');
+    const validIds = new Set(OPERATORS.map(o => o.id));
+    if (enableParam) {
+      enableParam
+        .split(',')
+        .map(id => id.trim())
+        .filter(id => validIds.has(id))
+        .forEach(id => {
+          dispatch({ type: 'SET_OPERATOR', id, enabled: true });
+        });
+      setActiveStep(1); // Jump to Operators step
+    }
+    // Rehydrate from stack values if the chart is managed by us
+    const stackInfo = getStackInfo();
+    if (stackInfo.managed) {
+      readStackValues().then(sv => {
+        if (!sv.parsed) return;
+        const g = sv.parsed.global;
+        if (g) {
+          dispatch({
+            type: 'SET_GLOBAL',
+            global: {
+              imageRegistry: g.imageRegistry || '',
+              imagePullSecrets: (g.imagePullSecrets || []).map((s: { name?: string } | string) =>
+                typeof s === 'string' ? s : s.name || ''
+              ),
+              nodeSelector: g.nodeSelector || {},
+              tolerations: g.tolerations || [],
+            },
+          });
+        }
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detection.loading]);
 
   // Detect available deployment methods on mount
   useEffect(() => {
@@ -348,8 +424,10 @@ export default function InstallWizard() {
 
     if (result.success) {
       enqueueSnackbar(`${output.description} applied successfully`, { variant: 'success' });
-      // Re-detect operators after a delay
-      setTimeout(() => detectInstalledOperators(), 5000);
+      // Re-detect operators after a delay to pick up new installs
+      setTimeout(() => {
+        detectInstalledOperators().catch(() => {});
+      }, 5000);
     } else {
       enqueueSnackbar(result.error || 'Deployment failed', { variant: 'error' });
     }
@@ -376,17 +454,24 @@ export default function InstallWizard() {
       {/* Step 0: Welcome */}
       {activeStep === 0 && (
         <Box textAlign="center" py={4}>
-          <Icon icon="mdi:server-plus" width={80} style={{ opacity: 0.5 }} />
+          <Icon
+            icon={kvInstalled ? 'mdi:server-security' : 'mdi:server-plus'}
+            width={80}
+            style={{ opacity: 0.5 }}
+          />
           <Typography variant="h5" mt={2} mb={1}>
-            KubeVirt is not installed on this cluster
+            {kvInstalled
+              ? 'Manage KubeVirt Operators'
+              : 'KubeVirt is not installed on this cluster'}
           </Typography>
           <Typography
             variant="body1"
             color="text.secondary"
             sx={{ maxWidth: 600, mx: 'auto', mb: 3 }}
           >
-            This wizard will guide you through installing KubeVirt and its ecosystem operators. You
-            can choose which components to install and how to deploy them.
+            {kvInstalled
+              ? 'KubeVirt is already running. Use this wizard to add or configure ecosystem operators.'
+              : 'This wizard will guide you through installing KubeVirt and its ecosystem operators. You can choose which components to install and how to deploy them.'}
           </Typography>
           <Alert severity="info" sx={{ maxWidth: 600, mx: 'auto', textAlign: 'left' }}>
             <Typography variant="body2">
@@ -410,7 +495,16 @@ export default function InstallWizard() {
             ([category, ops]) =>
               ops.length > 0 && (
                 <Box key={category} mb={3}>
-                  <Typography variant="overline" color="text.secondary" display="block" mb={1}>
+                  <Typography
+                    variant="overline"
+                    display="block"
+                    mb={1}
+                    sx={{
+                      color: CATEGORY_COLORS[category],
+                      borderLeft: `3px solid ${CATEGORY_COLORS[category]}`,
+                      pl: 1,
+                    }}
+                  >
                     {OPERATOR_CATEGORIES[category]}
                   </Typography>
                   <Grid container spacing={2}>
@@ -426,8 +520,13 @@ export default function InstallWizard() {
                           onVersionChange={(id, version) =>
                             dispatch({ type: 'SET_VERSION', id, version })
                           }
-                          locked={lockedOperators.has(op.id)}
+                          status={detection.operators[op.id]?.status}
+                          locked={
+                            lockedOperators.has(op.id) ||
+                            detection.operators[op.id]?.status === 'installed'
+                          }
                           showVersion
+                          categoryColor={CATEGORY_COLORS[category]}
                         />
                       </Grid>
                     ))}
@@ -438,54 +537,115 @@ export default function InstallWizard() {
         </Box>
       )}
 
-      {/* Step 2: Global Configuration */}
+      {/* Step 2: Configuration (schema-driven) */}
       {activeStep === 2 && (
-        <Box sx={{ maxWidth: 700 }}>
+        <Box>
           <Typography variant="body2" color="text.secondary" mb={3}>
-            Configure global settings applied to all operators. Leave empty for defaults.
+            Configure settings for each operator. Expand sections for advanced options.
           </Typography>
 
-          <TextField
-            fullWidth
-            label="Image Registry Override"
-            value={state.wizard.global.imageRegistry}
-            onChange={e =>
-              dispatch({ type: 'SET_GLOBAL', global: { imageRegistry: e.target.value } })
-            }
-            placeholder="registry.example.com"
-            helperText="Override the default image registry for all components (air-gap support)"
-            sx={{ mb: 3 }}
-          />
+          {/* Global settings */}
+          {(() => {
+            const globalSchema = getGlobalSchema();
+            return globalSchema ? (
+              <Accordion
+                defaultExpanded
+                variant="outlined"
+                sx={{ mb: 2, '&:before': { display: 'none' } }}
+              >
+                <AccordionSummary expandIcon={<Icon icon="mdi:chevron-down" />}>
+                  <Box display="flex" alignItems="center" gap={1}>
+                    <Icon icon="mdi:earth" width={20} />
+                    <Typography variant="subtitle1" fontWeight={600}>
+                      Global Settings
+                    </Typography>
+                  </Box>
+                </AccordionSummary>
+                <AccordionDetails>
+                  <SchemaForm
+                    schema={globalSchema}
+                    values={{
+                      global: {
+                        imageRegistry: state.wizard.global.imageRegistry,
+                        imagePullSecrets: state.wizard.global.imagePullSecrets,
+                        nodeSelector: state.wizard.global.nodeSelector,
+                        tolerations: state.wizard.global.tolerations,
+                      },
+                    }}
+                    onChange={v => {
+                      const g = (v.global as Record<string, unknown>) || {};
+                      dispatch({
+                        type: 'SET_GLOBAL',
+                        global: {
+                          imageRegistry: (g.imageRegistry as string) || '',
+                          imagePullSecrets: (g.imagePullSecrets as string[]) || [],
+                          nodeSelector: (g.nodeSelector as Record<string, string>) || {},
+                          tolerations: (g.tolerations as GlobalConfig['tolerations']) || [],
+                        },
+                      });
+                    }}
+                    exclude={Object.keys(globalSchema.properties || {}).filter(k => k !== 'global')}
+                  />
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Chart Repository URL"
+                    value={chartUrl}
+                    onChange={e => setChartUrl(e.target.value)}
+                    placeholder={DEFAULT_CHART.repoUrl}
+                    helperText="Helm chart repository URL. Override for air-gap or custom chart locations."
+                    sx={{ mt: 1 }}
+                  />
+                </AccordionDetails>
+              </Accordion>
+            ) : null;
+          })()}
 
-          <TextField
-            fullWidth
-            label="Image Pull Secrets"
-            value={state.wizard.global.imagePullSecrets.join(', ')}
-            onChange={e =>
-              dispatch({
-                type: 'SET_GLOBAL',
-                global: {
-                  imagePullSecrets: e.target.value
-                    .split(',')
-                    .map(s => s.trim())
-                    .filter(Boolean),
-                },
-              })
-            }
-            placeholder="my-registry-secret"
-            helperText="Comma-separated list of image pull secret names"
-            sx={{ mb: 3 }}
-          />
-
-          <TextField
-            fullWidth
-            label="Chart Repository URL"
-            value={chartUrl}
-            onChange={e => setChartUrl(e.target.value)}
-            placeholder={DEFAULT_CHART.repoUrl}
-            helperText="Helm chart repository URL. Override for air-gap or custom chart locations."
-            sx={{ mb: 3 }}
-          />
+          {/* Per-operator settings — only for enabled operators */}
+          {OPERATORS.filter(op => state.wizard.operators[op.id]).map(op => {
+            const schema = getOperatorSchema(op.id);
+            if (!schema) return null;
+            return (
+              <Accordion
+                key={op.id}
+                variant="outlined"
+                sx={{
+                  mb: 1,
+                  '&:before': { display: 'none' },
+                  borderLeft: `3px solid ${CATEGORY_COLORS[op.category]}`,
+                }}
+              >
+                <AccordionSummary expandIcon={<Icon icon="mdi:chevron-down" />}>
+                  <Box display="flex" alignItems="center" gap={1}>
+                    <Icon icon={op.icon} width={20} color={CATEGORY_COLORS[op.category]} />
+                    <Typography variant="subtitle2">{op.name}</Typography>
+                    {detection.operators[op.id]?.status === 'installed' ? (
+                      <Chip label="Installed" size="small" color="success" variant="outlined" />
+                    ) : (
+                      <Chip
+                        label="+ New"
+                        size="small"
+                        variant="filled"
+                        sx={{
+                          bgcolor: CATEGORY_COLORS[op.category],
+                          color: '#fff',
+                          fontWeight: 600,
+                        }}
+                      />
+                    )}
+                  </Box>
+                </AccordionSummary>
+                <AccordionDetails>
+                  <SchemaForm
+                    schema={schema}
+                    values={state.wizard.operatorValues[op.id] || {}}
+                    onChange={v => dispatch({ type: 'SET_OPERATOR_VALUES', id: op.id, values: v })}
+                    exclude={['enabled', 'global']}
+                  />
+                </AccordionDetails>
+              </Accordion>
+            );
+          })}
         </Box>
       )}
 
@@ -496,6 +656,40 @@ export default function InstallWizard() {
             Choose how to deploy the selected operators.
           </Typography>
 
+          {/* Mode selector — first */}
+          <Box display="flex" alignItems="center" gap={2} mb={3}>
+            <Typography variant="body2" fontWeight={600}>
+              Mode:
+            </Typography>
+            <RadioGroup
+              row
+              value={state.mode}
+              onChange={e => dispatch({ type: 'SET_MODE', mode: e.target.value as DeploymentMode })}
+            >
+              <FormControlLabel
+                value="apply"
+                control={<Radio size="small" />}
+                label={
+                  <Box display="flex" alignItems="center" gap={0.5}>
+                    <Icon icon="mdi:rocket-launch" width={16} />
+                    <Typography variant="body2">Apply to this cluster</Typography>
+                  </Box>
+                }
+              />
+              <FormControlLabel
+                value="download"
+                control={<Radio size="small" />}
+                label={
+                  <Box display="flex" alignItems="center" gap={0.5}>
+                    <Icon icon="mdi:download" width={16} />
+                    <Typography variant="body2">Download for another cluster</Typography>
+                  </Box>
+                }
+              />
+            </RadioGroup>
+          </Box>
+
+          {/* Method selector — gated by mode */}
           <FormControl sx={{ mb: 3 }}>
             <RadioGroup
               value={state.method}
@@ -504,7 +698,10 @@ export default function InstallWizard() {
               }
             >
               {DEPLOYMENT_METHODS.map(m => {
-                const available = availableMethods[m.id] !== false;
+                // In apply mode, only show methods detected on this cluster
+                // In download mode, all methods are available (generating files for another cluster)
+                const detected = availableMethods[m.id] !== false;
+                const available = state.mode === 'download' || detected;
                 return (
                   <Box
                     key={m.id}
@@ -529,7 +726,7 @@ export default function InstallWizard() {
                           <Typography variant="subtitle2">{m.name}</Typography>
                           {!available && (
                             <Chip
-                              label="Not detected"
+                              label="Not detected on this cluster"
                               size="small"
                               color="warning"
                               variant="outlined"
@@ -546,38 +743,6 @@ export default function InstallWizard() {
               })}
             </RadioGroup>
           </FormControl>
-
-          <Box display="flex" alignItems="center" gap={2} mt={1}>
-            <Typography variant="body2" fontWeight={600}>
-              Action:
-            </Typography>
-            <RadioGroup
-              row
-              value={state.mode}
-              onChange={e => dispatch({ type: 'SET_MODE', mode: e.target.value as DeploymentMode })}
-            >
-              <FormControlLabel
-                value="apply"
-                control={<Radio size="small" />}
-                label={
-                  <Box display="flex" alignItems="center" gap={0.5}>
-                    <Icon icon="mdi:rocket-launch" width={16} />
-                    <Typography variant="body2">Apply to cluster</Typography>
-                  </Box>
-                }
-              />
-              <FormControlLabel
-                value="download"
-                control={<Radio size="small" />}
-                label={
-                  <Box display="flex" alignItems="center" gap={0.5}>
-                    <Icon icon="mdi:download" width={16} />
-                    <Typography variant="body2">Download files</Typography>
-                  </Box>
-                }
-              />
-            </RadioGroup>
-          </Box>
 
           {state.mode === 'apply' && (
             <Box mt={3}>
