@@ -64,7 +64,7 @@ import VMTemplateList from './components/VirtualMachineTemplate/List';
 import KubeVirtSettings from './kubevirt/Settings';
 import { areFeatureGatesLoaded, getFeatureGates, loadFeatureGates } from './utils/featureGates';
 import { detectKubeVirtCapabilities } from './utils/kubevirtVersion';
-import { detectInstalledOperators, detectStackInfo } from './utils/operatorDetection';
+import { detectInstalledOperators, detectInstallMethods, detectStackInfo } from './utils/operatorDetection';
 
 // ── IPAM CRD detection ─────────────────────────────────────────────────
 let ipamCRDAvailable = false;
@@ -134,7 +134,7 @@ loadFeatureGates();
 detectKubeVirtCapabilities();
 detectIPAMCRD();
 detectInstalledOperators();
-detectStackInfo();
+detectStackInfo().then(() => detectInstallMethods());
 
 // Feature gates that affect sidebar visibility
 const SIDEBAR_AFFECTING_FEATURE_GATES = ['Snapshot', 'VMExport', 'DataVolumes'];

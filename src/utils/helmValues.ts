@@ -1,17 +1,17 @@
 /**
- * Builds a Helm values.yaml object from wizard/marketplace state.
- * Maps the UI selections to the kubevirt-stack chart's values structure.
+ * Builds per-operator Helm values from wizard state.
+ * Each operator is an independent chart — no umbrella chart.
  */
 
 import yaml from 'js-yaml';
-import OPERATORS, { getHelmKey } from './operatorRegistry';
+import OPERATORS, { getChartName, getChartVersion, OCI_CHART_BASE } from './operatorRegistry';
 
 export interface WizardState {
   /** Map of operator ID -> enabled/disabled */
   operators: Record<string, boolean>;
   /** Per-operator version overrides */
   versions: Record<string, string>;
-  /** Global configuration */
+  /** Global configuration (applied to each chart's global section) */
   global: GlobalConfig;
   /** Per-operator values (from schema form) */
   operatorValues: Record<string, Record<string, unknown>>;
@@ -27,6 +27,22 @@ export interface GlobalConfig {
     value?: string;
     effect?: string;
   }>;
+}
+
+/** Per-operator chart install descriptor */
+export interface OperatorInstall {
+  /** Operator ID */
+  id: string;
+  /** Chart name (kebab-case) */
+  chartName: string;
+  /** Full OCI URL */
+  chartUrl: string;
+  /** Chart version */
+  chartVersion: string;
+  /** Helm values for this chart */
+  values: Record<string, unknown>;
+  /** Display name */
+  displayName: string;
 }
 
 /** Deep merge two objects (b overrides a) */
@@ -55,47 +71,39 @@ function deepMerge(
   return result;
 }
 
-/** Build a complete values.yaml object from wizard state */
-export function buildHelmValues(state: WizardState): Record<string, unknown> {
-  const values: Record<string, unknown> = {};
+/** Build per-operator install descriptors for all selected operators */
+export function buildOperatorInstalls(state: WizardState): OperatorInstall[] {
+  const installs: OperatorInstall[] = [];
 
-  // Global settings
-  values.global = {
-    imageRegistry: state.global.imageRegistry || '',
-    imagePullSecrets:
-      state.global.imagePullSecrets.length > 0
-        ? state.global.imagePullSecrets.map(name => ({ name }))
-        : [],
-    nodeSelector:
-      Object.keys(state.global.nodeSelector).length > 0 ? state.global.nodeSelector : {},
-    tolerations: state.global.tolerations.length > 0 ? state.global.tolerations : [],
-  };
-
-  // Build per-operator values from registry (single source of truth)
   for (const op of OPERATORS) {
-    const key = getHelmKey(op.id);
     const enabled = state.operators[op.id] ?? op.defaultEnabled;
+    if (!enabled) continue;
 
-    // KubeVirt is always present (no enabled flag)
-    if (op.id === 'kubevirt') {
-      values[key] = {
-        ...(state.versions[op.id] ? { version: state.versions[op.id] } : {}),
-      };
-    } else {
-      values[key] = {
-        enabled,
-        ...(state.versions[op.id] ? { version: state.versions[op.id] } : {}),
-      };
-    }
+    const chartName = getChartName(op.id);
+    let values: Record<string, unknown> = {};
 
-    // Deep merge per-operator values from schema form
+    // Per-operator values from schema form (includes global section if configured)
     const opValues = state.operatorValues[op.id];
-    if (opValues && values[key] && typeof values[key] === 'object') {
-      values[key] = deepMerge(values[key] as Record<string, unknown>, opValues);
+    if (opValues) {
+      values = deepMerge(values, opValues);
     }
+
+    // Add version override if set
+    if (state.versions[op.id]) {
+      values.version = state.versions[op.id];
+    }
+
+    installs.push({
+      id: op.id,
+      chartName,
+      chartUrl: `${OCI_CHART_BASE}/${chartName}`,
+      chartVersion: getChartVersion(op.id),
+      values,
+      displayName: op.name,
+    });
   }
 
-  return values;
+  return installs;
 }
 
 /** Create a default wizard state from the operator registry */
@@ -122,3 +130,5 @@ export function createDefaultWizardState(): WizardState {
 export function valuesToYaml(values: Record<string, unknown>): string {
   return yaml.dump(values, { lineWidth: -1, noRefs: true });
 }
+
+

@@ -6,7 +6,7 @@
 import { ApiProxy } from '@kinvolk/headlamp-plugin/lib';
 import yaml from 'js-yaml';
 import { useEffect, useState } from 'react';
-import OPERATORS, { OperatorInfo } from './operatorRegistry';
+import OPERATORS, { getChartName, OperatorInfo } from './operatorRegistry';
 
 export type OperatorStatus = 'installed' | 'available' | 'requires-deps' | 'checking';
 
@@ -251,104 +251,218 @@ export function useOperatorDetection(): OperatorDetectionResult {
 }
 
 // ── Stack info detection ──────────────────────────────────────────
+//
+// Each chart creates:
+//   ConfigMap: kubevirt-stack-info-<chartName>  (label: kubevirt-stack/info=true)
+//   Secret:   kubevirt-stack-values-<chartName>
+//
+// Discovery: labelSelector=kubevirt-stack/info=true on ConfigMaps
+
+export type InstallMethod = 'flux' | 'argocd' | 'rancher' | 'helm-cli' | 'unknown';
+
+export interface ChartInfo {
+  chartName: string;
+  chartVersion: string;
+  appVersion: string;
+  namespace: string;
+  installMethod?: InstallMethod;
+}
 
 export interface StackInfo {
-  /** Whether the kubevirt-stack chart was detected */
+  /** Whether any kubevirt-stack chart was detected */
   managed: boolean;
-  /** Chart version */
-  chartVersion?: string;
-  /** KubeVirt app version */
-  appVersion?: string;
-  /** Namespace where the stack info was found */
+  /** Namespace where the charts are installed */
   namespace?: string;
-  /** Operator enabled states from the chart */
+  /** Per-chart info from ConfigMaps */
+  charts: Record<string, ChartInfo>;
+  /** Legacy: operator enabled states (derived from charts presence) */
   operators?: Record<string, boolean>;
+  /** Legacy compat */
+  chartVersion?: string;
+  appVersion?: string;
 }
 
 export interface StackValues {
-  /** Raw values.yaml content from the Secret */
-  raw?: string;
-  /** Parsed values object */
+  /** Per-operator parsed values */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  parsed?: Record<string, any>;
+  perOperator: Record<string, Record<string, any>>;
 }
 
-let cachedStackInfo: StackInfo = { managed: false };
-let cachedStackValues: StackValues = {};
+let cachedStackInfo: StackInfo = { managed: false, charts: {} };
+let cachedStackValues: StackValues = { perOperator: {} };
 
-/** Detect if kubevirt-stack chart is installed by looking for the info ConfigMap */
+/** Detect installed charts by looking for kubevirt-stack-info-* ConfigMaps or Helm release secrets */
 export async function detectStackInfo(): Promise<StackInfo> {
   try {
-    // Search all namespaces for the ConfigMap with our label
-    const resp = (await ApiProxy.request(
-      '/api/v1/configmaps?labelSelector=kubevirt-stack/info=true'
+    const charts: Record<string, ChartInfo> = {};
+    const operators: Record<string, boolean> = {};
+    let namespace = '';
+
+    // Strategy 1: Look for our info ConfigMaps (charts >= 0.2.0)
+    const cmResp = (await ApiProxy.request(
+      '/api/v1/configmaps?labelSelector=kubevirt-stack%2Finfo=true'
     )) as {
       items?: Array<{
-        metadata: { namespace: string; annotations?: Record<string, string> };
+        metadata: { name: string; namespace: string };
         data?: Record<string, string>;
       }>;
     };
 
-    const cm = resp?.items?.[0];
-    if (!cm) {
-      cachedStackInfo = { managed: false };
-      return cachedStackInfo;
+    for (const cm of cmResp?.items || []) {
+      const chartName = cm.data?.chartName || cm.metadata.name.replace('kubevirt-stack-info-', '');
+      charts[chartName] = {
+        chartName,
+        chartVersion: cm.data?.chartVersion || '?',
+        appVersion: cm.data?.appVersion || '?',
+        namespace: cm.metadata.namespace,
+      };
+      operators[chartName] = true;
+      if (!namespace) namespace = cm.metadata.namespace;
     }
 
-    // Parse the operators field (simple key: value YAML)
-    const operators: Record<string, boolean> = {};
-    const opLines = (cm.data?.operators || '').split('\n');
-    for (const line of opLines) {
-      const match = line.match(/^\s*([^:]+):\s*(true|false)\s*$/);
-      if (match) operators[match[1].trim()] = match[2] === 'true';
+    // Strategy 2: Fallback — check Helm release secrets for our chart names
+    // Works for all install methods (helm CLI, Headlamp, Flux, Rancher)
+    if (Object.keys(charts).length === 0) {
+      const knownCharts = OPERATORS.map(o => getChartName(o.id));
+      // Narrow query: only fetch Helm secrets whose release name matches our charts
+      const nameFilter = knownCharts.join(',');
+      const secretResp = (await ApiProxy.request(
+        `/api/v1/secrets?labelSelector=${encodeURIComponent(`owner=helm,name in (${nameFilter})`)}`
+      )) as {
+        items?: Array<{
+          metadata: { name: string; namespace: string; labels?: Record<string, string> };
+        }>;
+      };
+
+      for (const secret of secretResp?.items || []) {
+        const releaseName = secret.metadata.labels?.name;
+        if (releaseName && knownCharts.includes(releaseName)) {
+          charts[releaseName] = {
+            chartName: releaseName,
+            chartVersion: secret.metadata.labels?.version || '?',
+            appVersion: '?',
+            namespace: secret.metadata.namespace,
+          };
+          operators[releaseName] = true;
+          if (!namespace) namespace = secret.metadata.namespace;
+        }
+      }
     }
 
+    const hasCharts = Object.keys(charts).length > 0;
     cachedStackInfo = {
-      managed: true,
-      chartVersion: cm.data?.chartVersion,
-      appVersion: cm.data?.appVersion,
-      namespace: cm.metadata.namespace,
+      managed: hasCharts,
+      namespace,
+      charts,
       operators,
+      // Legacy compat: use kubevirt chart version if present
+      chartVersion: charts.kubevirt?.chartVersion,
+      appVersion: charts.kubevirt?.appVersion,
     };
     return cachedStackInfo;
   } catch {
-    cachedStackInfo = { managed: false };
+    cachedStackInfo = { managed: false, charts: {} };
     return cachedStackInfo;
   }
 }
 
-/** Read the last-applied values from the Secret */
+/** Read the last-applied values from per-chart Secrets */
 export async function readStackValues(): Promise<StackValues> {
   if (!cachedStackInfo.managed || !cachedStackInfo.namespace) {
-    cachedStackValues = {};
+    cachedStackValues = { perOperator: {} };
     return cachedStackValues;
   }
 
+  const perOperator: StackValues['perOperator'] = {};
+
+  // Fetch all secrets with our label in one call
   try {
     const resp = (await ApiProxy.request(
-      `/api/v1/namespaces/${cachedStackInfo.namespace}/secrets/kubevirt-stack-values`
-    )) as { data?: Record<string, string> };
+      `/api/v1/namespaces/${cachedStackInfo.namespace}/secrets?labelSelector=kubevirt-stack%2Finfo=true`
+    )) as {
+      items?: Array<{
+        metadata: { name: string };
+        data?: Record<string, string>;
+      }>;
+    };
 
-    const raw = resp?.data?.['values.yaml'];
-    if (!raw) {
-      cachedStackValues = {};
-      return cachedStackValues;
-    }
+    for (const secret of resp?.items || []) {
+      const chartName = secret.metadata.name.replace('kubevirt-stack-values-', '');
+      const raw = secret.data?.['values.yaml'];
+      if (!raw) continue;
 
-    // Secret data is base64-encoded — decode with proper UTF-8 support
-    const decoded = new TextDecoder().decode(Uint8Array.from(atob(raw), c => c.charCodeAt(0)));
-    try {
-      cachedStackValues = {
-        raw: decoded,
-        parsed: yaml.load(decoded) as Record<string, unknown>,
-      };
-    } catch {
-      cachedStackValues = { raw: decoded };
+      try {
+        const decoded = new TextDecoder().decode(
+          Uint8Array.from(atob(raw), c => c.charCodeAt(0))
+        );
+        const parsed = yaml.load(decoded, { schema: yaml.CORE_SCHEMA }) as Record<string, unknown>;
+        if (parsed) perOperator[chartName] = parsed;
+      } catch (e) {
+        console.warn(`[kubevirt] Failed to parse values for chart ${chartName}:`, e);
+      }
     }
-    return cachedStackValues;
+  } catch (e) {
+    console.warn('[kubevirt] Failed to fetch stack values secrets:', e);
+  }
+
+  cachedStackValues = { perOperator };
+  return cachedStackValues;
+}
+
+/** Detect how each managed chart was installed (Flux, ArgoCD, Rancher, or Helm CLI) */
+export async function detectInstallMethods(): Promise<void> {
+  if (!cachedStackInfo.managed) return;
+
+  const chartNames = Object.keys(cachedStackInfo.charts);
+  if (chartNames.length === 0) return;
+
+  // Check for Flux HelmReleases
+  try {
+    const resp = (await ApiProxy.request(
+      '/apis/helm.toolkit.fluxcd.io/v2/helmreleases'
+    )) as { items?: Array<{ metadata: { name: string; namespace: string } }> };
+    for (const hr of resp?.items || []) {
+      if (cachedStackInfo.charts[hr.metadata.name]) {
+        cachedStackInfo.charts[hr.metadata.name].installMethod = 'flux';
+      }
+    }
   } catch {
-    cachedStackValues = {};
-    return cachedStackValues;
+    // Flux not installed or no access
+  }
+
+  // Check for ArgoCD Applications
+  try {
+    const resp = (await ApiProxy.request(
+      '/apis/argoproj.io/v1alpha1/applications'
+    )) as { items?: Array<{ metadata: { name: string; namespace: string } }> };
+    for (const app of resp?.items || []) {
+      if (cachedStackInfo.charts[app.metadata.name] && !cachedStackInfo.charts[app.metadata.name].installMethod) {
+        cachedStackInfo.charts[app.metadata.name].installMethod = 'argocd';
+      }
+    }
+  } catch {
+    // ArgoCD not installed or no access
+  }
+
+  // Check for Rancher HelmCharts
+  try {
+    const resp = (await ApiProxy.request(
+      '/apis/helm.cattle.io/v1/helmcharts'
+    )) as { items?: Array<{ metadata: { name: string; namespace: string } }> };
+    for (const hc of resp?.items || []) {
+      if (cachedStackInfo.charts[hc.metadata.name] && !cachedStackInfo.charts[hc.metadata.name].installMethod) {
+        cachedStackInfo.charts[hc.metadata.name].installMethod = 'rancher';
+      }
+    }
+  } catch {
+    // Rancher not installed or no access
+  }
+
+  // Anything still without a method was installed via Helm CLI
+  for (const chart of Object.values(cachedStackInfo.charts)) {
+    if (!chart.installMethod) {
+      chart.installMethod = 'helm-cli';
+    }
   }
 }
 
@@ -357,7 +471,4 @@ export function getStackInfo(): StackInfo {
   return cachedStackInfo;
 }
 
-/** Get cached stack values */
-export function getStackValues(): StackValues {
-  return cachedStackValues;
-}
+

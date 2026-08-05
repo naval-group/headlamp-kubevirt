@@ -1,32 +1,18 @@
 /**
- * Deployment strategy utilities for the Install Wizard and Marketplace.
- * Generates manifests or CRs for each deployment method, with apply and download modes.
+ * Deployment strategy utilities for the Install Wizard.
+ * Generates per-operator Helm commands, ArgoCD Applications, Flux HelmReleases,
+ * or Rancher HelmCharts — one per selected operator.
  */
 
 import { ApiProxy } from '@kinvolk/headlamp-plugin/lib';
 import yaml from 'js-yaml';
+import { getOperatorSchema } from './chartSchemas';
+import { OperatorInstall } from './helmValues';
+import { OCI_CHART_BASE } from './operatorRegistry';
 
 export type DeploymentMethod = 'helm-template' | 'helm-install' | 'argocd' | 'flux' | 'rancher';
 
 export type DeploymentMode = 'apply' | 'download';
-
-export interface ChartReference {
-  /** Chart repository URL (e.g., oci://ghcr.io/naval-group/helm-kubevirt or https://...) */
-  repoUrl: string;
-  /** Chart name */
-  chartName: string;
-  /** Chart version */
-  chartVersion: string;
-}
-
-export interface DeploymentConfig {
-  method: DeploymentMethod;
-  mode: DeploymentMode;
-  chart: ChartReference;
-  releaseName: string;
-  namespace: string;
-  values: Record<string, unknown>;
-}
 
 // ── Method metadata ─────────────────────────────────────────────────
 
@@ -53,9 +39,9 @@ export const DEPLOYMENT_METHODS: MethodInfo[] = [
   },
   {
     id: 'helm-install',
-    name: 'Helm Release',
+    name: 'Helm Release (CLI)',
     description:
-      'Install as a Helm release with full lifecycle management. Requires Helm or a Helm controller (Flux, Rancher).',
+      'Install each operator as a Helm release via CLI commands. Full lifecycle management.',
     icon: 'mdi:package-variant-closed',
     requiresController: false,
   },
@@ -63,7 +49,7 @@ export const DEPLOYMENT_METHODS: MethodInfo[] = [
     id: 'argocd',
     name: 'ArgoCD Application',
     description:
-      'Create an ArgoCD Application that manages the Helm chart. Requires ArgoCD installed in the cluster.',
+      'Create one ArgoCD Application per operator. Requires ArgoCD installed in the cluster.',
     icon: 'simple-icons:argo',
     requiresController: true,
     controllerDetection: {
@@ -75,7 +61,7 @@ export const DEPLOYMENT_METHODS: MethodInfo[] = [
     id: 'flux',
     name: 'Flux HelmRelease',
     description:
-      'Create a Flux HelmRelease CR. Requires Flux Helm Controller installed in the cluster.',
+      'Create Flux HelmRelease CRs. Requires Flux Helm Controller installed in the cluster.',
     icon: 'simple-icons:flux',
     requiresController: true,
     controllerDetection: {
@@ -87,7 +73,7 @@ export const DEPLOYMENT_METHODS: MethodInfo[] = [
     id: 'rancher',
     name: 'Rancher HelmChart',
     description:
-      'Create a Rancher HelmChart CR. Available on RKE2 and K3s clusters with the Helm controller.',
+      'Create Rancher HelmChart CRs. Available on RKE2 and K3s clusters with the Helm controller.',
     icon: 'simple-icons:rancher',
     requiresController: true,
     controllerDetection: {
@@ -99,7 +85,7 @@ export const DEPLOYMENT_METHODS: MethodInfo[] = [
 
 // ── Controller detection ────────────────────────────────────────────
 
-/** Check if a GitOps controller is available in the cluster */
+/** Check if a deployment method is available */
 export async function detectController(method: DeploymentMethod): Promise<boolean> {
   const info = DEPLOYMENT_METHODS.find(m => m.id === method);
   if (!info?.controllerDetection) return true; // No controller needed
@@ -120,61 +106,65 @@ export async function detectAvailableMethods(): Promise<Record<DeploymentMethod,
   return Object.fromEntries(results) as Record<DeploymentMethod, boolean>;
 }
 
-// ── CR Generators ───────────────────────────────────────────────────
+/** Check if an install has custom values */
+function hasValues(install: OperatorInstall): boolean {
+  return Object.keys(install.values).length > 0;
+}
 
-function generateArgoCDApplication(config: DeploymentConfig): Record<string, unknown> {
-  const isOCI = config.chart.repoUrl.startsWith('oci://');
+// ── Per-operator CR Generators ──────────────────────────────────────
+
+function generateArgoCDApplication(
+  install: OperatorInstall,
+  namespace: string,
+  crNs = 'argocd'
+): Record<string, unknown> {
   return {
     apiVersion: 'argoproj.io/v1alpha1',
     kind: 'Application',
     metadata: {
-      name: config.releaseName,
-      namespace: 'argocd',
+      name: install.chartName,
+      namespace: crNs,
     },
     spec: {
       project: 'default',
       source: {
-        ...(isOCI
-          ? { chart: config.chart.chartName, repoURL: config.chart.repoUrl }
-          : {
-              repoURL: config.chart.repoUrl,
-              chart: config.chart.chartName,
-            }),
-        targetRevision: config.chart.chartVersion,
+        chart: install.chartName,
+        repoURL: OCI_CHART_BASE,
+        targetRevision: install.chartVersion,
         helm: {
-          releaseName: config.releaseName,
-          values: yaml.dump(config.values, { lineWidth: -1, noRefs: true }),
+          releaseName: install.chartName,
+          ...(hasValues(install)
+            ? { values: yaml.dump(install.values, { lineWidth: -1, noRefs: true }) }
+            : {}),
         },
       },
       destination: {
         server: 'https://kubernetes.default.svc',
-        namespace: config.namespace,
+        namespace,
       },
       syncPolicy: {
-        automated: {
-          prune: true,
-          selfHeal: true,
-        },
+        automated: { prune: true, selfHeal: true },
         syncOptions: ['CreateNamespace=true'],
       },
     },
   };
 }
 
-function generateFluxHelmRelease(config: DeploymentConfig): Record<string, unknown>[] {
-  const isOCI = config.chart.repoUrl.startsWith('oci://');
-  const repoName = `${config.releaseName}-repo`;
+function generateFluxHelmRelease(
+  install: OperatorInstall,
+  targetNamespace: string,
+  crNs = 'flux-system'
+): Record<string, unknown>[] {
+  const repoName = `${install.chartName}-repo`;
+  const fluxNs = crNs;
 
   const helmRepo = {
     apiVersion: 'source.toolkit.fluxcd.io/v1',
     kind: 'HelmRepository',
-    metadata: {
-      name: repoName,
-      namespace: config.namespace,
-    },
+    metadata: { name: repoName, namespace: fluxNs },
     spec: {
-      type: isOCI ? 'oci' : 'default',
-      url: config.chart.repoUrl,
+      type: 'oci',
+      url: OCI_CHART_BASE,
       interval: '1h',
     },
   };
@@ -182,44 +172,43 @@ function generateFluxHelmRelease(config: DeploymentConfig): Record<string, unkno
   const helmRelease = {
     apiVersion: 'helm.toolkit.fluxcd.io/v2',
     kind: 'HelmRelease',
-    metadata: {
-      name: config.releaseName,
-      namespace: config.namespace,
-    },
+    metadata: { name: install.chartName, namespace: fluxNs },
     spec: {
+      targetNamespace: targetNamespace,
       interval: '1h',
+      install: { createNamespace: true },
       chart: {
         spec: {
-          chart: config.chart.chartName,
-          version: config.chart.chartVersion,
-          sourceRef: {
-            kind: 'HelmRepository',
-            name: repoName,
-          },
+          chart: install.chartName,
+          version: install.chartVersion,
+          sourceRef: { kind: 'HelmRepository', name: repoName },
         },
       },
-      values: config.values,
+      ...(hasValues(install) ? { values: install.values } : {}),
     },
   };
 
   return [helmRepo, helmRelease];
 }
 
-function generateRancherHelmChart(config: DeploymentConfig): Record<string, unknown> {
+function generateRancherHelmChart(
+  install: OperatorInstall,
+  namespace: string,
+  crNs = 'kube-system'
+): Record<string, unknown> {
   return {
     apiVersion: 'helm.cattle.io/v1',
     kind: 'HelmChart',
-    metadata: {
-      name: config.releaseName,
-      namespace: 'kube-system',
-    },
+    metadata: { name: install.chartName, namespace: crNs },
     spec: {
-      repo: config.chart.repoUrl,
-      chart: config.chart.chartName,
-      version: config.chart.chartVersion,
-      targetNamespace: config.namespace,
+      repo: OCI_CHART_BASE,
+      chart: install.chartName,
+      version: install.chartVersion,
+      targetNamespace: namespace,
       createNamespace: true,
-      valuesContent: yaml.dump(config.values, { lineWidth: -1, noRefs: true }),
+      ...(hasValues(install)
+        ? { valuesContent: yaml.dump(install.values, { lineWidth: -1, noRefs: true }) }
+        : {}),
     },
   };
 }
@@ -235,57 +224,74 @@ export interface GeneratedOutput {
   filename: string;
   /** Description of what was generated */
   description: string;
+  /** Per-operator breakdown (for review) */
+  perOperator: Array<{
+    displayName: string;
+    chartName: string;
+    chartVersion: string;
+    resources: Record<string, unknown>[];
+    helmCommand?: string;
+  }>;
 }
 
-/** Generate the deployment output for a given configuration */
-export function generateDeploymentOutput(config: DeploymentConfig): GeneratedOutput {
-  let resources: Record<string, unknown>[];
-  let filename: string;
-  let description: string;
+/** Generate the deployment output for all selected operators */
+export function generateDeploymentOutput(
+  method: DeploymentMethod,
+  installs: OperatorInstall[],
+  namespace = 'kubevirt',
+  crNamespace?: string
+): GeneratedOutput {
+  const allResources: Record<string, unknown>[] = [];
+  const perOperator: GeneratedOutput['perOperator'] = [];
 
-  switch (config.method) {
-    case 'helm-template':
-      // For helm-template, manifests come from the pre-rendered templates
-      // This is handled separately by manifestGenerator.ts
-      resources = [];
-      filename = `${config.releaseName}-manifests.yaml`;
-      description = 'Rendered Helm templates as raw Kubernetes manifests';
-      break;
+  for (const install of installs) {
+    let resources: Record<string, unknown>[] = [];
+    let helmCommand: string | undefined;
+    // Use namespace from: 1) operator values, 2) schema default, 3) fallback
+    const schemaDefault = getOperatorSchema(install.id)?.properties?.namespace?.default as string | undefined;
+    const ns = (install.values.namespace as string) || schemaDefault || namespace;
 
-    case 'helm-install':
-      // For helm-install download, output values.yaml
-      resources = [config.values];
-      filename = `${config.releaseName}-values.yaml`;
-      description = `Helm values for: helm install ${config.releaseName} ${config.chart.repoUrl}/${config.chart.chartName} --version ${config.chart.chartVersion} -f values.yaml`;
-      return {
-        yaml: yaml.dump(config.values, { lineWidth: -1, noRefs: true }),
-        resources,
-        filename,
-        description,
-      };
+    switch (method) {
+      case 'helm-template':
+      case 'helm-install': {
+        const hasVals = hasValues(install);
+        helmCommand = `helm install ${install.chartName} ${install.chartUrl} --version ${install.chartVersion} --namespace ${ns} --create-namespace${hasVals ? ` \\\n  -f ${install.chartName}-values.yaml` : ''}`;
+        break;
+      }
+      case 'argocd':
+        resources = [generateArgoCDApplication(install, ns, crNamespace)];
+        break;
+      case 'flux':
+        resources = generateFluxHelmRelease(install, ns, crNamespace);
+        break;
+      case 'rancher':
+        resources = [generateRancherHelmChart(install, ns, crNamespace)];
+        break;
+    }
 
-    case 'argocd':
-      resources = [generateArgoCDApplication(config)];
-      filename = `${config.releaseName}-argocd-application.yaml`;
-      description = 'ArgoCD Application pointing to the KubeVirt Helm chart';
-      break;
-
-    case 'flux':
-      resources = generateFluxHelmRelease(config);
-      filename = `${config.releaseName}-flux-helmrelease.yaml`;
-      description = 'Flux HelmRepository + HelmRelease for the KubeVirt Helm chart';
-      break;
-
-    case 'rancher':
-      resources = [generateRancherHelmChart(config)];
-      filename = `${config.releaseName}-rancher-helmchart.yaml`;
-      description = 'Rancher HelmChart CR for the KubeVirt Helm chart';
-      break;
+    allResources.push(...resources);
+    perOperator.push({
+      displayName: install.displayName,
+      chartName: install.chartName,
+      chartVersion: install.chartVersion,
+      resources,
+      helmCommand,
+    });
   }
 
-  const yamlStr = resources.map(r => yaml.dump(r, { lineWidth: -1, noRefs: true })).join('---\n');
+  const yamlStr = allResources.length > 0
+    ? allResources.map(r => yaml.dump(r, { lineWidth: -1, noRefs: true })).join('---\n')
+    : '';
 
-  return { yaml: yamlStr, resources, filename, description };
+  const methodLabel = DEPLOYMENT_METHODS.find(m => m.id === method)?.name || method;
+
+  return {
+    yaml: yamlStr,
+    resources: allResources,
+    filename: `kubevirt-operators-${method}.yaml`,
+    description: `${methodLabel} — ${installs.length} operator(s)`,
+    perOperator,
+  };
 }
 
 // ── Apply / Download ────────────────────────────────────────────────
@@ -382,7 +388,6 @@ function kindToPlural(kind: string): string {
     HelmRelease: 'helmreleases',
     HelmChart: 'helmcharts',
     Application: 'applications',
-    // KubeVirt ecosystem
     KubeVirt: 'kubevirts',
     CDI: 'cdis',
     AAQ: 'aaqs',
@@ -390,7 +395,48 @@ function kindToPlural(kind: string): string {
   };
 
   if (known[kind]) return known[kind];
-
-  // Fallback: lowercase + 's'
   return kind.toLowerCase() + 's';
 }
+
+// ── Fetch existing CR values for diff ───────────────────────────────
+
+/** Fetch existing values from a deployed GitOps CR */
+export async function fetchExistingValues(
+  chartName: string,
+  installMethod: string
+): Promise<Record<string, unknown> | null> {
+  try {
+    switch (installMethod) {
+      case 'flux': {
+        // Flux HelmRelease values are in spec.values
+        const resp = (await ApiProxy.request(
+          `/apis/helm.toolkit.fluxcd.io/v2/helmreleases?fieldSelector=metadata.name=${chartName}`
+        )) as { items?: Array<{ spec?: { values?: Record<string, unknown> } }> };
+        return resp?.items?.[0]?.spec?.values || {};
+      }
+      case 'argocd': {
+        // ArgoCD Application values are in spec.source.helm.values (YAML string)
+        const resp = (await ApiProxy.request(
+          `/apis/argoproj.io/v1alpha1/applications?fieldSelector=metadata.name=${chartName}`
+        )) as { items?: Array<{ spec?: { source?: { helm?: { values?: string } } } }> };
+        const valuesYaml = resp?.items?.[0]?.spec?.source?.helm?.values;
+        if (!valuesYaml) return {};
+        return yaml.load(valuesYaml, { schema: yaml.CORE_SCHEMA }) as Record<string, unknown> || {};
+      }
+      case 'rancher': {
+        // Rancher HelmChart values are in spec.valuesContent (YAML string)
+        const resp = (await ApiProxy.request(
+          `/apis/helm.cattle.io/v1/helmcharts?fieldSelector=metadata.name=${chartName}`
+        )) as { items?: Array<{ spec?: { valuesContent?: string } }> };
+        const valuesYaml = resp?.items?.[0]?.spec?.valuesContent;
+        if (!valuesYaml) return {};
+        return yaml.load(valuesYaml, { schema: yaml.CORE_SCHEMA }) as Record<string, unknown> || {};
+      }
+      default:
+        return null;
+    }
+  } catch {
+    return null;
+  }
+}
+

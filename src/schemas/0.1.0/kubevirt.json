@@ -48,14 +48,22 @@
               },
               "operator": {
                 "type": "string",
-                "enum": ["Exists", "Equal"]
+                "enum": [
+                  "Exists",
+                  "Equal"
+                ]
               },
               "value": {
                 "type": "string"
               },
               "effect": {
                 "type": "string",
-                "enum": ["", "NoSchedule", "PreferNoSchedule", "NoExecute"]
+                "enum": [
+                  "",
+                  "NoSchedule",
+                  "PreferNoSchedule",
+                  "NoExecute"
+                ]
               },
               "tolerationSeconds": {
                 "type": "integer"
@@ -203,14 +211,22 @@
               },
               "operator": {
                 "type": "string",
-                "enum": ["Exists", "Equal"]
+                "enum": [
+                  "Exists",
+                  "Equal"
+                ]
               },
               "value": {
                 "type": "string"
               },
               "effect": {
                 "type": "string",
-                "enum": ["", "NoSchedule", "PreferNoSchedule", "NoExecute"]
+                "enum": [
+                  "",
+                  "NoSchedule",
+                  "PreferNoSchedule",
+                  "NoExecute"
+                ]
               },
               "tolerationSeconds": {
                 "type": "integer"
@@ -271,7 +287,10 @@
                       "title": "Issuer Kind",
                       "description": "Kind of the issuer resource.",
                       "type": "string",
-                      "enum": ["Issuer", "ClusterIssuer"]
+                      "enum": [
+                        "Issuer",
+                        "ClusterIssuer"
+                      ]
                     },
                     "group": {
                       "title": "Issuer Group",
@@ -330,6 +349,12 @@
                       "NodeRestriction"
                     ]
                   }
+                },
+                "useEmulation": {
+                  "title": "Use Emulation",
+                  "description": "Use software emulation instead of /dev/kvm. Useful for dev/CI environments without nested virt support.",
+                  "type": "boolean",
+                  "default": false
                 }
               }
             },
@@ -356,13 +381,47 @@
               "description": "Default eviction strategy for VMs when a node is drained.",
               "type": "string",
               "default": "",
-              "enum": ["", "LiveMigrate", "LiveMigrateIfPossible", "External"]
+              "enum": [
+                "",
+                "LiveMigrate",
+                "LiveMigrateIfPossible",
+                "External"
+              ]
             },
             "permittedHostDevices": {
               "title": "Permitted Host Devices",
               "description": "Host devices (PCI, mediated devices) that may be exposed to VMs.",
               "type": "object",
               "default": {}
+            },
+            "mediatedDevicesConfiguration": {
+              "title": "Mediated Devices Configuration",
+              "description": "Configuration for vGPU passthrough via mediated devices (mdev).",
+              "type": "object",
+              "properties": {
+                "mediatedDeviceTypes": {
+                  "title": "Mediated Device Types",
+                  "description": "List of mediated device types to configure (e.g. nvidia-222, nvidia-228).",
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "nodeMediatedDeviceTypes": {
+                  "title": "Node-specific Mediated Device Types",
+                  "description": "Per-node mediated device type configuration with node selectors.",
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                },
+                "enabled": {
+                  "title": "Enabled",
+                  "description": "Enable creation and removal of mediated devices by virt-handler.",
+                  "type": "boolean",
+                  "default": true
+                }
+              }
             }
           }
         },
@@ -371,7 +430,11 @@
           "description": "Image pull policy for KubeVirt component images managed by the operator.",
           "type": "string",
           "default": "IfNotPresent",
-          "enum": ["Always", "IfNotPresent", "Never"]
+          "enum": [
+            "Always",
+            "IfNotPresent",
+            "Never"
+          ]
         },
         "monitorNamespace": {
           "title": "Monitor Namespace",

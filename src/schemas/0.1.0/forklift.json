@@ -190,6 +190,126 @@
       "title": "Enabled",
       "description": "Whether this component is enabled. Controlled by the parent chart.",
       "type": "boolean"
+    },
+    "inventoryProxy": {
+      "title": "Inventory Proxy",
+      "description": "OpenResty proxy that exposes the forklift-inventory API via the k8s API service proxy. Required on vanilla Kubernetes with client-cert kubeconfigs.",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "title": "Enabled",
+          "description": "Deploy the inventory proxy.",
+          "type": "boolean",
+          "default": true
+        },
+        "image": {
+          "title": "Image",
+          "type": "object",
+          "properties": {
+            "repository": {
+              "title": "Repository",
+              "description": "OpenResty container image repository.",
+              "type": "string",
+              "default": "openresty/openresty"
+            },
+            "tag": {
+              "title": "Tag",
+              "description": "OpenResty container image tag.",
+              "type": "string",
+              "default": "1.31.1.1-1-alpine-fat"
+            }
+          }
+        },
+        "resources": {
+          "title": "Resource Requirements",
+          "description": "CPU and memory resource requests and limits.",
+          "type": "object",
+          "properties": {
+            "requests": {
+              "title": "Resource Requests",
+              "type": "object",
+              "properties": {
+                "cpu": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ],
+                  "title": "CPU Request",
+                  "default": "5m"
+                },
+                "memory": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ],
+                  "title": "Memory Request",
+                  "default": "16Mi"
+                }
+              }
+            },
+            "limits": {
+              "title": "Resource Limits",
+              "type": "object",
+              "properties": {
+                "cpu": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ],
+                  "title": "CPU Limit"
+                },
+                "memory": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ],
+                  "title": "Memory Limit",
+                  "default": "64Mi"
+                }
+              }
+            }
+          }
+        },
+        "rbacProxy": {
+          "title": "RBAC Proxy",
+          "description": "kube-rbac-proxy sidecar that validates user identity and checks RBAC on providers.forklift.konveyor.io before allowing access.",
+          "type": "object",
+          "properties": {
+            "image": {
+              "title": "Image",
+              "type": "object",
+              "properties": {
+                "repository": {
+                  "title": "Repository",
+                  "type": "string",
+                  "default": "registry.k8s.io/kubebuilder/kube-rbac-proxy"
+                },
+                "tag": {
+                  "title": "Tag",
+                  "type": "string",
+                  "default": "v0.16.0"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   }
 }

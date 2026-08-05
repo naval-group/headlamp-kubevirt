@@ -1,20 +1,31 @@
 /**
  * Static registry of KubeVirt ecosystem operators.
  * Powers both the Install Wizard and the Settings Marketplace.
+ *
+ * Each operator maps to an individual Helm chart published at:
+ *   oci://ghcr.io/naval-group/kubevirt-stack-charts/<chartName>
  */
+
+export const OCI_CHART_BASE = 'oci://ghcr.io/naval-group/kubevirt-stack-charts';
 
 export type OperatorCategory = 'core' | 'networking' | 'storage' | 'migration' | 'extras';
 
 export interface OperatorInfo {
-  /** Unique ID matching the Helm subchart name */
+  /** Unique ID (camelCase) */
   id: string;
+  /** Chart name in the OCI registry (kebab-case). Defaults to id if not set. */
+  chartName?: string;
+  /** Chart version in the OCI registry */
+  chartVersion: string;
+  /** ArtifactHub repository name (for Apps catalog link). Defaults to chartName. */
+  artifactHubRepo?: string;
   /** Display name */
   name: string;
   /** Short description */
   description: string;
   /** Longer explanation shown in wizard */
   details: string;
-  /** Default version from the umbrella chart */
+  /** App version (upstream project version) */
   version: string;
   /** MDI icon name */
   icon: string;
@@ -22,9 +33,9 @@ export interface OperatorInfo {
   category: OperatorCategory;
   /** Operator IDs that must be installed first */
   dependencies: string[];
-  /** Enabled by default in the umbrella chart */
+  /** Selected by default in the wizard */
   defaultEnabled: boolean;
-  /** Helm values.yaml key (kebab-case). Defaults to id if not set. */
+  /** @deprecated Use chartName instead */
   helmKey?: string;
   /** How to detect if already installed */
   detection: OperatorDetection;
@@ -77,6 +88,7 @@ const OPERATORS: OperatorInfo[] = [
   // ── Core ───────────────────────────────────────────────────────────
   {
     id: 'kubevirt',
+    chartVersion: '0.2.0',
     name: 'KubeVirt',
     description: 'Virtual machine management for Kubernetes',
     details:
@@ -88,7 +100,6 @@ const OPERATORS: OperatorInfo[] = [
     defaultEnabled: true,
     detection: {
       crd: 'kubevirts.kubevirt.io',
-      namespace: 'kubevirt',
     },
     uninstallProtection: [
       {
@@ -103,6 +114,7 @@ const OPERATORS: OperatorInfo[] = [
   },
   {
     id: 'cdi',
+    chartVersion: '0.2.0',
     name: 'CDI',
     description: 'Containerized Data Importer for disk images',
     details:
@@ -114,7 +126,6 @@ const OPERATORS: OperatorInfo[] = [
     defaultEnabled: true,
     detection: {
       crd: 'cdis.cdi.kubevirt.io',
-      namespace: 'cdi',
     },
     uninstallProtection: [
       {
@@ -135,6 +146,7 @@ const OPERATORS: OperatorInfo[] = [
   // ── Networking ─────────────────────────────────────────────────────
   {
     id: 'multus',
+    chartVersion: '0.2.0',
     name: 'Multus CNI',
     description: 'Multi-network support for pods and VMs',
     details:
@@ -157,6 +169,7 @@ const OPERATORS: OperatorInfo[] = [
   },
   {
     id: 'kubemacpool',
+    chartVersion: '0.2.0',
     name: 'KubeMacPool',
     description: 'MAC address management for VMs',
     details:
@@ -167,13 +180,14 @@ const OPERATORS: OperatorInfo[] = [
     dependencies: ['multus'],
     defaultEnabled: true,
     detection: {
-      namespace: 'kubemacpool-system',
+      apiPath: '/apis/admissionregistration.k8s.io/v1/mutatingwebhookconfigurations/kubemacpool-mutator',
     },
   },
 
   // ── Storage ────────────────────────────────────────────────────────
   {
     id: 'hostpathProvisioner',
+    chartVersion: '0.2.0',
     helmKey: 'hostpath-provisioner',
     name: 'HostPath Provisioner',
     description: 'Local storage for development and testing',
@@ -186,13 +200,14 @@ const OPERATORS: OperatorInfo[] = [
     defaultEnabled: false,
     detection: {
       crd: 'hostpathprovisioners.hostpathprovisioner.kubevirt.io',
-      namespace: 'hostpath-provisioner',
     },
   },
 
   // ── Migration ──────────────────────────────────────────────────────
   {
     id: 'forklift',
+    chartVersion: '0.2.0',
+    artifactHubRepo: 'kubevirt-forklift',
     name: 'Forklift',
     description: 'Migrate VMs from VMware, oVirt, and OpenStack',
     details:
@@ -203,13 +218,14 @@ const OPERATORS: OperatorInfo[] = [
     dependencies: ['kubevirt', 'cdi'],
     defaultEnabled: false,
     detection: {
-      namespace: 'konveyor-forklift',
+      crd: 'providers.forklift.konveyor.io',
     },
   },
 
   // ── Extras ─────────────────────────────────────────────────────────
   {
     id: 'aaq',
+    chartVersion: '0.2.0',
     name: 'AAQ',
     description: 'Application-aware resource quotas',
     details:
@@ -221,11 +237,11 @@ const OPERATORS: OperatorInfo[] = [
     defaultEnabled: false,
     detection: {
       crd: 'aaqs.aaq.kubevirt.io',
-      namespace: 'aaq',
     },
   },
   {
     id: 'butaneOperator',
+    chartVersion: '0.2.0',
     helmKey: 'butane-operator',
     name: 'Butane Operator',
     description: 'Butane to Ignition conversion for CoreOS and Flatcar VMs',
@@ -243,6 +259,7 @@ const OPERATORS: OperatorInfo[] = [
   },
   {
     id: 'vmConsoleProxy',
+    chartVersion: '0.2.0',
     helmKey: 'vm-console-proxy',
     name: 'VM Console Proxy',
     description: 'Token-based console access for VMs',
@@ -254,11 +271,12 @@ const OPERATORS: OperatorInfo[] = [
     dependencies: ['kubevirt'],
     defaultEnabled: true,
     detection: {
-      deployment: { name: 'vm-console-proxy', namespace: 'kubevirt' },
+      apiPath: '/apis/rbac.authorization.k8s.io/v1/clusterroles/vm-console-proxy',
     },
   },
   {
     id: 'cloudProvider',
+    chartVersion: '0.2.0',
     helmKey: 'cloud-provider-kubevirt',
     name: 'Cloud Provider KubeVirt',
     description: 'Kubernetes cloud provider for KubeVirt',
@@ -275,6 +293,8 @@ const OPERATORS: OperatorInfo[] = [
   },
   {
     id: 'ipamController',
+    chartVersion: '0.2.0',
+    chartName: 'kubevirt-ipam-controller',
     helmKey: 'ipam-controller',
     name: 'IPAM Controller',
     description: 'Persistent IP addresses for VMs',
@@ -286,11 +306,13 @@ const OPERATORS: OperatorInfo[] = [
     dependencies: ['kubevirt'],
     defaultEnabled: true,
     detection: {
-      deployment: { name: 'kubevirt-ipam-controller', namespace: 'kubevirt' },
+      crd: 'ipamclaims.k8s.cni.cncf.io',
     },
   },
   {
     id: 'monitoring',
+    chartVersion: '0.2.0',
+    chartName: 'kubevirt-monitoring',
     name: 'KubeVirt Monitoring',
     description: 'ServiceMonitors and PrometheusRules for KubeVirt',
     details:
@@ -302,11 +324,13 @@ const OPERATORS: OperatorInfo[] = [
     defaultEnabled: false,
     detection: {
       crd: 'servicemonitors.monitoring.coreos.com',
-      namespace: 'kubevirt',
+      apiPath: '/apis/monitoring.coreos.com/v1/servicemonitors?labelSelector=kubevirt.io%2Fcomponent',
     },
   },
   {
     id: 'deleteProtection',
+    chartVersion: '0.2.0',
+    chartName: 'kubevirt-delete-protection',
     helmKey: 'delete-protection',
     name: 'Delete Protection',
     description: 'ValidatingAdmissionPolicy to prevent accidental VM deletion',
@@ -324,6 +348,8 @@ const OPERATORS: OperatorInfo[] = [
   },
   {
     id: 'vmTemplates',
+    chartVersion: '0.2.0',
+    chartName: 'kubevirt-vm-templates',
     helmKey: 'vm-templates',
     name: 'VM Templates',
     description: 'Pre-configured VirtualMachineTemplate resources',
@@ -342,15 +368,43 @@ const OPERATORS: OperatorInfo[] = [
 
 export default OPERATORS;
 
+/** Lookup map for O(1) access by ID */
+const OPERATOR_MAP = new Map(OPERATORS.map(op => [op.id, op]));
+
 /** Get operator by ID */
 export function getOperator(id: string): OperatorInfo | undefined {
-  return OPERATORS.find(op => op.id === id);
+  return OPERATOR_MAP.get(id);
 }
 
-/** Get the Helm values.yaml key for an operator (kebab-case) */
-export function getHelmKey(id: string): string {
-  const op = OPERATORS.find(o => o.id === id);
-  return op?.helmKey || id;
+/** Get the chart name in the OCI registry (kebab-case) */
+export function getChartName(id: string): string {
+  const op = OPERATOR_MAP.get(id);
+  return op?.chartName || op?.helmKey || id;
+}
+
+/** Get the full OCI chart URL for an operator */
+export function getChartUrl(id: string): string {
+  return `${OCI_CHART_BASE}/${getChartName(id)}`;
+}
+
+/** Get the ArtifactHub repo name for an operator */
+export function getArtifactHubRepo(id: string): string {
+  const op = OPERATOR_MAP.get(id);
+  return op?.artifactHubRepo || getChartName(id);
+}
+
+/** Get the Headlamp Apps URL for an operator's chart page */
+export function getAppsChartUrl(id: string): string {
+  // Extract cluster name from current URL hash: #/c/<cluster>/...
+  const match = window.location.hash.match(/#\/c\/([^/]+)/);
+  const cluster = match?.[1] || 'default';
+  return `#/c/${cluster}/helm/${getArtifactHubRepo(id)}/charts/${getChartName(id)}`;
+}
+
+/** Get the chart version for an operator */
+export function getChartVersion(id: string): string {
+  const op = OPERATOR_MAP.get(id);
+  return op?.chartVersion || '0.2.0';
 }
 
 /** Get operators grouped by category */
@@ -368,46 +422,5 @@ export function getOperatorsByCategory(): Record<OperatorCategory, OperatorInfo[
   return grouped;
 }
 
-/** Topological sort respecting dependencies. Returns IDs in apply order. */
-export function topologicalSort(selectedIds: Set<string>): string[] {
-  const visited = new Set<string>();
-  const result: string[] = [];
 
-  function visit(id: string) {
-    if (visited.has(id) || !selectedIds.has(id)) return;
-    visited.add(id);
-    const op = getOperator(id);
-    if (op) {
-      for (const dep of op.dependencies) {
-        visit(dep);
-      }
-    }
-    result.push(id);
-  }
 
-  for (const id of selectedIds) {
-    visit(id);
-  }
-  return result;
-}
-
-/** Get all transitive dependencies for a set of operators */
-export function resolveDependencies(selectedIds: Set<string>): Set<string> {
-  const resolved = new Set(selectedIds);
-
-  function addDeps(id: string) {
-    const op = getOperator(id);
-    if (!op) return;
-    for (const dep of op.dependencies) {
-      if (!resolved.has(dep)) {
-        resolved.add(dep);
-        addDeps(dep);
-      }
-    }
-  }
-
-  for (const id of selectedIds) {
-    addDeps(id);
-  }
-  return resolved;
-}

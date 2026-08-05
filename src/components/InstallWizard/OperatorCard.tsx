@@ -33,6 +33,8 @@ interface OperatorCardProps {
   readOnly?: boolean;
   /** Category color for the card border/background */
   categoryColor?: string;
+  /** Whether this operator is managed by our Helm chart (vs externally installed) */
+  managed?: boolean;
 }
 
 const STATUS_CHIP: Record<
@@ -40,6 +42,7 @@ const STATUS_CHIP: Record<
   { label: string; color: 'success' | 'default' | 'warning' | 'info' | 'primary' }
 > = {
   installed: { label: 'Installed', color: 'success' },
+  'installed-external': { label: 'External', color: 'default' },
   staged: { label: 'Staged', color: 'primary' },
   available: { label: 'Available', color: 'info' },
   'requires-deps': { label: 'Requires dependencies', color: 'warning' },
@@ -57,9 +60,11 @@ export default function OperatorCard({
   showVersion,
   readOnly,
   categoryColor,
+  managed,
 }: OperatorCardProps) {
   const isInstalled = status === 'installed';
   const isStaged = !isInstalled && enabled;
+  const effectiveStatus = isInstalled && managed === false ? 'installed-external' : status;
   const cc = categoryColor || 'divider';
   return (
     <Card
@@ -91,7 +96,13 @@ export default function OperatorCard({
           {(() => {
             // Show "Staged" when enabled in wizard but not installed on cluster
             const displayStatus =
-              status === 'installed' ? 'installed' : enabled ? 'staged' : status;
+              effectiveStatus === 'installed-external'
+                ? 'installed-external'
+                : status === 'installed'
+                ? 'installed'
+                : enabled
+                ? 'staged'
+                : status;
             const chip = displayStatus ? STATUS_CHIP[displayStatus] : null;
             return chip ? (
               <Chip

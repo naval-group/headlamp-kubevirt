@@ -57,7 +57,4 @@ export function getOperatorSchema(operatorId: string, version?: string): JsonSch
   return SCHEMAS[v]?.[operatorId] || null;
 }
 
-/** Get all available schema versions */
-export function getSchemaVersions(): string[] {
-  return Object.keys(SCHEMAS);
-}
+

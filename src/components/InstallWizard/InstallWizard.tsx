@@ -6,15 +6,16 @@
 import { Icon } from '@iconify/react';
 import { ApiProxy } from '@kinvolk/headlamp-plugin/lib';
 import { SectionBox } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
-import Editor from '@monaco-editor/react';
 import {
   Accordion,
   AccordionDetails,
   AccordionSummary,
   Alert,
+  Autocomplete,
   Box,
   Button,
   Chip,
+  CircularProgress,
   FormControl,
   FormControlLabel,
   Grid,
@@ -26,28 +27,29 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { useTheme } from '@mui/material/styles';
 import { useSnackbar } from 'notistack';
 import React, { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
-import { getGlobalSchema, getOperatorSchema } from '../../utils/chartSchemas';
+import { getOperatorSchema } from '../../utils/chartSchemas';
 import {
   applyResources,
   DEPLOYMENT_METHODS,
   DeploymentMethod,
   DeploymentMode,
   detectAvailableMethods,
+  fetchExistingValues,
   downloadFile,
   generateDeploymentOutput,
 } from '../../utils/deploymentStrategies';
 import {
-  buildHelmValues,
+  buildOperatorInstalls,
   createDefaultWizardState,
   GlobalConfig,
   valuesToYaml,
   WizardState,
 } from '../../utils/helmValues';
+import yaml from 'js-yaml';
+import { getAppsChartUrl, getChartName } from '../../utils/operatorRegistry';
 import {
-  detectInstalledOperators,
   getStackInfo,
   readStackValues,
   useOperatorDetection,
@@ -63,11 +65,6 @@ import OperatorCard from './OperatorCard';
 
 const STEPS = ['Welcome', 'Operators', 'Configuration', 'Deployment', 'Review'];
 
-const DEFAULT_CHART = {
-  repoUrl: 'oci://ghcr.io/naval-group/helm-kubevirt',
-  chartName: 'kubevirt-stack',
-  chartVersion: '1.8.1',
-};
 
 // ── Reducer ─────────────────────────────────────────────────────────
 
@@ -142,7 +139,7 @@ function reducer(state: FullState, action: Action): FullState {
 function initialState(): FullState {
   return {
     wizard: createDefaultWizardState(),
-    method: 'helm-template',
+    method: 'helm-install',
     mode: 'apply',
   };
 }
@@ -151,7 +148,6 @@ function initialState(): FullState {
 
 export default function InstallWizard() {
   const { enqueueSnackbar } = useSnackbar();
-  const theme = useTheme();
   const [activeStep, setActiveStep] = useState(0);
   const [state, dispatch] = useReducer(reducer, initialState());
   const [availableMethods, setAvailableMethods] = useState<Record<DeploymentMethod, boolean>>(
@@ -159,7 +155,10 @@ export default function InstallWizard() {
   );
   const [deploying, setDeploying] = useState(false);
   const [deployProgress, setDeployProgress] = useState({ current: 0, total: 0, resource: '' });
-  const [chartUrl, setChartUrl] = useState(DEFAULT_CHART.repoUrl);
+  const [deployResult, setDeployResult] = useState<{ success: boolean; message: string; operators: string[] } | null>(null);
+  const [crNamespace, setCrNamespace] = useState('flux-system');
+  const [clusterNamespaces, setClusterNamespaces] = useState<string[]>([]);
+  const [existingValues, setExistingValues] = useState<Record<string, Record<string, unknown> | null>>({});
   const [prereqs, setPrereqs] = useState<{
     checked: boolean;
     k8sVersion: string;
@@ -184,6 +183,7 @@ export default function InstallWizard() {
   const operatorsByCategory = useMemo(() => getOperatorsByCategory(), []);
   const detection = useOperatorDetection();
   const kvInstalled = detection.operators.kubevirt?.status === 'installed';
+  const stackInfo = getStackInfo();
 
   // Sync wizard state with detection: only enable installed operators + query params
   useEffect(() => {
@@ -196,9 +196,10 @@ export default function InstallWizard() {
     }
 
     // Handle ?enable= query param from catalog (pre-select additional operators)
-    const params = new URLSearchParams(
-      window.location.search || window.location.hash.split('?')[1] || ''
-    );
+    const hashQuery = window.location.hash.indexOf('?') !== -1
+      ? window.location.hash.substring(window.location.hash.indexOf('?') + 1)
+      : '';
+    const params = new URLSearchParams(window.location.search || hashQuery);
     const enableParam = params.get('enable');
     const validIds = new Set(OPERATORS.map(o => o.id));
     if (enableParam) {
@@ -211,38 +212,71 @@ export default function InstallWizard() {
         });
       setActiveStep(1); // Jump to Operators step
     }
-    // Rehydrate from stack values if the chart is managed by us
-    const stackInfo = getStackInfo();
-    if (stackInfo.managed) {
+    // Rehydrate from stack values if charts are managed by us
+    const si = getStackInfo();
+    if (si.managed) {
       readStackValues().then(sv => {
-        if (!sv.parsed) return;
-        const g = sv.parsed.global;
-        if (g) {
-          dispatch({
-            type: 'SET_GLOBAL',
-            global: {
-              imageRegistry: g.imageRegistry || '',
-              imagePullSecrets: (g.imagePullSecrets || []).map((s: { name?: string } | string) =>
-                typeof s === 'string' ? s : s.name || ''
-              ),
-              nodeSelector: g.nodeSelector || {},
-              tolerations: g.tolerations || [],
-            },
-          });
+        // Rehydrate global config from the first chart that has one
+        for (const vals of Object.values(sv.perOperator)) {
+          const g = vals?.global as Record<string, unknown> | undefined;
+          if (g) {
+            dispatch({
+              type: 'SET_GLOBAL',
+              global: {
+                imageRegistry: (g.imageRegistry as string) || '',
+                imagePullSecrets: ((g.imagePullSecrets as Array<{ name?: string } | string>) || []).map(
+                  (s: { name?: string } | string) => (typeof s === 'string' ? s : s.name || '')
+                ),
+                nodeSelector: (g.nodeSelector as Record<string, string>) || {},
+                tolerations: (g.tolerations as GlobalConfig['tolerations']) || [],
+              },
+            });
+            break; // global is the same across all charts
+          }
+        }
+        // Rehydrate per-operator values
+        for (const [chartName, vals] of Object.entries(sv.perOperator)) {
+          // Find the operator ID for this chart name
+          const op = OPERATORS.find(o => getChartName(o.id) === chartName);
+          if (op && vals) {
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            const { global: _, ...opVals } = vals;
+            if (Object.keys(opVals).length > 0) {
+              dispatch({ type: 'SET_OPERATOR_VALUES', id: op.id, values: opVals });
+            }
+          }
         }
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detection.loading]);
 
-  // Detect available deployment methods on mount
+  // Detect available deployment methods on mount and auto-select best one
   useEffect(() => {
-    detectAvailableMethods().then(setAvailableMethods);
+    detectAvailableMethods().then(methods => {
+      setAvailableMethods(methods);
+      // Auto-select best available method
+      if (methods.rancher) dispatch({ type: 'SET_METHOD', method: 'rancher' });
+      else if (methods.flux) dispatch({ type: 'SET_METHOD', method: 'flux' });
+      else if (methods.argocd) dispatch({ type: 'SET_METHOD', method: 'argocd' });
+    });
   }, []);
 
-  // Reset permission checks when method or mode changes
+  // Fetch cluster namespaces for CR namespace selector
+  useEffect(() => {
+    ApiProxy.request('/api/v1/namespaces')
+      .then((resp: { items?: Array<{ metadata: { name: string } }> }) => {
+        setClusterNamespaces((resp?.items || []).map(n => n.metadata.name).sort());
+      })
+      .catch(e => console.warn('[kubevirt] Failed to fetch namespaces:', e));
+  }, []);
+
+  // Reset permission checks and CR namespace when method changes
   useEffect(() => {
     setPrereqs(p => ({ ...p, checked: false }));
+    if (state.method === 'flux') setCrNamespace('flux-system');
+    else if (state.method === 'argocd') setCrNamespace('argocd');
+    else if (state.method === 'rancher') setCrNamespace('kube-system');
   }, [state.method, state.mode]);
 
   const checkPrerequisites = useCallback(async () => {
@@ -371,25 +405,74 @@ export default function InstallWizard() {
     [state.wizard.operators]
   );
 
-  const values = useMemo(() => buildHelmValues(state.wizard), [state.wizard]);
+  // Include new operators + managed operators with modified values (for updates)
+  const installs = useMemo(() => {
+    const allInstalls = buildOperatorInstalls(state.wizard);
+    return allInstalls.filter(i => {
+      const det = detection.operators[i.id];
+      if (det?.status !== 'installed') return true; // new operator
+      // Managed operator with modified values → include for update
+      const chart = stackInfo.charts[getChartName(i.id)];
+      if (chart && Object.keys(i.values).length > 0) return true;
+      return false;
+    });
+  }, [state.wizard, detection.operators, stackInfo]);
+
+  // If all installs are updates, detect the common install method and lock to it
+  const forcedMethod = useMemo((): DeploymentMethod | null => {
+    if (installs.length === 0) return null;
+    const allUpdates = installs.every(i => !!stackInfo.charts[getChartName(i.id)]);
+    if (!allUpdates) return null;
+    const methods = installs.map(i => stackInfo.charts[getChartName(i.id)]?.installMethod).filter(Boolean);
+    if (methods.length === 0) return null;
+    const unique = [...new Set(methods)];
+    if (unique.length !== 1) return null; // mixed methods — can't lock
+    const methodMap: Record<string, DeploymentMethod> = {
+      flux: 'flux', argocd: 'argocd', rancher: 'rancher', 'helm-cli': 'helm-install',
+    };
+    return methodMap[unique[0]!] || null;
+  }, [installs, stackInfo]);
+
+  // Auto-set method when forced
+  useEffect(() => {
+    if (forcedMethod && state.method !== forcedMethod) {
+      dispatch({ type: 'SET_METHOD', method: forcedMethod });
+    }
+  }, [forcedMethod, state.method]);
+
+  // Fetch existing values for updates when entering review step
+  useEffect(() => {
+    if (activeStep !== 4) return;
+    const updateInstalls = installs.filter(i => !!stackInfo.charts[getChartName(i.id)]);
+    if (updateInstalls.length === 0) return;
+    Promise.all(
+      updateInstalls.map(async i => {
+        const chart = stackInfo.charts[getChartName(i.id)];
+        const existing = chart?.installMethod
+          ? await fetchExistingValues(i.chartName, chart.installMethod)
+          : null;
+        return [i.chartName, existing] as const;
+      })
+    ).then(results => {
+      setExistingValues(Object.fromEntries(results));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeStep]);
 
   const output = useMemo(
-    () =>
-      generateDeploymentOutput({
-        method: state.method,
-        mode: state.mode,
-        chart: { ...DEFAULT_CHART, repoUrl: chartUrl },
-        releaseName: 'kubevirt-stack',
-        namespace: 'kubevirt',
-        values,
-      }),
-    [state.method, state.mode, chartUrl, values]
+    () => generateDeploymentOutput(state.method, installs, 'kubevirt', crNamespace),
+    [state.method, installs, crNamespace]
   );
 
   const handleDeploy = useCallback(async () => {
     if (state.mode === 'download') {
-      if (state.method === 'helm-install') {
-        downloadFile(valuesToYaml(values), 'kubevirt-stack-values.yaml');
+      if (state.method === 'helm-install' || state.method === 'helm-template') {
+        // Download per-operator values files as a combined YAML
+        const combined = installs.map(i => {
+          const header = `# ${i.displayName} (${i.chartName})\n# helm install ${i.chartName} ${i.chartUrl} --version ${i.chartVersion} -n kubevirt --create-namespace\n`;
+          return header + (Object.keys(i.values).length > 0 ? valuesToYaml(i.values) : '# (no custom values)\n');
+        }).join('---\n');
+        downloadFile(combined, 'kubevirt-operators-values.yaml');
       } else {
         downloadFile(output.yaml, output.filename);
       }
@@ -397,42 +480,33 @@ export default function InstallWizard() {
       return;
     }
 
-    // Apply mode
-    if (state.method === 'helm-template') {
+    // Apply mode — helm CLI methods can't apply directly, download instructions
+    if (state.method === 'helm-template' || state.method === 'helm-install') {
+      const commands = output.perOperator.map(p => p.helmCommand).filter(Boolean).join('\n\n');
       enqueueSnackbar(
-        'For helm template + apply, download the manifests and run: helm template kubevirt-stack <chart> -f values.yaml | kubectl apply -f -',
+        `${installs.length} operator(s) selected. Run the helm commands shown in the review step.`,
         { variant: 'info' }
       );
-      downloadFile(valuesToYaml(values), 'kubevirt-stack-values.yaml');
+      downloadFile(commands, 'kubevirt-install-commands.sh');
       return;
     }
 
-    if (state.method === 'helm-install') {
-      enqueueSnackbar(
-        `Run: helm install kubevirt-stack ${chartUrl}/${DEFAULT_CHART.chartName} --version ${DEFAULT_CHART.chartVersion} -f values.yaml`,
-        { variant: 'info' }
-      );
-      downloadFile(valuesToYaml(values), 'kubevirt-stack-values.yaml');
-      return;
-    }
+    const operatorNames = installs.map(i => i.displayName);
 
     // GitOps modes (ArgoCD, Flux, Rancher) - apply the CR
     setDeploying(true);
     const result = await applyResources(output.resources, (current, total, resource) => {
       setDeployProgress({ current, total, resource });
     });
-
-    if (result.success) {
-      enqueueSnackbar(`${output.description} applied successfully`, { variant: 'success' });
-      // Re-detect operators after a delay to pick up new installs
-      setTimeout(() => {
-        detectInstalledOperators().catch(() => {});
-      }, 5000);
-    } else {
-      enqueueSnackbar(result.error || 'Deployment failed', { variant: 'error' });
-    }
     setDeploying(false);
-  }, [state, values, output, chartUrl, enqueueSnackbar]);
+    setDeployResult({
+      success: result.success,
+      message: result.success
+        ? `${output.description} applied successfully`
+        : result.error || 'Deployment failed',
+      operators: operatorNames,
+    });
+  }, [state, installs, output, enqueueSnackbar]);
 
   return (
     <SectionBox
@@ -521,6 +595,7 @@ export default function InstallWizard() {
                             dispatch({ type: 'SET_VERSION', id, version })
                           }
                           status={detection.operators[op.id]?.status}
+                          managed={stackInfo.managed ? !!stackInfo.charts[getChartName(op.id)] : false}
                           locked={
                             lockedOperators.has(op.id) ||
                             detection.operators[op.id]?.status === 'installed'
@@ -544,67 +619,41 @@ export default function InstallWizard() {
             Configure settings for each operator. Expand sections for advanced options.
           </Typography>
 
-          {/* Global settings */}
-          {(() => {
-            const globalSchema = getGlobalSchema();
-            return globalSchema ? (
-              <Accordion
-                defaultExpanded
-                variant="outlined"
-                sx={{ mb: 2, '&:before': { display: 'none' } }}
-              >
-                <AccordionSummary expandIcon={<Icon icon="mdi:chevron-down" />}>
-                  <Box display="flex" alignItems="center" gap={1}>
-                    <Icon icon="mdi:earth" width={20} />
-                    <Typography variant="subtitle1" fontWeight={600}>
-                      Global Settings
-                    </Typography>
-                  </Box>
-                </AccordionSummary>
-                <AccordionDetails>
-                  <SchemaForm
-                    schema={globalSchema}
-                    values={{
-                      global: {
-                        imageRegistry: state.wizard.global.imageRegistry,
-                        imagePullSecrets: state.wizard.global.imagePullSecrets,
-                        nodeSelector: state.wizard.global.nodeSelector,
-                        tolerations: state.wizard.global.tolerations,
-                      },
-                    }}
-                    onChange={v => {
-                      const g = (v.global as Record<string, unknown>) || {};
-                      dispatch({
-                        type: 'SET_GLOBAL',
-                        global: {
-                          imageRegistry: (g.imageRegistry as string) || '',
-                          imagePullSecrets: (g.imagePullSecrets as string[]) || [],
-                          nodeSelector: (g.nodeSelector as Record<string, string>) || {},
-                          tolerations: (g.tolerations as GlobalConfig['tolerations']) || [],
-                        },
-                      });
-                    }}
-                    exclude={Object.keys(globalSchema.properties || {}).filter(k => k !== 'global')}
-                  />
-                  <TextField
-                    fullWidth
-                    size="small"
-                    label="Chart Repository URL"
-                    value={chartUrl}
-                    onChange={e => setChartUrl(e.target.value)}
-                    placeholder={DEFAULT_CHART.repoUrl}
-                    helperText="Helm chart repository URL. Override for air-gap or custom chart locations."
-                    sx={{ mt: 1 }}
-                  />
-                </AccordionDetails>
-              </Accordion>
-            ) : null;
-          })()}
-
-          {/* Per-operator settings — only for enabled operators */}
+          {/* Per-operator settings — only for enabled operators, skip externally installed */}
           {OPERATORS.filter(op => state.wizard.operators[op.id]).map(op => {
             const schema = getOperatorSchema(op.id);
             if (!schema) return null;
+            const isExternal = detection.operators[op.id]?.status === 'installed' &&
+              !(stackInfo.managed && stackInfo.charts[getChartName(op.id)]);
+            const isInstalled = detection.operators[op.id]?.status === 'installed';
+
+            if (isExternal) {
+              return (
+                <Box
+                  key={op.id}
+                  sx={{
+                    mb: 1,
+                    p: 1.5,
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    borderRadius: 1,
+                    borderLeft: `3px solid ${CATEGORY_COLORS[op.category]}`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1,
+                    opacity: 0.7,
+                  }}
+                >
+                  <Icon icon={op.icon} width={20} color={CATEGORY_COLORS[op.category]} />
+                  <Typography variant="subtitle2">{op.name}</Typography>
+                  <Chip label="External" size="small" variant="outlined" />
+                  <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto' }}>
+                    Managed externally — use Apps or CLI to reconfigure
+                  </Typography>
+                </Box>
+              );
+            }
+
             return (
               <Accordion
                 key={op.id}
@@ -619,7 +668,7 @@ export default function InstallWizard() {
                   <Box display="flex" alignItems="center" gap={1}>
                     <Icon icon={op.icon} width={20} color={CATEGORY_COLORS[op.category]} />
                     <Typography variant="subtitle2">{op.name}</Typography>
-                    {detection.operators[op.id]?.status === 'installed' ? (
+                    {isInstalled ? (
                       <Chip label="Installed" size="small" color="success" variant="outlined" />
                     ) : (
                       <Chip
@@ -640,7 +689,7 @@ export default function InstallWizard() {
                     schema={schema}
                     values={state.wizard.operatorValues[op.id] || {}}
                     onChange={v => dispatch({ type: 'SET_OPERATOR_VALUES', id: op.id, values: v })}
-                    exclude={['enabled', 'global']}
+                    exclude={['enabled']}
                   />
                 </AccordionDetails>
               </Accordion>
@@ -682,26 +731,36 @@ export default function InstallWizard() {
                 label={
                   <Box display="flex" alignItems="center" gap={0.5}>
                     <Icon icon="mdi:download" width={16} />
-                    <Typography variant="body2">Download for another cluster</Typography>
+                    <Typography variant="body2">Download manifests</Typography>
                   </Box>
                 }
               />
             </RadioGroup>
           </Box>
 
+          {/* Locked method for updates */}
+          {forcedMethod && state.mode === 'apply' && (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Deployment method locked to match how these operators were originally installed.
+            </Alert>
+          )}
+
           {/* Method selector — gated by mode */}
           <FormControl sx={{ mb: 3 }}>
             <RadioGroup
               value={state.method}
               onChange={e =>
-                dispatch({ type: 'SET_METHOD', method: e.target.value as DeploymentMethod })
+                !forcedMethod && dispatch({ type: 'SET_METHOD', method: e.target.value as DeploymentMethod })
               }
             >
-              {DEPLOYMENT_METHODS.map(m => {
-                // In apply mode, only show methods detected on this cluster
-                // In download mode, all methods are available (generating files for another cluster)
+              {DEPLOYMENT_METHODS.filter(m => {
+                if (m.id === 'helm-template') return false;
+                if (state.mode === 'download' && m.id === 'helm-install') return false;
+                return true;
+              }).map(m => {
                 const detected = availableMethods[m.id] !== false;
-                const available = state.mode === 'download' || detected;
+                const locked = forcedMethod && state.mode === 'apply' && m.id !== forcedMethod;
+                const available = (state.mode === 'download' || detected) && !locked;
                 return (
                   <Box
                     key={m.id}
@@ -744,7 +803,32 @@ export default function InstallWizard() {
             </RadioGroup>
           </FormControl>
 
-          {state.mode === 'apply' && (
+          {/* CR namespace for GitOps methods */}
+          {!['helm-install', 'helm-template'].includes(state.method) && (
+            <Box sx={{ mt: 2, maxWidth: 400 }}>
+              <Autocomplete
+                freeSolo
+                options={clusterNamespaces}
+                value={crNamespace}
+                onInputChange={(_, v) => setCrNamespace(v)}
+                size="small"
+                renderInput={params => (
+                  <TextField
+                    {...params}
+                    label="CR Namespace"
+                    helperText={
+                      state.method === 'flux' ? 'Namespace where Flux CRs will be created'
+                      : state.method === 'argocd' ? 'Namespace where ArgoCD Application CRs will be created'
+                      : state.method === 'rancher' ? 'Namespace where Rancher HelmChart CRs will be created'
+                      : 'Namespace for the GitOps CRs'
+                    }
+                  />
+                )}
+              />
+            </Box>
+          )}
+
+          {state.mode === 'apply' && state.method !== 'helm-install' && (
             <Box mt={3}>
               {!prereqs.checked ? (
                 <Button
@@ -829,80 +913,179 @@ export default function InstallWizard() {
       {/* Step 4: Review & Deploy */}
       {activeStep === 4 && (
         <Box>
-          <Typography variant="body2" color="text.secondary" mb={2}>
-            {output.description}
-          </Typography>
-
-          <Box display="flex" gap={1} flexWrap="wrap" mb={2}>
-            {OPERATORS.filter(op => state.wizard.operators[op.id]).map(op => (
-              <Chip
-                key={op.id}
-                label={`${op.name} ${state.wizard.versions[op.id] || op.version}`}
-                size="small"
-                icon={<Icon icon={op.icon} width={16} />}
+          {/* Deploy result panel */}
+          {deployResult ? (
+            <Box textAlign="center" py={4}>
+              <Icon
+                icon={deployResult.success ? 'mdi:check-circle' : 'mdi:alert-circle'}
+                width={64}
+                color={deployResult.success ? '#4caf50' : '#f44336'}
               />
-            ))}
-          </Box>
-
-          <Box
-            sx={{
-              border: 1,
-              borderColor: 'divider',
-              borderRadius: 1,
-              overflow: 'hidden',
-              mb: 2,
-            }}
-          >
-            <Editor
-              height="400px"
-              language="yaml"
-              theme={theme.palette.mode === 'dark' ? 'vs-dark' : 'light'}
-              value={
-                state.method === 'helm-install' || state.method === 'helm-template'
-                  ? valuesToYaml(values)
-                  : output.yaml
-              }
-              options={{
-                readOnly: true,
-                minimap: { enabled: false },
-                lineNumbers: 'on',
-                scrollBeyondLastLine: false,
-                fontSize: 12,
-                tabSize: 2,
-              }}
-            />
-          </Box>
-
-          {(state.method === 'helm-install' || state.method === 'helm-template') && (
-            <Alert severity="info" sx={{ mb: 2 }}>
-              <Typography variant="body2">
-                {state.method === 'helm-install' ? (
-                  <>
-                    Run:{' '}
-                    <code>
-                      helm install kubevirt-stack {chartUrl}/{DEFAULT_CHART.chartName} --version{' '}
-                      {DEFAULT_CHART.chartVersion} -f values.yaml
-                    </code>
-                  </>
-                ) : (
-                  <>
-                    Run:{' '}
-                    <code>
-                      helm template kubevirt-stack {chartUrl}/{DEFAULT_CHART.chartName} --version{' '}
-                      {DEFAULT_CHART.chartVersion} -f values.yaml | kubectl apply -f -
-                    </code>
-                  </>
-                )}
+              <Typography variant="h6" sx={{ mt: 2, mb: 1 }}>
+                {deployResult.success ? 'Deployment Successful' : 'Deployment Failed'}
               </Typography>
-            </Alert>
-          )}
-
-          {deploying && (
-            <Alert severity="info" sx={{ mb: 2 }}>
-              <Typography variant="body2">
-                Applying {deployProgress.current}/{deployProgress.total}: {deployProgress.resource}
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                {deployResult.message}
               </Typography>
-            </Alert>
+              <Box display="flex" gap={1} justifyContent="center" flexWrap="wrap" mb={3}>
+                {deployResult.operators.map((name, i) => (
+                  <Chip
+                    key={i}
+                    label={name}
+                    size="small"
+                    color={deployResult.success ? 'success' : 'error'}
+                    variant="outlined"
+                  />
+                ))}
+              </Box>
+              {deployResult.success && (
+                <Typography variant="caption" color="text.secondary">
+                  Operators may take a few minutes to become fully ready. Check the Operator Catalog for status.
+                </Typography>
+              )}
+            </Box>
+          ) : deploying ? (
+            <Box textAlign="center" py={4}>
+              <CircularProgress size={48} sx={{ mb: 2 }} />
+              <Typography variant="h6" sx={{ mb: 1 }}>
+                Deploying...
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {deployProgress.resource} ({deployProgress.current}/{deployProgress.total})
+              </Typography>
+            </Box>
+          ) : (
+            <>
+              <Typography variant="body2" color="text.secondary" mb={2}>
+                {output.description}
+              </Typography>
+
+              {/* Per-operator breakdown */}
+              {output.perOperator.map((p, i) => {
+                const install = installs.find(inst => inst.chartName === p.chartName);
+                const hasVals = install && Object.keys(install.values).length > 0;
+                const op = OPERATORS.find(o => getChartName(o.id) === p.chartName);
+                const chart = stackInfo.charts[p.chartName];
+                const isUpdate = !!chart;
+                return (
+                <Box
+                  key={i}
+                  sx={{ border: 1, borderColor: isUpdate ? 'info.main' : 'divider', borderRadius: 1, p: 2, mb: 1.5 }}
+                >
+                  <Box display="flex" alignItems="center" gap={1} mb={1}>
+                    <Icon
+                      icon={op?.icon || 'mdi:package-variant'}
+                      width={20}
+                    />
+                    <Typography variant="subtitle2">{p.displayName}</Typography>
+                    <Chip label={`${p.chartName}:${p.chartVersion}`} size="small" variant="outlined" />
+                    <Chip
+                      label={isUpdate ? 'Update' : 'Install'}
+                      size="small"
+                      color={isUpdate ? 'info' : 'success'}
+                      variant="outlined"
+                    />
+                    {chart?.installMethod && (
+                      <Chip
+                        label={`via ${chart.installMethod}`}
+                        size="small"
+                        variant="outlined"
+                        sx={{ fontSize: '0.7rem' }}
+                      />
+                    )}
+                    <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto' }}>
+                      {hasVals ? 'Custom values' : 'Default values'}
+                    </Typography>
+                  </Box>
+                  {!isUpdate && p.helmCommand ? (
+                    <Box
+                      component="pre"
+                      sx={{
+                        bgcolor: 'action.hover',
+                        color: 'text.primary',
+                        p: 1.5,
+                        m: 0,
+                        borderRadius: 1,
+                        fontSize: '0.78rem',
+                        overflow: 'auto',
+                        userSelect: 'all',
+                      }}
+                    >
+                      {p.helmCommand}
+                    </Box>
+                  ) : null}
+                  {/* Values view for updates */}
+                  {isUpdate && hasVals && (
+                    <Box sx={{ mt: 1 }}>
+                      {existingValues[p.chartName] && Object.keys(existingValues[p.chartName]!).length > 0 ? (
+                        <>
+                          <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
+                            Values diff (current → new)
+                          </Typography>
+                          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
+                            <Box>
+                              <Typography variant="caption" color="text.secondary">Current</Typography>
+                              <Box component="pre" sx={{ bgcolor: 'action.hover', color: 'text.primary', p: 1, m: 0, borderRadius: 1, fontSize: '0.75rem', overflow: 'auto', maxHeight: 200, border: '1px solid', borderColor: 'divider' }}>
+                                {valuesToYaml(existingValues[p.chartName]!)}
+                              </Box>
+                            </Box>
+                            <Box>
+                              <Typography variant="caption" color="info.main">New</Typography>
+                              <Box component="pre" sx={{ bgcolor: 'action.hover', color: 'text.primary', p: 1, m: 0, borderRadius: 1, fontSize: '0.75rem', overflow: 'auto', maxHeight: 200, border: '1px solid', borderColor: 'info.main' }}>
+                                {valuesToYaml(install?.values || {})}
+                              </Box>
+                            </Box>
+                          </Box>
+                        </>
+                      ) : (
+                        <>
+                          <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
+                            New values (no previous custom values)
+                          </Typography>
+                          <Box component="pre" sx={{ bgcolor: 'action.hover', color: 'text.primary', p: 1.5, m: 0, borderRadius: 1, fontSize: '0.75rem', overflow: 'auto', maxHeight: 200, border: '1px solid', borderColor: 'info.main' }}>
+                            {valuesToYaml(install?.values || {})}
+                          </Box>
+                        </>
+                      )}
+                    </Box>
+                  )}
+                  {state.method === 'helm-install' && state.mode === 'apply' && (
+                    <Box mt={1}>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<Icon icon="mdi:store" width={16} />}
+                        onClick={() => {
+                          const op = OPERATORS.find(o => getChartName(o.id) === p.chartName);
+                          if (op) window.location.hash = getAppsChartUrl(op.id);
+                        }}
+                      >
+                        Install via Apps
+                      </Button>
+                    </Box>
+                  )}
+                  {!isUpdate && p.resources.length > 0 && (
+                    <Box
+                      component="pre"
+                      sx={{
+                        bgcolor: 'action.hover',
+                        color: 'text.primary',
+                        p: 1.5,
+                        m: 0,
+                        borderRadius: 1,
+                        fontSize: '0.78rem',
+                        overflow: 'auto',
+                        maxHeight: 200,
+                        userSelect: 'all',
+                      }}
+                    >
+                      {p.resources.map(r => yaml.dump(r, { lineWidth: -1, noRefs: true })).join('---\n')}
+                    </Box>
+                  )}
+                </Box>
+                );
+              })}
+            </>
           )}
         </Box>
       )}
@@ -910,8 +1093,8 @@ export default function InstallWizard() {
       {/* Navigation */}
       <Box display="flex" justifyContent="space-between" mt={4}>
         <Button
-          disabled={activeStep === 0}
-          onClick={() => setActiveStep(s => s - 1)}
+          disabled={activeStep === 0 || (deployResult?.success === true)}
+          onClick={() => { setDeployResult(null); setActiveStep(s => s - 1); }}
           startIcon={<Icon icon="mdi:arrow-left" />}
         >
           Back
@@ -928,13 +1111,22 @@ export default function InstallWizard() {
           ) : (
             <Button
               variant="contained"
-              onClick={handleDeploy}
+              onClick={deployResult ? () => {
+                setDeployResult(null);
+                setActiveStep(0);
+                dispatch({ type: 'RESET' });
+                // Re-sync with detection after reset
+                for (const op of OPERATORS) {
+                  const isInstalled = detection.operators[op.id]?.status === 'installed';
+                  dispatch({ type: 'SET_OPERATOR', id: op.id, enabled: isInstalled });
+                }
+              } : handleDeploy}
               disabled={deploying}
               startIcon={
-                <Icon icon={state.mode === 'download' ? 'mdi:download' : 'mdi:rocket-launch'} />
+                <Icon icon={deployResult ? 'mdi:restart' : state.mode === 'download' ? 'mdi:download' : 'mdi:rocket-launch'} />
               }
             >
-              {deploying ? 'Deploying...' : state.mode === 'download' ? 'Download' : 'Deploy'}
+              {deployResult ? 'Start Over' : deploying ? 'Applying...' : state.mode === 'download' ? 'Download' : 'Apply'}
             </Button>
           )}
         </Box>

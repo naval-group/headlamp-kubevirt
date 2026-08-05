@@ -200,6 +200,67 @@
               "items": {
                 "type": "string"
               }
+            },
+            "podResourceRequirements": {
+              "title": "Pod Resource Requirements",
+              "description": "Resource requirements for CDI importer/cloner pods.",
+              "type": "object",
+              "properties": {
+                "limits": {
+                  "type": "object",
+                  "properties": {
+                    "cpu": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ],
+                      "title": "CPU Limit"
+                    },
+                    "memory": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ],
+                      "title": "Memory Limit"
+                    }
+                  }
+                },
+                "requests": {
+                  "type": "object",
+                  "properties": {
+                    "cpu": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ],
+                      "title": "CPU Request"
+                    },
+                    "memory": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ],
+                      "title": "Memory Request"
+                    }
+                  }
+                }
+              }
             }
           }
         },
@@ -208,7 +269,11 @@
           "description": "Image pull policy for CDI workload pods managed by the operator.",
           "type": "string",
           "default": "IfNotPresent",
-          "enum": ["Always", "IfNotPresent", "Never"]
+          "enum": [
+            "Always",
+            "IfNotPresent",
+            "Never"
+          ]
         },
         "infra": {
           "title": "Infrastructure Placement",
@@ -254,6 +319,45 @@
       "title": "Enabled",
       "description": "Whether this component is enabled. Controlled by the parent chart.",
       "type": "boolean"
+    },
+    "uploadProxy": {
+      "title": "Upload Proxy",
+      "description": "Expose CDI upload proxy externally for virtctl image-upload.",
+      "type": "object",
+      "properties": {
+        "externalMode": {
+          "title": "External Mode",
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "title": "Enabled",
+              "type": "boolean",
+              "default": false
+            },
+            "hostname": {
+              "title": "Hostname",
+              "description": "FQDN for the upload proxy.",
+              "type": "string",
+              "default": ""
+            },
+            "ingressClassName": {
+              "title": "Ingress Class",
+              "type": "string",
+              "default": ""
+            },
+            "certManager": {
+              "title": "cert-manager",
+              "type": "object",
+              "properties": {
+                "issuerRef": {
+                  "title": "Issuer Reference",
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   }
 }
