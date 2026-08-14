@@ -27,6 +27,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import yaml from 'js-yaml';
 import { useSnackbar } from 'notistack';
 import React, { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
 import { getOperatorSchema } from '../../utils/chartSchemas';
@@ -36,8 +37,8 @@ import {
   DeploymentMethod,
   DeploymentMode,
   detectAvailableMethods,
-  fetchExistingValues,
   downloadFile,
+  fetchExistingValues,
   generateDeploymentOutput,
 } from '../../utils/deploymentStrategies';
 import {
@@ -47,13 +48,12 @@ import {
   valuesToYaml,
   WizardState,
 } from '../../utils/helmValues';
-import yaml from 'js-yaml';
-import { getAppsChartUrl, getChartName } from '../../utils/operatorRegistry';
 import {
   getStackInfo,
   readStackValues,
   useOperatorDetection,
 } from '../../utils/operatorDetection';
+import { getAppsChartUrl, getChartName } from '../../utils/operatorRegistry';
 import OPERATORS, {
   CATEGORY_COLORS,
   getOperatorsByCategory,
@@ -239,7 +239,7 @@ export default function InstallWizard() {
           // Find the operator ID for this chart name
           const op = OPERATORS.find(o => getChartName(o.id) === chartName);
           if (op && vals) {
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            // eslint-disable-next-line no-unused-vars, @typescript-eslint/no-unused-vars
             const { global: _, ...opVals } = vals;
             if (Object.keys(opVals).length > 0) {
               dispatch({ type: 'SET_OPERATOR_VALUES', id: op.id, values: opVals });
@@ -845,7 +845,7 @@ export default function InstallWizard() {
                   <Typography variant="subtitle2" mb={1}>
                     Cluster Permissions
                   </Typography>
-                  {(state.method === 'helm-template' || state.method === 'helm-install'
+                  {(state.method === 'helm-template'
                     ? [
                         {
                           label: `Kubernetes ${prereqs.k8sVersion}`,
@@ -895,7 +895,7 @@ export default function InstallWizard() {
                       )}
                     </Box>
                   ))}
-                  {state.method !== 'helm-template' && state.method !== 'helm-install' && (
+                  {state.method !== 'helm-template' && (
                     <Box display="flex" alignItems="center" gap={1} mt={0.5}>
                       <Icon icon="mdi:information-outline" width={18} style={{ color: '#888' }} />
                       <Typography variant="body2" color="text.secondary">

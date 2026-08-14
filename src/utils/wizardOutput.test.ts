@@ -3,7 +3,7 @@
  * Tests every operator's schema against the output of buildOperatorInstalls.
  */
 import Ajv from 'ajv';
-import { readdirSync, readFileSync } from 'fs';
+import { readFileSync } from 'fs';
 import { join } from 'path';
 import { describe, expect, it } from 'vitest';
 import { buildOperatorInstalls, createDefaultWizardState } from './helmValues';

@@ -3,7 +3,6 @@ import {
   buildOperatorInstalls,
   createDefaultWizardState,
   valuesToYaml,
-  WizardState,
 } from './helmValues';
 import { getChartName, getChartUrl, getChartVersion, OCI_CHART_BASE } from './operatorRegistry';
 
