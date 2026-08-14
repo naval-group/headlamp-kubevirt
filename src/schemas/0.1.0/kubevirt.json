@@ -48,22 +48,14 @@
               },
               "operator": {
                 "type": "string",
-                "enum": [
-                  "Exists",
-                  "Equal"
-                ]
+                "enum": ["Exists", "Equal"]
               },
               "value": {
                 "type": "string"
               },
               "effect": {
                 "type": "string",
-                "enum": [
-                  "",
-                  "NoSchedule",
-                  "PreferNoSchedule",
-                  "NoExecute"
-                ]
+                "enum": ["", "NoSchedule", "PreferNoSchedule", "NoExecute"]
               },
               "tolerationSeconds": {
                 "type": "integer"
@@ -211,22 +203,14 @@
               },
               "operator": {
                 "type": "string",
-                "enum": [
-                  "Exists",
-                  "Equal"
-                ]
+                "enum": ["Exists", "Equal"]
               },
               "value": {
                 "type": "string"
               },
               "effect": {
                 "type": "string",
-                "enum": [
-                  "",
-                  "NoSchedule",
-                  "PreferNoSchedule",
-                  "NoExecute"
-                ]
+                "enum": ["", "NoSchedule", "PreferNoSchedule", "NoExecute"]
               },
               "tolerationSeconds": {
                 "type": "integer"
@@ -287,10 +271,7 @@
                       "title": "Issuer Kind",
                       "description": "Kind of the issuer resource.",
                       "type": "string",
-                      "enum": [
-                        "Issuer",
-                        "ClusterIssuer"
-                      ]
+                      "enum": ["Issuer", "ClusterIssuer"]
                     },
                     "group": {
                       "title": "Issuer Group",
@@ -381,12 +362,7 @@
               "description": "Default eviction strategy for VMs when a node is drained.",
               "type": "string",
               "default": "",
-              "enum": [
-                "",
-                "LiveMigrate",
-                "LiveMigrateIfPossible",
-                "External"
-              ]
+              "enum": ["", "LiveMigrate", "LiveMigrateIfPossible", "External"]
             },
             "permittedHostDevices": {
               "title": "Permitted Host Devices",
@@ -430,11 +406,7 @@
           "description": "Image pull policy for KubeVirt component images managed by the operator.",
           "type": "string",
           "default": "IfNotPresent",
-          "enum": [
-            "Always",
-            "IfNotPresent",
-            "Never"
-          ]
+          "enum": ["Always", "IfNotPresent", "Never"]
         },
         "monitorNamespace": {
           "title": "Monitor Namespace",

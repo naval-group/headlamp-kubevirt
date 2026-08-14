@@ -64,7 +64,11 @@ import VMTemplateList from './components/VirtualMachineTemplate/List';
 import KubeVirtSettings from './kubevirt/Settings';
 import { areFeatureGatesLoaded, getFeatureGates, loadFeatureGates } from './utils/featureGates';
 import { detectKubeVirtCapabilities } from './utils/kubevirtVersion';
-import { detectInstalledOperators, detectInstallMethods, detectStackInfo } from './utils/operatorDetection';
+import {
+  detectInstalledOperators,
+  detectInstallMethods,
+  detectStackInfo,
+} from './utils/operatorDetection';
 
 // ── IPAM CRD detection ─────────────────────────────────────────────────
 let ipamCRDAvailable = false;

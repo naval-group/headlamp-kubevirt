@@ -269,11 +269,7 @@
           "description": "Image pull policy for CDI workload pods managed by the operator.",
           "type": "string",
           "default": "IfNotPresent",
-          "enum": [
-            "Always",
-            "IfNotPresent",
-            "Never"
-          ]
+          "enum": ["Always", "IfNotPresent", "Never"]
         },
         "infra": {
           "title": "Infrastructure Placement",

@@ -56,5 +56,3 @@ export function getOperatorSchema(operatorId: string, version?: string): JsonSch
   const v = version && SCHEMAS[version] ? version : LATEST_VERSION;
   return SCHEMAS[v]?.[operatorId] || null;
 }
-
-

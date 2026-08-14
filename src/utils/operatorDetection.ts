@@ -392,9 +392,7 @@ export async function readStackValues(): Promise<StackValues> {
       if (!raw) continue;
 
       try {
-        const decoded = new TextDecoder().decode(
-          Uint8Array.from(atob(raw), c => c.charCodeAt(0))
-        );
+        const decoded = new TextDecoder().decode(Uint8Array.from(atob(raw), c => c.charCodeAt(0)));
         const parsed = yaml.load(decoded, { schema: yaml.CORE_SCHEMA }) as Record<string, unknown>;
         if (parsed) perOperator[chartName] = parsed;
       } catch (e) {
@@ -418,9 +416,9 @@ export async function detectInstallMethods(): Promise<void> {
 
   // Check for Flux HelmReleases
   try {
-    const resp = (await ApiProxy.request(
-      '/apis/helm.toolkit.fluxcd.io/v2/helmreleases'
-    )) as { items?: Array<{ metadata: { name: string; namespace: string } }> };
+    const resp = (await ApiProxy.request('/apis/helm.toolkit.fluxcd.io/v2/helmreleases')) as {
+      items?: Array<{ metadata: { name: string; namespace: string } }>;
+    };
     for (const hr of resp?.items || []) {
       if (cachedStackInfo.charts[hr.metadata.name]) {
         cachedStackInfo.charts[hr.metadata.name].installMethod = 'flux';
@@ -432,11 +430,14 @@ export async function detectInstallMethods(): Promise<void> {
 
   // Check for ArgoCD Applications
   try {
-    const resp = (await ApiProxy.request(
-      '/apis/argoproj.io/v1alpha1/applications'
-    )) as { items?: Array<{ metadata: { name: string; namespace: string } }> };
+    const resp = (await ApiProxy.request('/apis/argoproj.io/v1alpha1/applications')) as {
+      items?: Array<{ metadata: { name: string; namespace: string } }>;
+    };
     for (const app of resp?.items || []) {
-      if (cachedStackInfo.charts[app.metadata.name] && !cachedStackInfo.charts[app.metadata.name].installMethod) {
+      if (
+        cachedStackInfo.charts[app.metadata.name] &&
+        !cachedStackInfo.charts[app.metadata.name].installMethod
+      ) {
         cachedStackInfo.charts[app.metadata.name].installMethod = 'argocd';
       }
     }
@@ -446,11 +447,14 @@ export async function detectInstallMethods(): Promise<void> {
 
   // Check for Rancher HelmCharts
   try {
-    const resp = (await ApiProxy.request(
-      '/apis/helm.cattle.io/v1/helmcharts'
-    )) as { items?: Array<{ metadata: { name: string; namespace: string } }> };
+    const resp = (await ApiProxy.request('/apis/helm.cattle.io/v1/helmcharts')) as {
+      items?: Array<{ metadata: { name: string; namespace: string } }>;
+    };
     for (const hc of resp?.items || []) {
-      if (cachedStackInfo.charts[hc.metadata.name] && !cachedStackInfo.charts[hc.metadata.name].installMethod) {
+      if (
+        cachedStackInfo.charts[hc.metadata.name] &&
+        !cachedStackInfo.charts[hc.metadata.name].installMethod
+      ) {
         cachedStackInfo.charts[hc.metadata.name].installMethod = 'rancher';
       }
     }
@@ -470,5 +474,3 @@ export async function detectInstallMethods(): Promise<void> {
 export function getStackInfo(): StackInfo {
   return cachedStackInfo;
 }
-
-

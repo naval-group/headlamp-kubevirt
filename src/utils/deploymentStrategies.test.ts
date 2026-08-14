@@ -95,7 +95,10 @@ describe('generateDeploymentOutput', () => {
     expect(helm.values).toContain('imageRegistry');
 
     // CDI has namespace value — should include it in helm values
-    const cdiSpec = (output.resources[1] as Record<string, unknown>).spec as Record<string, unknown>;
+    const cdiSpec = (output.resources[1] as Record<string, unknown>).spec as Record<
+      string,
+      unknown
+    >;
     const cdiSource = cdiSpec.source as Record<string, unknown>;
     const cdiHelm = cdiSource.helm as Record<string, unknown>;
     expect(cdiHelm.values).toContain('namespace');

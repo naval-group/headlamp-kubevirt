@@ -130,5 +130,3 @@ export function createDefaultWizardState(): WizardState {
 export function valuesToYaml(values: Record<string, unknown>): string {
   return yaml.dump(values, { lineWidth: -1, noRefs: true });
 }
-
-

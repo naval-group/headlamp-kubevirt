@@ -191,11 +191,7 @@
           "description": "Image pull policy for AAQ workload pods managed by the operator.",
           "type": "string",
           "default": "IfNotPresent",
-          "enum": [
-            "Always",
-            "IfNotPresent",
-            "Never"
-          ]
+          "enum": ["Always", "IfNotPresent", "Never"]
         },
         "infra": {
           "title": "Infrastructure Placement",

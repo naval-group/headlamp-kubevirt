@@ -180,7 +180,8 @@ const OPERATORS: OperatorInfo[] = [
     dependencies: ['multus'],
     defaultEnabled: true,
     detection: {
-      apiPath: '/apis/admissionregistration.k8s.io/v1/mutatingwebhookconfigurations/kubemacpool-mutator',
+      apiPath:
+        '/apis/admissionregistration.k8s.io/v1/mutatingwebhookconfigurations/kubemacpool-mutator',
     },
   },
 
@@ -324,7 +325,8 @@ const OPERATORS: OperatorInfo[] = [
     defaultEnabled: false,
     detection: {
       crd: 'servicemonitors.monitoring.coreos.com',
-      apiPath: '/apis/monitoring.coreos.com/v1/servicemonitors?labelSelector=kubevirt.io%2Fcomponent',
+      apiPath:
+        '/apis/monitoring.coreos.com/v1/servicemonitors?labelSelector=kubevirt.io%2Fcomponent',
     },
   },
   {
@@ -421,6 +423,3 @@ export function getOperatorsByCategory(): Record<OperatorCategory, OperatorInfo[
   }
   return grouped;
 }
-
-
-

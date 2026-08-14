@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  buildOperatorInstalls,
-  createDefaultWizardState,
-  valuesToYaml,
-} from './helmValues';
+import { buildOperatorInstalls, createDefaultWizardState, valuesToYaml } from './helmValues';
 import { getChartName, getChartUrl, getChartVersion, OCI_CHART_BASE } from './operatorRegistry';
 
 describe('operatorRegistry helpers', () => {

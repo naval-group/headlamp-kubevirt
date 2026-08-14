@@ -248,14 +248,20 @@ export function generateDeploymentOutput(
     let resources: Record<string, unknown>[] = [];
     let helmCommand: string | undefined;
     // Use namespace from: 1) operator values, 2) schema default, 3) fallback
-    const schemaDefault = getOperatorSchema(install.id)?.properties?.namespace?.default as string | undefined;
+    const schemaDefault = getOperatorSchema(install.id)?.properties?.namespace?.default as
+      | string
+      | undefined;
     const ns = (install.values.namespace as string) || schemaDefault || namespace;
 
     switch (method) {
       case 'helm-template':
       case 'helm-install': {
         const hasVals = hasValues(install);
-        helmCommand = `helm install ${install.chartName} ${install.chartUrl} --version ${install.chartVersion} --namespace ${ns} --create-namespace${hasVals ? ` \\\n  -f ${install.chartName}-values.yaml` : ''}`;
+        helmCommand = `helm install ${install.chartName} ${install.chartUrl} --version ${
+          install.chartVersion
+        } --namespace ${ns} --create-namespace${
+          hasVals ? ` \\\n  -f ${install.chartName}-values.yaml` : ''
+        }`;
         break;
       }
       case 'argocd':
@@ -279,9 +285,10 @@ export function generateDeploymentOutput(
     });
   }
 
-  const yamlStr = allResources.length > 0
-    ? allResources.map(r => yaml.dump(r, { lineWidth: -1, noRefs: true })).join('---\n')
-    : '';
+  const yamlStr =
+    allResources.length > 0
+      ? allResources.map(r => yaml.dump(r, { lineWidth: -1, noRefs: true })).join('---\n')
+      : '';
 
   const methodLabel = DEPLOYMENT_METHODS.find(m => m.id === method)?.name || method;
 
@@ -421,7 +428,9 @@ export async function fetchExistingValues(
         )) as { items?: Array<{ spec?: { source?: { helm?: { values?: string } } } }> };
         const valuesYaml = resp?.items?.[0]?.spec?.source?.helm?.values;
         if (!valuesYaml) return {};
-        return yaml.load(valuesYaml, { schema: yaml.CORE_SCHEMA }) as Record<string, unknown> || {};
+        return (
+          (yaml.load(valuesYaml, { schema: yaml.CORE_SCHEMA }) as Record<string, unknown>) || {}
+        );
       }
       case 'rancher': {
         // Rancher HelmChart values are in spec.valuesContent (YAML string)
@@ -430,7 +439,9 @@ export async function fetchExistingValues(
         )) as { items?: Array<{ spec?: { valuesContent?: string } }> };
         const valuesYaml = resp?.items?.[0]?.spec?.valuesContent;
         if (!valuesYaml) return {};
-        return yaml.load(valuesYaml, { schema: yaml.CORE_SCHEMA }) as Record<string, unknown> || {};
+        return (
+          (yaml.load(valuesYaml, { schema: yaml.CORE_SCHEMA }) as Record<string, unknown>) || {}
+        );
       }
       default:
         return null;
@@ -439,4 +450,3 @@ export async function fetchExistingValues(
     return null;
   }
 }
-

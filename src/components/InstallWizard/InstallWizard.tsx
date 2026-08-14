@@ -48,11 +48,7 @@ import {
   valuesToYaml,
   WizardState,
 } from '../../utils/helmValues';
-import {
-  getStackInfo,
-  readStackValues,
-  useOperatorDetection,
-} from '../../utils/operatorDetection';
+import { getStackInfo, readStackValues, useOperatorDetection } from '../../utils/operatorDetection';
 import { getAppsChartUrl, getChartName } from '../../utils/operatorRegistry';
 import OPERATORS, {
   CATEGORY_COLORS,
@@ -64,7 +60,6 @@ import SchemaForm from '../common/SchemaForm';
 import OperatorCard from './OperatorCard';
 
 const STEPS = ['Welcome', 'Operators', 'Configuration', 'Deployment', 'Review'];
-
 
 // ── Reducer ─────────────────────────────────────────────────────────
 
@@ -155,10 +150,16 @@ export default function InstallWizard() {
   );
   const [deploying, setDeploying] = useState(false);
   const [deployProgress, setDeployProgress] = useState({ current: 0, total: 0, resource: '' });
-  const [deployResult, setDeployResult] = useState<{ success: boolean; message: string; operators: string[] } | null>(null);
+  const [deployResult, setDeployResult] = useState<{
+    success: boolean;
+    message: string;
+    operators: string[];
+  } | null>(null);
   const [crNamespace, setCrNamespace] = useState('flux-system');
   const [clusterNamespaces, setClusterNamespaces] = useState<string[]>([]);
-  const [existingValues, setExistingValues] = useState<Record<string, Record<string, unknown> | null>>({});
+  const [existingValues, setExistingValues] = useState<
+    Record<string, Record<string, unknown> | null>
+  >({});
   const [prereqs, setPrereqs] = useState<{
     checked: boolean;
     k8sVersion: string;
@@ -196,9 +197,10 @@ export default function InstallWizard() {
     }
 
     // Handle ?enable= query param from catalog (pre-select additional operators)
-    const hashQuery = window.location.hash.indexOf('?') !== -1
-      ? window.location.hash.substring(window.location.hash.indexOf('?') + 1)
-      : '';
+    const hashQuery =
+      window.location.hash.indexOf('?') !== -1
+        ? window.location.hash.substring(window.location.hash.indexOf('?') + 1)
+        : '';
     const params = new URLSearchParams(window.location.search || hashQuery);
     const enableParam = params.get('enable');
     const validIds = new Set(OPERATORS.map(o => o.id));
@@ -224,8 +226,10 @@ export default function InstallWizard() {
               type: 'SET_GLOBAL',
               global: {
                 imageRegistry: (g.imageRegistry as string) || '',
-                imagePullSecrets: ((g.imagePullSecrets as Array<{ name?: string } | string>) || []).map(
-                  (s: { name?: string } | string) => (typeof s === 'string' ? s : s.name || '')
+                imagePullSecrets: (
+                  (g.imagePullSecrets as Array<{ name?: string } | string>) || []
+                ).map((s: { name?: string } | string) =>
+                  typeof s === 'string' ? s : s.name || ''
                 ),
                 nodeSelector: (g.nodeSelector as Record<string, string>) || {},
                 tolerations: (g.tolerations as GlobalConfig['tolerations']) || [],
@@ -423,12 +427,17 @@ export default function InstallWizard() {
     if (installs.length === 0) return null;
     const allUpdates = installs.every(i => !!stackInfo.charts[getChartName(i.id)]);
     if (!allUpdates) return null;
-    const methods = installs.map(i => stackInfo.charts[getChartName(i.id)]?.installMethod).filter(Boolean);
+    const methods = installs
+      .map(i => stackInfo.charts[getChartName(i.id)]?.installMethod)
+      .filter(Boolean);
     if (methods.length === 0) return null;
     const unique = [...new Set(methods)];
     if (unique.length !== 1) return null; // mixed methods — can't lock
     const methodMap: Record<string, DeploymentMethod> = {
-      flux: 'flux', argocd: 'argocd', rancher: 'rancher', 'helm-cli': 'helm-install',
+      flux: 'flux',
+      argocd: 'argocd',
+      rancher: 'rancher',
+      'helm-cli': 'helm-install',
     };
     return methodMap[unique[0]!] || null;
   }, [installs, stackInfo]);
@@ -468,10 +477,15 @@ export default function InstallWizard() {
     if (state.mode === 'download') {
       if (state.method === 'helm-install' || state.method === 'helm-template') {
         // Download per-operator values files as a combined YAML
-        const combined = installs.map(i => {
-          const header = `# ${i.displayName} (${i.chartName})\n# helm install ${i.chartName} ${i.chartUrl} --version ${i.chartVersion} -n kubevirt --create-namespace\n`;
-          return header + (Object.keys(i.values).length > 0 ? valuesToYaml(i.values) : '# (no custom values)\n');
-        }).join('---\n');
+        const combined = installs
+          .map(i => {
+            const header = `# ${i.displayName} (${i.chartName})\n# helm install ${i.chartName} ${i.chartUrl} --version ${i.chartVersion} -n kubevirt --create-namespace\n`;
+            return (
+              header +
+              (Object.keys(i.values).length > 0 ? valuesToYaml(i.values) : '# (no custom values)\n')
+            );
+          })
+          .join('---\n');
         downloadFile(combined, 'kubevirt-operators-values.yaml');
       } else {
         downloadFile(output.yaml, output.filename);
@@ -482,7 +496,10 @@ export default function InstallWizard() {
 
     // Apply mode — helm CLI methods can't apply directly, download instructions
     if (state.method === 'helm-template' || state.method === 'helm-install') {
-      const commands = output.perOperator.map(p => p.helmCommand).filter(Boolean).join('\n\n');
+      const commands = output.perOperator
+        .map(p => p.helmCommand)
+        .filter(Boolean)
+        .join('\n\n');
       enqueueSnackbar(
         `${installs.length} operator(s) selected. Run the helm commands shown in the review step.`,
         { variant: 'info' }
@@ -595,7 +612,9 @@ export default function InstallWizard() {
                             dispatch({ type: 'SET_VERSION', id, version })
                           }
                           status={detection.operators[op.id]?.status}
-                          managed={stackInfo.managed ? !!stackInfo.charts[getChartName(op.id)] : false}
+                          managed={
+                            stackInfo.managed ? !!stackInfo.charts[getChartName(op.id)] : false
+                          }
                           locked={
                             lockedOperators.has(op.id) ||
                             detection.operators[op.id]?.status === 'installed'
@@ -623,7 +642,8 @@ export default function InstallWizard() {
           {OPERATORS.filter(op => state.wizard.operators[op.id]).map(op => {
             const schema = getOperatorSchema(op.id);
             if (!schema) return null;
-            const isExternal = detection.operators[op.id]?.status === 'installed' &&
+            const isExternal =
+              detection.operators[op.id]?.status === 'installed' &&
               !(stackInfo.managed && stackInfo.charts[getChartName(op.id)]);
             const isInstalled = detection.operators[op.id]?.status === 'installed';
 
@@ -750,7 +770,8 @@ export default function InstallWizard() {
             <RadioGroup
               value={state.method}
               onChange={e =>
-                !forcedMethod && dispatch({ type: 'SET_METHOD', method: e.target.value as DeploymentMethod })
+                !forcedMethod &&
+                dispatch({ type: 'SET_METHOD', method: e.target.value as DeploymentMethod })
               }
             >
               {DEPLOYMENT_METHODS.filter(m => {
@@ -817,10 +838,13 @@ export default function InstallWizard() {
                     {...params}
                     label="CR Namespace"
                     helperText={
-                      state.method === 'flux' ? 'Namespace where Flux CRs will be created'
-                      : state.method === 'argocd' ? 'Namespace where ArgoCD Application CRs will be created'
-                      : state.method === 'rancher' ? 'Namespace where Rancher HelmChart CRs will be created'
-                      : 'Namespace for the GitOps CRs'
+                      state.method === 'flux'
+                        ? 'Namespace where Flux CRs will be created'
+                        : state.method === 'argocd'
+                        ? 'Namespace where ArgoCD Application CRs will be created'
+                        : state.method === 'rancher'
+                        ? 'Namespace where Rancher HelmChart CRs will be created'
+                        : 'Namespace for the GitOps CRs'
                     }
                   />
                 )}
@@ -940,7 +964,8 @@ export default function InstallWizard() {
               </Box>
               {deployResult.success && (
                 <Typography variant="caption" color="text.secondary">
-                  Operators may take a few minutes to become fully ready. Check the Operator Catalog for status.
+                  Operators may take a few minutes to become fully ready. Check the Operator Catalog
+                  for status.
                 </Typography>
               )}
             </Box>
@@ -968,121 +993,187 @@ export default function InstallWizard() {
                 const chart = stackInfo.charts[p.chartName];
                 const isUpdate = !!chart;
                 return (
-                <Box
-                  key={i}
-                  sx={{ border: 1, borderColor: isUpdate ? 'info.main' : 'divider', borderRadius: 1, p: 2, mb: 1.5 }}
-                >
-                  <Box display="flex" alignItems="center" gap={1} mb={1}>
-                    <Icon
-                      icon={op?.icon || 'mdi:package-variant'}
-                      width={20}
-                    />
-                    <Typography variant="subtitle2">{p.displayName}</Typography>
-                    <Chip label={`${p.chartName}:${p.chartVersion}`} size="small" variant="outlined" />
-                    <Chip
-                      label={isUpdate ? 'Update' : 'Install'}
-                      size="small"
-                      color={isUpdate ? 'info' : 'success'}
-                      variant="outlined"
-                    />
-                    {chart?.installMethod && (
+                  <Box
+                    key={i}
+                    sx={{
+                      border: 1,
+                      borderColor: isUpdate ? 'info.main' : 'divider',
+                      borderRadius: 1,
+                      p: 2,
+                      mb: 1.5,
+                    }}
+                  >
+                    <Box display="flex" alignItems="center" gap={1} mb={1}>
+                      <Icon icon={op?.icon || 'mdi:package-variant'} width={20} />
+                      <Typography variant="subtitle2">{p.displayName}</Typography>
                       <Chip
-                        label={`via ${chart.installMethod}`}
+                        label={`${p.chartName}:${p.chartVersion}`}
                         size="small"
                         variant="outlined"
-                        sx={{ fontSize: '0.7rem' }}
                       />
-                    )}
-                    <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto' }}>
-                      {hasVals ? 'Custom values' : 'Default values'}
-                    </Typography>
-                  </Box>
-                  {!isUpdate && p.helmCommand ? (
-                    <Box
-                      component="pre"
-                      sx={{
-                        bgcolor: 'action.hover',
-                        color: 'text.primary',
-                        p: 1.5,
-                        m: 0,
-                        borderRadius: 1,
-                        fontSize: '0.78rem',
-                        overflow: 'auto',
-                        userSelect: 'all',
-                      }}
-                    >
-                      {p.helmCommand}
-                    </Box>
-                  ) : null}
-                  {/* Values view for updates */}
-                  {isUpdate && hasVals && (
-                    <Box sx={{ mt: 1 }}>
-                      {existingValues[p.chartName] && Object.keys(existingValues[p.chartName]!).length > 0 ? (
-                        <>
-                          <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
-                            Values diff (current → new)
-                          </Typography>
-                          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
-                            <Box>
-                              <Typography variant="caption" color="text.secondary">Current</Typography>
-                              <Box component="pre" sx={{ bgcolor: 'action.hover', color: 'text.primary', p: 1, m: 0, borderRadius: 1, fontSize: '0.75rem', overflow: 'auto', maxHeight: 200, border: '1px solid', borderColor: 'divider' }}>
-                                {valuesToYaml(existingValues[p.chartName]!)}
-                              </Box>
-                            </Box>
-                            <Box>
-                              <Typography variant="caption" color="info.main">New</Typography>
-                              <Box component="pre" sx={{ bgcolor: 'action.hover', color: 'text.primary', p: 1, m: 0, borderRadius: 1, fontSize: '0.75rem', overflow: 'auto', maxHeight: 200, border: '1px solid', borderColor: 'info.main' }}>
-                                {valuesToYaml(install?.values || {})}
-                              </Box>
-                            </Box>
-                          </Box>
-                        </>
-                      ) : (
-                        <>
-                          <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
-                            New values (no previous custom values)
-                          </Typography>
-                          <Box component="pre" sx={{ bgcolor: 'action.hover', color: 'text.primary', p: 1.5, m: 0, borderRadius: 1, fontSize: '0.75rem', overflow: 'auto', maxHeight: 200, border: '1px solid', borderColor: 'info.main' }}>
-                            {valuesToYaml(install?.values || {})}
-                          </Box>
-                        </>
-                      )}
-                    </Box>
-                  )}
-                  {state.method === 'helm-install' && state.mode === 'apply' && (
-                    <Box mt={1}>
-                      <Button
+                      <Chip
+                        label={isUpdate ? 'Update' : 'Install'}
                         size="small"
+                        color={isUpdate ? 'info' : 'success'}
                         variant="outlined"
-                        startIcon={<Icon icon="mdi:store" width={16} />}
-                        onClick={() => {
-                          const op = OPERATORS.find(o => getChartName(o.id) === p.chartName);
-                          if (op) window.location.hash = getAppsChartUrl(op.id);
+                      />
+                      {chart?.installMethod && (
+                        <Chip
+                          label={`via ${chart.installMethod}`}
+                          size="small"
+                          variant="outlined"
+                          sx={{ fontSize: '0.7rem' }}
+                        />
+                      )}
+                      <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto' }}>
+                        {hasVals ? 'Custom values' : 'Default values'}
+                      </Typography>
+                    </Box>
+                    {!isUpdate && p.helmCommand ? (
+                      <Box
+                        component="pre"
+                        sx={{
+                          bgcolor: 'action.hover',
+                          color: 'text.primary',
+                          p: 1.5,
+                          m: 0,
+                          borderRadius: 1,
+                          fontSize: '0.78rem',
+                          overflow: 'auto',
+                          userSelect: 'all',
                         }}
                       >
-                        Install via Apps
-                      </Button>
-                    </Box>
-                  )}
-                  {!isUpdate && p.resources.length > 0 && (
-                    <Box
-                      component="pre"
-                      sx={{
-                        bgcolor: 'action.hover',
-                        color: 'text.primary',
-                        p: 1.5,
-                        m: 0,
-                        borderRadius: 1,
-                        fontSize: '0.78rem',
-                        overflow: 'auto',
-                        maxHeight: 200,
-                        userSelect: 'all',
-                      }}
-                    >
-                      {p.resources.map(r => yaml.dump(r, { lineWidth: -1, noRefs: true })).join('---\n')}
-                    </Box>
-                  )}
-                </Box>
+                        {p.helmCommand}
+                      </Box>
+                    ) : null}
+                    {/* Values view for updates */}
+                    {isUpdate && hasVals && (
+                      <Box sx={{ mt: 1 }}>
+                        {existingValues[p.chartName] &&
+                        Object.keys(existingValues[p.chartName]!).length > 0 ? (
+                          <>
+                            <Typography
+                              variant="caption"
+                              fontWeight={600}
+                              color="text.secondary"
+                              sx={{ mb: 0.5, display: 'block' }}
+                            >
+                              Values diff (current → new)
+                            </Typography>
+                            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
+                              <Box>
+                                <Typography variant="caption" color="text.secondary">
+                                  Current
+                                </Typography>
+                                <Box
+                                  component="pre"
+                                  sx={{
+                                    bgcolor: 'action.hover',
+                                    color: 'text.primary',
+                                    p: 1,
+                                    m: 0,
+                                    borderRadius: 1,
+                                    fontSize: '0.75rem',
+                                    overflow: 'auto',
+                                    maxHeight: 200,
+                                    border: '1px solid',
+                                    borderColor: 'divider',
+                                  }}
+                                >
+                                  {valuesToYaml(existingValues[p.chartName]!)}
+                                </Box>
+                              </Box>
+                              <Box>
+                                <Typography variant="caption" color="info.main">
+                                  New
+                                </Typography>
+                                <Box
+                                  component="pre"
+                                  sx={{
+                                    bgcolor: 'action.hover',
+                                    color: 'text.primary',
+                                    p: 1,
+                                    m: 0,
+                                    borderRadius: 1,
+                                    fontSize: '0.75rem',
+                                    overflow: 'auto',
+                                    maxHeight: 200,
+                                    border: '1px solid',
+                                    borderColor: 'info.main',
+                                  }}
+                                >
+                                  {valuesToYaml(install?.values || {})}
+                                </Box>
+                              </Box>
+                            </Box>
+                          </>
+                        ) : (
+                          <>
+                            <Typography
+                              variant="caption"
+                              fontWeight={600}
+                              color="text.secondary"
+                              sx={{ mb: 0.5, display: 'block' }}
+                            >
+                              New values (no previous custom values)
+                            </Typography>
+                            <Box
+                              component="pre"
+                              sx={{
+                                bgcolor: 'action.hover',
+                                color: 'text.primary',
+                                p: 1.5,
+                                m: 0,
+                                borderRadius: 1,
+                                fontSize: '0.75rem',
+                                overflow: 'auto',
+                                maxHeight: 200,
+                                border: '1px solid',
+                                borderColor: 'info.main',
+                              }}
+                            >
+                              {valuesToYaml(install?.values || {})}
+                            </Box>
+                          </>
+                        )}
+                      </Box>
+                    )}
+                    {state.method === 'helm-install' && state.mode === 'apply' && (
+                      <Box mt={1}>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          startIcon={<Icon icon="mdi:store" width={16} />}
+                          onClick={() => {
+                            const op = OPERATORS.find(o => getChartName(o.id) === p.chartName);
+                            if (op) window.location.hash = getAppsChartUrl(op.id);
+                          }}
+                        >
+                          Install via Apps
+                        </Button>
+                      </Box>
+                    )}
+                    {!isUpdate && p.resources.length > 0 && (
+                      <Box
+                        component="pre"
+                        sx={{
+                          bgcolor: 'action.hover',
+                          color: 'text.primary',
+                          p: 1.5,
+                          m: 0,
+                          borderRadius: 1,
+                          fontSize: '0.78rem',
+                          overflow: 'auto',
+                          maxHeight: 200,
+                          userSelect: 'all',
+                        }}
+                      >
+                        {p.resources
+                          .map(r => yaml.dump(r, { lineWidth: -1, noRefs: true }))
+                          .join('---\n')}
+                      </Box>
+                    )}
+                  </Box>
                 );
               })}
             </>
@@ -1093,8 +1184,11 @@ export default function InstallWizard() {
       {/* Navigation */}
       <Box display="flex" justifyContent="space-between" mt={4}>
         <Button
-          disabled={activeStep === 0 || (deployResult?.success === true)}
-          onClick={() => { setDeployResult(null); setActiveStep(s => s - 1); }}
+          disabled={activeStep === 0 || deployResult?.success === true}
+          onClick={() => {
+            setDeployResult(null);
+            setActiveStep(s => s - 1);
+          }}
           startIcon={<Icon icon="mdi:arrow-left" />}
         >
           Back
@@ -1111,22 +1205,40 @@ export default function InstallWizard() {
           ) : (
             <Button
               variant="contained"
-              onClick={deployResult ? () => {
-                setDeployResult(null);
-                setActiveStep(0);
-                dispatch({ type: 'RESET' });
-                // Re-sync with detection after reset
-                for (const op of OPERATORS) {
-                  const isInstalled = detection.operators[op.id]?.status === 'installed';
-                  dispatch({ type: 'SET_OPERATOR', id: op.id, enabled: isInstalled });
-                }
-              } : handleDeploy}
+              onClick={
+                deployResult
+                  ? () => {
+                      setDeployResult(null);
+                      setActiveStep(0);
+                      dispatch({ type: 'RESET' });
+                      // Re-sync with detection after reset
+                      for (const op of OPERATORS) {
+                        const isInstalled = detection.operators[op.id]?.status === 'installed';
+                        dispatch({ type: 'SET_OPERATOR', id: op.id, enabled: isInstalled });
+                      }
+                    }
+                  : handleDeploy
+              }
               disabled={deploying}
               startIcon={
-                <Icon icon={deployResult ? 'mdi:restart' : state.mode === 'download' ? 'mdi:download' : 'mdi:rocket-launch'} />
+                <Icon
+                  icon={
+                    deployResult
+                      ? 'mdi:restart'
+                      : state.mode === 'download'
+                      ? 'mdi:download'
+                      : 'mdi:rocket-launch'
+                  }
+                />
               }
             >
-              {deployResult ? 'Start Over' : deploying ? 'Applying...' : state.mode === 'download' ? 'Download' : 'Apply'}
+              {deployResult
+                ? 'Start Over'
+                : deploying
+                ? 'Applying...'
+                : state.mode === 'download'
+                ? 'Download'
+                : 'Apply'}
             </Button>
           )}
         </Box>

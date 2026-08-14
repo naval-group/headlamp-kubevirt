@@ -48,7 +48,10 @@ describe('Wizard output validates against chart schemas', () => {
       if (!valid) {
         console.error(`  ✗ ${install.chartName}:`, validate.errors);
       }
-      expect(valid, `${install.chartName} values should match schema: ${JSON.stringify(validate.errors)}`).toBe(true);
+      expect(
+        valid,
+        `${install.chartName} values should match schema: ${JSON.stringify(validate.errors)}`
+      ).toBe(true);
     }
   });
 
@@ -76,7 +79,9 @@ describe('Wizard output validates against chart schemas', () => {
       if (!valid) {
         console.error(`  ✗ ${install.chartName} (with globals):`, validate.errors);
       }
-      expect(valid, `${install.chartName} with globals: ${JSON.stringify(validate.errors)}`).toBe(true);
+      expect(valid, `${install.chartName} with globals: ${JSON.stringify(validate.errors)}`).toBe(
+        true
+      );
     }
   });
 
