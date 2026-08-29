@@ -41,6 +41,7 @@ import React, { useState } from 'react';
 import useFeatureGate from '../../hooks/useFeatureGate';
 import KubeVirt from '../../kubevirt/KubeVirt';
 import { DVTStorageSpec } from '../../types';
+import { buildRegistryDataVolumeSource } from '../../utils/dataVolumeSource';
 import { hasFeature } from '../../utils/kubevirtVersion';
 import { TOOLTIPS } from '../../utils/tooltips';
 import DataSource from '../BootableVolumes/DataSource';
@@ -169,9 +170,13 @@ export default function VMFormFull({
   // Fetch available resources
   const { items: dataSources } = DataSource.useList();
   const { items: instanceTypes } = VirtualMachineClusterInstanceType.useList();
+  const { items: kubeVirtConfigs } = KubeVirt.useList();
 
   // Filter cluster-provided instance types
   const clusterInstanceTypes = instanceTypes?.filter(it => it.isClusterProvided()) || [];
+  const kvConfig = kubeVirtConfigs?.[0];
+  const vmArchitecture =
+    resource.spec?.template?.spec?.architecture || kvConfig?.getDefaultArchitecture() || '';
 
   // Parse current values from resource
   const name = resource.metadata?.name || '';
@@ -311,7 +316,7 @@ export default function VMFormFull({
     } else {
       setBootSourceTypeOverride('registry');
       handleBootDvtUpdate(
-        { source: { registry: { url: selection.registryUrl } } },
+        buildRegistryDataVolumeSource(selection.registryUrl, vmArchitecture),
         selection.storageSize
       );
     }
@@ -737,8 +742,6 @@ export default function VMFormFull({
   const [nodeLabels, setNodeLabels] = useState<string[]>([]); // Available node label keys
 
   // Fetch permitted host devices from KubeVirt CR for device passthrough
-  const { items: kubeVirtConfigs } = KubeVirt.useList();
-  const kvConfig = kubeVirtConfigs?.[0];
   const permittedPciDevices = kvConfig?.getPciHostDevices() || [];
   const permittedMediatedDevices = kvConfig?.getMediatedDevices() || [];
   const allPermittedDeviceNames = [
@@ -2592,7 +2595,7 @@ export default function VMFormFull({
                       clearBootSource();
                       break;
                     case 'registry':
-                      handleBootDvtUpdate({ source: { registry: { url: '' } } });
+                      handleBootDvtUpdate(buildRegistryDataVolumeSource('', vmArchitecture));
                       break;
                     case 'http':
                       handleBootDvtUpdate({ source: { http: { url: '' } } });
@@ -2698,7 +2701,7 @@ export default function VMFormFull({
                 label="Registry URL"
                 value={bootDvt?.spec?.source?.registry?.url || ''}
                 onChange={e =>
-                  handleBootDvtUpdate({ source: { registry: { url: e.target.value } } })
+                  handleBootDvtUpdate(buildRegistryDataVolumeSource(e.target.value, vmArchitecture))
                 }
                 placeholder="docker://quay.io/fedora/fedora-coreos-kubevirt:stable"
                 helperText="Container registry URL (must start with docker:// or oci-archive://)"
