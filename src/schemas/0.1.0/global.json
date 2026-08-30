@@ -1,0 +1,305 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "KubeVirt Helm Chart Values",
+  "description": "Configuration values for the KubeVirt ecosystem Helm chart (without HCO).",
+  "type": "object",
+  "properties": {
+    "global": {
+      "title": "Global Settings",
+      "description": "Global settings automatically propagated to all subcharts by Helm.",
+      "type": "object",
+      "properties": {
+        "imageRegistry": {
+          "title": "Image Registry",
+          "description": "Optional override for the container image registry used by all subcharts.",
+          "type": "string",
+          "default": ""
+        },
+        "imagePullSecrets": {
+          "title": "Image Pull Secrets",
+          "description": "List of image pull secret names to use across all subcharts.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "nodeSelector": {
+          "title": "Node Selector",
+          "description": "Key-value pairs for node selection constraints applied to all subcharts.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {}
+        },
+        "tolerations": {
+          "title": "Tolerations",
+          "description": "List of toleration objects applied to all subchart workloads.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "title": "Key",
+                "description": "The taint key to match.",
+                "type": "string"
+              },
+              "operator": {
+                "title": "Operator",
+                "description": "The operator (Exists or Equal).",
+                "type": "string",
+                "enum": ["Exists", "Equal"]
+              },
+              "value": {
+                "title": "Value",
+                "description": "The taint value to match (used with Equal operator).",
+                "type": "string"
+              },
+              "effect": {
+                "title": "Effect",
+                "description": "The taint effect to match (NoSchedule, PreferNoSchedule, NoExecute).",
+                "type": "string",
+                "enum": ["NoSchedule", "PreferNoSchedule", "NoExecute", ""]
+              },
+              "tolerationSeconds": {
+                "title": "Toleration Seconds",
+                "description": "Duration in seconds the pod tolerates the taint (NoExecute only).",
+                "type": "integer"
+              }
+            },
+            "additionalProperties": false
+          },
+          "default": []
+        },
+        "kubevirtNamespace": {
+          "title": "KubeVirt Namespace",
+          "description": "Namespace where KubeVirt core components are deployed. Used by kubevirt, vm-console-proxy, and monitoring subcharts.",
+          "type": "string",
+          "default": "kubevirt"
+        }
+      },
+      "additionalProperties": false
+    },
+    "kubevirt": {
+      "title": "KubeVirt Core",
+      "description": "KubeVirt core operator and runtime. Always deployed (no condition toggle).",
+      "type": "object",
+      "additionalProperties": true,
+      "default": {}
+    },
+    "cdi": {
+      "title": "CDI",
+      "description": "Containerized Data Importer for importing VM disk images.",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "title": "Enable CDI",
+          "description": "Deploy the Containerized Data Importer subchart.",
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "multus": {
+      "title": "Multus CNI",
+      "description": "Multus CNI for attaching multiple network interfaces to pods and VMs.",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "title": "Enable Multus",
+          "description": "Deploy the Multus CNI subchart.",
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "kubemacpool": {
+      "title": "KubeMacPool",
+      "description": "MAC address pool manager for KubeVirt virtual machines.",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "title": "Enable KubeMacPool",
+          "description": "Deploy the KubeMacPool subchart.",
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "aaq": {
+      "title": "AAQ",
+      "description": "Application Aware Quota for KubeVirt-aware resource quota management.",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "title": "Enable AAQ",
+          "description": "Deploy the Application Aware Quota subchart.",
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "additionalProperties": true
+    },
+    "butane-operator": {
+      "title": "Butane Operator",
+      "description": "Operator for managing Butane/Ignition configurations for VMs.",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "title": "Enable Butane Operator",
+          "description": "Deploy the Butane Operator subchart.",
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "vm-console-proxy": {
+      "title": "VM Console Proxy",
+      "description": "Proxy for accessing KubeVirt VM consoles.",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "title": "Enable VM Console Proxy",
+          "description": "Deploy the VM Console Proxy subchart.",
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "hostpath-provisioner": {
+      "title": "HostPath Provisioner",
+      "description": "HostPath-based storage provisioner for dev/test environments. Requires cert-manager.",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "title": "Enable HostPath Provisioner",
+          "description": "Deploy the HostPath Provisioner subchart (dev/test only).",
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "additionalProperties": true
+    },
+    "forklift": {
+      "title": "Forklift",
+      "description": "VM migration toolkit for migrating VMs from other platforms to KubeVirt.",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "title": "Enable Forklift",
+          "description": "Deploy the Forklift VM migration subchart.",
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "additionalProperties": true
+    },
+    "cloud-provider-kubevirt": {
+      "title": "Cloud Provider KubeVirt",
+      "description": "Kubernetes cloud provider implementation for KubeVirt.",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "title": "Enable Cloud Provider KubeVirt",
+          "description": "Deploy the Cloud Provider KubeVirt subchart.",
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "additionalProperties": true
+    },
+    "ipam-controller": {
+      "title": "IPAM Controller",
+      "description": "IP address management controller for persistent VM IPs. Requires cert-manager.",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "title": "Enable IPAM Controller",
+          "description": "Deploy the IPAM Controller subchart.",
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "monitoring": {
+      "title": "Monitoring",
+      "description": "ServiceMonitor and PrometheusRules for KubeVirt observability. Requires kube-prometheus-stack.",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "title": "Enable Monitoring",
+          "description": "Deploy the monitoring subchart (ServiceMonitor and PrometheusRules).",
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "additionalProperties": true
+    },
+    "delete-protection": {
+      "title": "Delete Protection",
+      "description": "ValidatingAdmissionPolicy to prevent accidental deletion of VMs.",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "title": "Enable Delete Protection",
+          "description": "Deploy the delete protection ValidatingAdmissionPolicy subchart.",
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "vm-templates": {
+      "title": "VM Templates",
+      "description": "Native KubeVirt 1.8 VirtualMachineTemplate resources. Requires KubeVirt CRDs to be present.",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "title": "Enable VM Templates",
+          "description": "Deploy the VM Templates subchart (enable after initial install).",
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "additionalProperties": true
+    },
+    "kubevirt-ipam-controller": {
+      "title": "IPAM Controller (alias)",
+      "description": "Helm dependency alias for ipam-controller.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "kubevirt-monitoring": {
+      "title": "Monitoring (alias)",
+      "description": "Helm dependency alias for monitoring.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "kubevirt-delete-protection": {
+      "title": "Delete Protection (alias)",
+      "description": "Helm dependency alias for delete-protection.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "kubevirt-vm-templates": {
+      "title": "VM Templates (alias)",
+      "description": "Helm dependency alias for vm-templates.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "kubevirt-stack-crds": {
+      "title": "CRD Management (alias)",
+      "description": "Helm dependency alias for CRD subchart.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}

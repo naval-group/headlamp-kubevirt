@@ -109,7 +109,7 @@ export default function VirtualizationOverview() {
           iopsReadResp,
           iopsWriteResp,
         ] = await Promise.all([
-          promQuery(`topk(5, rate(kubevirt_vmi_cpu_usage_seconds_total{${nsFilter}}[5m]))`),
+          promQuery(`topk(10, rate(kubevirt_vmi_cpu_usage_seconds_total{${nsFilter}}[5m]))`),
           promQuery(
             `topk(5, kubevirt_vmi_memory_available_bytes{${nsFilter}} - on(name, namespace) kubevirt_vmi_memory_usable_bytes{${nsFilter}})`
           ),
@@ -154,10 +154,10 @@ export default function VirtualizationOverview() {
                 const vmName = r.metric.name || r.metric.vmi || 'Unknown';
                 const cpuUsage = parseFloat(r.value[1]) || 0;
                 const vcpuResp = await promQuery(
-                  `kubevirt_vm_resource_requests{name="${vmName.replace(
+                  `max(kubevirt_vm_resource_requests{name="${vmName.replace(
                     /[\\}"]/g,
                     ''
-                  )}",resource="cpu"}`
+                  )}",resource="cpu"})`
                 );
                 const vcpus = vcpuResp?.data?.result?.[0]?.value?.[1]
                   ? parseFloat(vcpuResp.data.result[0].value[1])
@@ -217,7 +217,16 @@ export default function VirtualizationOverview() {
         };
 
         // Phase 4: Set all state at once — no staggered rendering
-        setTopCpuConsumers(cpuData);
+        // Deduplicate CPU consumers by VM name (duplicate scrape targets) then take top 5
+        const seenCpu = new Set<string>();
+        const dedupedCpu = cpuData
+          .filter((c: { name: string }) => {
+            if (seenCpu.has(c.name)) return false;
+            seenCpu.add(c.name);
+            return true;
+          })
+          .slice(0, 5);
+        setTopCpuConsumers(dedupedCpu);
         setTopMemoryConsumers(memData);
         setTopMemorySwap(mergePair(swapInResp, swapOutResp, 'inValue', 'outValue'));
         setTopNetworkTraffic(mergePair(networkRxResp, networkTxResp, 'rxValue', 'txValue'));

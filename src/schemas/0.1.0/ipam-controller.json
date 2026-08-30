@@ -1,0 +1,169 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "KubeVirt IPAM Controller Helm Values",
+  "description": "Configuration for the KubeVirt IPAM controller",
+  "type": "object",
+  "properties": {
+    "global": {
+      "title": "Global settings",
+      "description": "Global values shared across all subcharts",
+      "type": "object",
+      "properties": {
+        "imageRegistry": {
+          "title": "Global image registry",
+          "description": "Override the image registry for all images",
+          "type": "string",
+          "default": ""
+        },
+        "imagePullSecrets": {
+          "title": "Global image pull secrets",
+          "description": "List of image pull secret names for all images",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "object"
+          }
+        },
+        "nodeSelector": {
+          "title": "Global node selector",
+          "description": "Node selector applied to all pods",
+          "type": "object",
+          "default": {}
+        },
+        "tolerations": {
+          "title": "Global tolerations",
+          "description": "Tolerations applied to all pods",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "object"
+          }
+        },
+        "kubevirtNamespace": {
+          "title": "KubeVirt Namespace",
+          "description": "Global KubeVirt namespace. Used by subcharts that deploy into the KubeVirt namespace.",
+          "type": "string",
+          "default": "kubevirt"
+        }
+      }
+    },
+    "namespace": {
+      "title": "Namespace",
+      "description": "Namespace where IPAM controller resources are deployed",
+      "type": "string",
+      "default": "kubevirt-ipam-controller-system"
+    },
+    "replicas": {
+      "title": "Replica count",
+      "description": "Number of IPAM controller replicas",
+      "type": "integer",
+      "default": 2,
+      "minimum": 0
+    },
+    "image": {
+      "title": "IPAM controller image",
+      "description": "Container image for the KubeVirt IPAM controller",
+      "type": "object",
+      "properties": {
+        "repository": {
+          "title": "Image repository",
+          "description": "IPAM controller image repository",
+          "type": "string",
+          "default": "ghcr.io/kubevirt/ipam-controller"
+        },
+        "tag": {
+          "title": "Image tag",
+          "description": "IPAM controller image tag",
+          "type": "string",
+          "default": "v0.6.1"
+        }
+      }
+    },
+    "resources": {
+      "title": "Resource Requirements",
+      "description": "CPU and memory resource requests and limits.",
+      "type": "object",
+      "properties": {
+        "requests": {
+          "title": "Resource Requests",
+          "description": "Minimum resources required for scheduling.",
+          "type": "object",
+          "properties": {
+            "cpu": {
+              "title": "CPU Request",
+              "description": "CPU request (e.g. 100m, 1).",
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "default": "10m"
+            },
+            "memory": {
+              "title": "Memory Request",
+              "description": "Memory request (e.g. 128Mi, 1Gi).",
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "default": "128Mi"
+            }
+          }
+        },
+        "limits": {
+          "title": "Resource Limits",
+          "description": "Maximum resources the container can use.",
+          "type": "object",
+          "properties": {
+            "cpu": {
+              "title": "CPU Limit",
+              "description": "CPU limit (e.g. 500m, 2).",
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "memory": {
+              "title": "Memory Limit",
+              "description": "Memory limit (e.g. 512Mi, 2Gi).",
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "nodeSelector": {
+      "title": "Node selector",
+      "description": "Node selector for IPAM controller pods",
+      "type": "object",
+      "default": {}
+    },
+    "tolerations": {
+      "title": "Tolerations",
+      "description": "Tolerations for the IPAM controller pods",
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "object"
+      }
+    }
+  }
+}

@@ -1,0 +1,315 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "Forklift Helm Chart Values",
+  "description": "Configuration values for the Forklift migration toolkit Helm chart.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "global": {
+      "title": "Global Configuration",
+      "description": "Global settings shared across all subcharts.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "imageRegistry": {
+          "title": "Image Registry",
+          "description": "Global container image registry override. When set, all images will be pulled from this registry.",
+          "type": "string",
+          "default": ""
+        },
+        "imagePullSecrets": {
+          "title": "Image Pull Secrets",
+          "description": "Global list of image pull secrets for authenticating to private registries.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "object"
+          }
+        },
+        "nodeSelector": {
+          "title": "Node Selector",
+          "description": "Global node selector applied to all pods.",
+          "type": "object",
+          "default": {},
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "tolerations": {
+          "title": "Tolerations",
+          "description": "Global tolerations applied to all pods.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "object"
+          }
+        },
+        "kubevirtNamespace": {
+          "title": "KubeVirt Namespace",
+          "description": "Global KubeVirt namespace. Used by subcharts that deploy into the KubeVirt namespace.",
+          "type": "string",
+          "default": "kubevirt"
+        }
+      }
+    },
+    "namespace": {
+      "title": "Namespace",
+      "description": "Kubernetes namespace where Forklift components will be deployed.",
+      "type": "string",
+      "default": "konveyor-forklift"
+    },
+    "version": {
+      "title": "Version",
+      "description": "Forklift version branch or tag to deploy.",
+      "type": "string",
+      "default": "release-2.12"
+    },
+    "operator": {
+      "title": "Operator Configuration",
+      "description": "Configuration for the Forklift operator deployment.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "image": {
+          "title": "Image",
+          "description": "Container image settings for the Forklift operator.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "repository": {
+              "title": "Repository",
+              "description": "Container image repository for the Forklift operator.",
+              "type": "string",
+              "default": "quay.io/kubev2v/forklift-operator"
+            }
+          }
+        },
+        "replicas": {
+          "title": "Replicas",
+          "description": "Number of Forklift operator pod replicas.",
+          "type": "integer",
+          "default": 1,
+          "minimum": 0
+        },
+        "resources": {
+          "title": "Resource Requirements",
+          "description": "CPU and memory resource requests and limits.",
+          "type": "object",
+          "properties": {
+            "requests": {
+              "title": "Resource Requests",
+              "description": "Minimum resources required for scheduling.",
+              "type": "object",
+              "properties": {
+                "cpu": {
+                  "title": "CPU Request",
+                  "description": "CPU request (e.g. 100m, 1).",
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "memory": {
+                  "title": "Memory Request",
+                  "description": "Memory request (e.g. 128Mi, 1Gi).",
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                }
+              }
+            },
+            "limits": {
+              "title": "Resource Limits",
+              "description": "Maximum resources the container can use.",
+              "type": "object",
+              "properties": {
+                "cpu": {
+                  "title": "CPU Limit",
+                  "description": "CPU limit (e.g. 500m, 2).",
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "memory": {
+                  "title": "Memory Limit",
+                  "description": "Memory limit (e.g. 512Mi, 2Gi).",
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "nodeSelector": {
+          "title": "Node Selector",
+          "description": "Node selector for scheduling the Forklift operator pods.",
+          "type": "object",
+          "default": {},
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "tolerations": {
+          "title": "Tolerations",
+          "description": "Tolerations for the Forklift operator pods.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "trustedCA": {
+      "title": "Trusted CA Bundle",
+      "description": "PEM-encoded CA certificate bundle for Forklift Provider connections. If your source clusters use certificates signed by a corporate or private CA, provide the full PEM bundle here. A ConfigMap will be created that can be referenced when creating Provider secrets.",
+      "type": "string",
+      "default": ""
+    },
+    "enabled": {
+      "title": "Enabled",
+      "description": "Whether this component is enabled. Controlled by the parent chart.",
+      "type": "boolean"
+    },
+    "inventoryProxy": {
+      "title": "Inventory Proxy",
+      "description": "OpenResty proxy that exposes the forklift-inventory API via the k8s API service proxy. Required on vanilla Kubernetes with client-cert kubeconfigs.",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "title": "Enabled",
+          "description": "Deploy the inventory proxy.",
+          "type": "boolean",
+          "default": true
+        },
+        "image": {
+          "title": "Image",
+          "type": "object",
+          "properties": {
+            "repository": {
+              "title": "Repository",
+              "description": "OpenResty container image repository.",
+              "type": "string",
+              "default": "openresty/openresty"
+            },
+            "tag": {
+              "title": "Tag",
+              "description": "OpenResty container image tag.",
+              "type": "string",
+              "default": "1.31.1.1-1-alpine-fat"
+            }
+          }
+        },
+        "resources": {
+          "title": "Resource Requirements",
+          "description": "CPU and memory resource requests and limits.",
+          "type": "object",
+          "properties": {
+            "requests": {
+              "title": "Resource Requests",
+              "type": "object",
+              "properties": {
+                "cpu": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ],
+                  "title": "CPU Request",
+                  "default": "5m"
+                },
+                "memory": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ],
+                  "title": "Memory Request",
+                  "default": "16Mi"
+                }
+              }
+            },
+            "limits": {
+              "title": "Resource Limits",
+              "type": "object",
+              "properties": {
+                "cpu": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ],
+                  "title": "CPU Limit"
+                },
+                "memory": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ],
+                  "title": "Memory Limit",
+                  "default": "64Mi"
+                }
+              }
+            }
+          }
+        },
+        "rbacProxy": {
+          "title": "RBAC Proxy",
+          "description": "kube-rbac-proxy sidecar that validates user identity and checks RBAC on providers.forklift.konveyor.io before allowing access.",
+          "type": "object",
+          "properties": {
+            "image": {
+              "title": "Image",
+              "type": "object",
+              "properties": {
+                "repository": {
+                  "title": "Repository",
+                  "type": "string",
+                  "default": "registry.k8s.io/kubebuilder/kube-rbac-proxy"
+                },
+                "tag": {
+                  "title": "Tag",
+                  "type": "string",
+                  "default": "v0.16.0"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

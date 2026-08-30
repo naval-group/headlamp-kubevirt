@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "Hostpath Provisioner Helm Chart Values",
+  "description": "Configuration values for the Hostpath Provisioner Helm chart.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "global": {
+      "title": "Global Configuration",
+      "description": "Global settings shared across all subcharts.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "imageRegistry": {
+          "title": "Image Registry",
+          "description": "Global container image registry override. When set, all images will be pulled from this registry.",
+          "type": "string",
+          "default": ""
+        },
+        "imagePullSecrets": {
+          "title": "Image Pull Secrets",
+          "description": "Global list of image pull secrets for authenticating to private registries.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "object"
+          }
+        },
+        "nodeSelector": {
+          "title": "Node Selector",
+          "description": "Global node selector applied to all pods.",
+          "type": "object",
+          "default": {},
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "tolerations": {
+          "title": "Tolerations",
+          "description": "Global tolerations applied to all pods.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "object"
+          }
+        },
+        "kubevirtNamespace": {
+          "title": "KubeVirt Namespace",
+          "description": "Global KubeVirt namespace. Used by subcharts that deploy into the KubeVirt namespace.",
+          "type": "string",
+          "default": "kubevirt"
+        }
+      }
+    },
+    "namespace": {
+      "title": "Namespace",
+      "description": "Kubernetes namespace where hostpath-provisioner components will be deployed.",
+      "type": "string",
+      "default": "hostpath-provisioner"
+    },
+    "version": {
+      "title": "Version",
+      "description": "Hostpath Provisioner version to deploy.",
+      "type": "string",
+      "default": "v0.25.0"
+    },
+    "storagePath": {
+      "title": "Storage Path",
+      "description": "Host filesystem path used for provisioning persistent volumes. WARNING: Use a dedicated partition, NOT a directory on the OS disk.",
+      "type": "string",
+      "default": "/var/hpvolumes"
+    },
+    "storagePools": {
+      "title": "Storage Pools",
+      "description": "List of additional storage pool definitions for the hostpath provisioner.",
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "object"
+      }
+    },
+    "operator": {
+      "title": "Operator Configuration",
+      "description": "Configuration for the hostpath-provisioner operator deployment.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "image": {
+          "title": "Image",
+          "description": "Container image settings for the hostpath-provisioner operator.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "repository": {
+              "title": "Repository",
+              "description": "Container image repository for the hostpath-provisioner operator.",
+              "type": "string",
+              "default": "quay.io/kubevirt/hostpath-provisioner-operator"
+            }
+          }
+        },
+        "nodeSelector": {
+          "title": "Node Selector",
+          "description": "Node selector for scheduling the hostpath-provisioner operator pods.",
+          "type": "object",
+          "default": {},
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "tolerations": {
+          "title": "Tolerations",
+          "description": "Tolerations for the hostpath-provisioner operator pods.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "enabled": {
+      "title": "Enabled",
+      "description": "Whether this component is enabled. Controlled by the parent chart.",
+      "type": "boolean"
+    }
+  }
+}

@@ -33,6 +33,7 @@ import ErrorBoundary from './components/common/ErrorBoundary';
 import DataImportCronDetails from './components/DataImportCrons/Details';
 import DataImportCronList from './components/DataImportCrons/List';
 import CatalogPage from './components/ImageCatalog/CatalogPage';
+import InstallWizard from './components/InstallWizard/InstallWizard';
 import InstanceTypeDetails from './components/InstanceTypes/Details';
 import InstanceTypeList from './components/InstanceTypes/List';
 import IPAMClaimDetails from './components/IPAMClaims/Details';
@@ -41,6 +42,7 @@ import MigrationDetails from './components/Migrations/Details';
 import MigrationList from './components/Migrations/List';
 import NADDetails from './components/NetworkAttachmentDefinitions/Details';
 import NADList from './components/NetworkAttachmentDefinitions/List';
+import OperatorCatalog from './components/OperatorCatalog/OperatorCatalog';
 import VirtualizationOverview from './components/Overview/Overview';
 import { getPluginLib, registerOwnerLinksProcessor } from './components/OwnerLinks';
 import PreferenceDetails from './components/Preferences/Details';
@@ -66,6 +68,11 @@ import {
   loadFeatureGates,
 } from './utils/featureGates';
 import { detectKubeVirtCapabilities } from './utils/kubevirtVersion';
+import {
+  detectInstalledOperators,
+  detectInstallMethods,
+  detectStackInfo,
+} from './utils/operatorDetection';
 
 // ── IPAM CRD detection ─────────────────────────────────────────────────
 let ipamCRDAvailable = false;
@@ -130,10 +137,12 @@ function registerKubeVirtResource(config: ResourceRoute) {
   }
 }
 
-// Load feature gates and detect capabilities on plugin initialization
+// Load feature gates, detect capabilities, and detect installed operators on plugin initialization
 loadFeatureGates();
 detectKubeVirtCapabilities();
 detectIPAMCRD();
+detectInstalledOperators();
+detectStackInfo().then(() => detectInstallMethods());
 
 // Feature gates that affect sidebar visibility
 const SIDEBAR_AFFECTING_FEATURE_GATES = ['Snapshot', 'VMExport', 'DataVolumes'];
@@ -437,7 +446,26 @@ registerSidebarEntry({
   icon: 'mdi:cloud-outline',
 });
 
-// Overview
+// Install Wizard
+registerSidebarEntry({
+  parent: 'kubevirt',
+  name: 'kubevirt-install',
+  label: 'Install Wizard',
+  url: '/kubevirt/install-wizard',
+  icon: 'mdi:rocket-launch',
+});
+registerRoute({
+  path: '/kubevirt/install-wizard',
+  sidebar: 'kubevirt',
+  component: () => (
+    <ErrorBoundary>
+      <InstallWizard />
+    </ErrorBoundary>
+  ),
+  exact: true,
+});
+
+// Overview (redirects to install wizard if KubeVirt is not detected)
 registerSidebarEntry({
   parent: 'kubevirt',
   name: 'kubevirt-overview',
@@ -449,11 +477,13 @@ registerSidebarEntry({
 registerRoute({
   path: '/kubevirt/overview',
   sidebar: 'kubevirt-overview',
-  component: () => (
-    <ErrorBoundary>
-      <VirtualizationOverview />
-    </ErrorBoundary>
-  ),
+  component: () => {
+    return (
+      <ErrorBoundary>
+        <VirtualizationOverview />
+      </ErrorBoundary>
+    );
+  },
   exact: true,
 });
 
@@ -674,6 +704,25 @@ registerRoute({
   ),
   exact: true,
   name: 'ipamclaim',
+});
+
+// Operator Catalog — before Settings
+registerSidebarEntry({
+  parent: 'kubevirt',
+  name: 'kubevirt-catalog',
+  label: 'Operator Catalog',
+  url: '/kubevirt/catalog',
+  icon: 'mdi:store',
+});
+registerRoute({
+  path: '/kubevirt/catalog',
+  sidebar: 'kubevirt',
+  component: () => (
+    <ErrorBoundary>
+      <OperatorCatalog />
+    </ErrorBoundary>
+  ),
+  exact: true,
 });
 
 // Settings - Last in sidebar

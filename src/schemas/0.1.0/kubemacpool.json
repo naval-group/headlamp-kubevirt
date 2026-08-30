@@ -1,0 +1,186 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "KubeMacPool Helm Values",
+  "description": "Configuration for the KubeMacPool MAC address management controller",
+  "type": "object",
+  "properties": {
+    "global": {
+      "title": "Global settings",
+      "description": "Global values shared across all subcharts",
+      "type": "object",
+      "properties": {
+        "imageRegistry": {
+          "title": "Global image registry",
+          "description": "Override the image registry for all images",
+          "type": "string",
+          "default": ""
+        },
+        "imagePullSecrets": {
+          "title": "Global image pull secrets",
+          "description": "List of image pull secret names for all images",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "object"
+          }
+        },
+        "nodeSelector": {
+          "title": "Global node selector",
+          "description": "Node selector applied to all pods",
+          "type": "object",
+          "default": {}
+        },
+        "tolerations": {
+          "title": "Global tolerations",
+          "description": "Tolerations applied to all pods",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "object"
+          }
+        },
+        "kubevirtNamespace": {
+          "title": "KubeVirt Namespace",
+          "description": "Global KubeVirt namespace. Used by subcharts that deploy into the KubeVirt namespace.",
+          "type": "string",
+          "default": "kubevirt"
+        }
+      }
+    },
+    "namespace": {
+      "title": "Namespace",
+      "description": "Namespace where KubeMacPool resources are deployed",
+      "type": "string",
+      "default": "kubemacpool-system"
+    },
+    "image": {
+      "title": "KubeMacPool image",
+      "description": "Container image for the KubeMacPool controller",
+      "type": "object",
+      "properties": {
+        "repository": {
+          "title": "Image repository",
+          "description": "KubeMacPool image repository",
+          "type": "string",
+          "default": "quay.io/kubevirt/kubemacpool"
+        },
+        "tag": {
+          "title": "Image tag",
+          "description": "KubeMacPool image tag",
+          "type": "string",
+          "default": "v0.45.0"
+        }
+      }
+    },
+    "rangeStart": {
+      "title": "MAC address range start",
+      "description": "First MAC address in the allocation pool (inclusive)",
+      "type": "string",
+      "default": "02:00:00:00:00:00",
+      "pattern": "^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$"
+    },
+    "rangeEnd": {
+      "title": "MAC address range end",
+      "description": "Last MAC address in the allocation pool (inclusive)",
+      "type": "string",
+      "default": "02:FF:FF:FF:FF:FF",
+      "pattern": "^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$"
+    },
+    "replicas": {
+      "title": "Replica count",
+      "description": "Number of KubeMacPool controller replicas",
+      "type": "integer",
+      "default": 1,
+      "minimum": 0
+    },
+    "resources": {
+      "title": "Resource Requirements",
+      "description": "CPU and memory resource requests and limits.",
+      "type": "object",
+      "properties": {
+        "requests": {
+          "title": "Resource Requests",
+          "description": "Minimum resources required for scheduling.",
+          "type": "object",
+          "properties": {
+            "cpu": {
+              "title": "CPU Request",
+              "description": "CPU request (e.g. 100m, 1).",
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "memory": {
+              "title": "Memory Request",
+              "description": "Memory request (e.g. 128Mi, 1Gi).",
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            }
+          }
+        },
+        "limits": {
+          "title": "Resource Limits",
+          "description": "Maximum resources the container can use.",
+          "type": "object",
+          "properties": {
+            "cpu": {
+              "title": "CPU Limit",
+              "description": "CPU limit (e.g. 500m, 2).",
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "memory": {
+              "title": "Memory Limit",
+              "description": "Memory limit (e.g. 512Mi, 2Gi).",
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "nodeSelector": {
+      "title": "Node selector",
+      "description": "Node selector for KubeMacPool controller pods",
+      "type": "object",
+      "default": {}
+    },
+    "tolerations": {
+      "title": "Tolerations",
+      "description": "Tolerations for the KubeMacPool controller pods",
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "object"
+      }
+    },
+    "enabled": {
+      "title": "Enabled",
+      "description": "Whether this component is enabled. Controlled by the parent chart.",
+      "type": "boolean"
+    }
+  }
+}
