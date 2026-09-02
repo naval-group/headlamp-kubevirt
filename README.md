@@ -354,7 +354,7 @@ spec:
 
 Compared to the init-container approach, this skips an extra Pod startup step and lets
 the kubelet's image cache serve the plugin directly. Pin a specific version tag (e.g.
-`:0.2.2`) in production rather than `:latest`.
+`:0.3.0`) in production rather than `:latest`.
 
 ## Development
 
