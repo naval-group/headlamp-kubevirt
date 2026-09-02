@@ -419,24 +419,27 @@ export default function KubeVirtSettings() {
   }
 
   const enabledFeatureGates = kubeVirt.getFeatureGates();
+  const disabledFeatureGates = kubeVirt.getDisabledFeatureGates();
 
-  const handleFeatureGateToggle = async (featureGate: string, enabled: boolean) => {
+  const handleFeatureGatesUpdate = async (
+    newFeatureGates: string[],
+    newDisabledFeatureGates: string[]
+  ) => {
     setUpdating(true);
     try {
-      let newFeatureGates: string[];
-      if (enabled) {
-        newFeatureGates = [...enabledFeatureGates, featureGate];
-      } else {
-        newFeatureGates = enabledFeatureGates.filter(fg => fg !== featureGate);
-      }
-
-      await kubeVirt.updateFeatureGates(newFeatureGates);
-      updateFeatureGates(newFeatureGates);
+      await kubeVirt.updateFeatureGates(newFeatureGates, newDisabledFeatureGates);
+      updateFeatureGates(newFeatureGates, newDisabledFeatureGates, kubeVirt.getVersion());
 
       // Add inline warning for features that affect sidebar
       const sidebarFeatures = ['Snapshot', 'VMExport', 'DataVolumes'];
-      if (sidebarFeatures.includes(featureGate) && !sidebarReloadWarnings.includes(featureGate)) {
-        setSidebarReloadWarnings([...sidebarReloadWarnings, featureGate]);
+      const changedSidebarFeature = sidebarFeatures.find(
+        featureGate =>
+          enabledFeatureGates.includes(featureGate) !== newFeatureGates.includes(featureGate) ||
+          disabledFeatureGates.includes(featureGate) !==
+            newDisabledFeatureGates.includes(featureGate)
+      );
+      if (changedSidebarFeature && !sidebarReloadWarnings.includes(changedSidebarFeature)) {
+        setSidebarReloadWarnings([...sidebarReloadWarnings, changedSidebarFeature]);
       }
     } catch (error: unknown) {
       console.error('Failed to update feature gates', error);
@@ -1887,9 +1890,10 @@ export default function KubeVirtSettings() {
       <FeatureGatesSection
         kubeVirt={kubeVirt}
         enabledFeatureGates={enabledFeatureGates}
+        disabledFeatureGates={disabledFeatureGates}
         sidebarReloadWarnings={sidebarReloadWarnings}
         updating={updating}
-        onToggleFeatureGate={handleFeatureGateToggle}
+        onUpdateFeatureGates={handleFeatureGatesUpdate}
       />
 
       {/* CDI Feature Gates */}

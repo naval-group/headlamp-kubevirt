@@ -19,20 +19,29 @@ import { sanitizeFeatureGateSearch } from '../../utils/sanitize';
 // Feature gate metadata
 // ---------------------------------------------------------------------------
 
-type FeatureGateState = 'GA' | 'Beta' | 'Alpha' | 'Deprecated' | 'Discontinued';
+export type FeatureGateState = 'GA' | 'Beta' | 'Alpha' | 'Deprecated' | 'Discontinued';
 
-interface FeatureGateInfo {
+export interface FeatureGateInfo {
   name: string;
   description: string;
   // Version history: { version: state } — tracks maturity across KubeVirt versions
   versionHistory: Record<string, FeatureGateState>;
 }
 
+export function parseKubeVirtVersion(version: string | null | undefined): [number, number] | null {
+  const match = version?.match(/^v?(\d+)\.(\d+)(?:\.|$)/);
+  if (!match) return null;
+  return [Number(match[1]), Number(match[2])];
+}
+
 // Get feature gate state for a specific version
-function getGateStateForVersion(gate: FeatureGateInfo, version: string): FeatureGateState | null {
-  const versionParts = version.split('.').map(Number);
-  const major = versionParts[0] || 1;
-  const minor = versionParts[1] || 0;
+export function getGateStateForVersion(
+  gate: FeatureGateInfo,
+  version: string | null | undefined
+): FeatureGateState | null {
+  const parsedVersion = parseKubeVirtVersion(version);
+  if (!parsedVersion) return null;
+  const [major, minor] = parsedVersion;
 
   let currentState: FeatureGateState | null = null;
 
@@ -53,8 +62,44 @@ function getGateStateForVersion(gate: FeatureGateInfo, version: string): Feature
   return currentState;
 }
 
+// Match KubeVirt's precedence: GA > explicit enable > explicit disable > Beta > off.
+export function isFeatureGateEnabledForVersion(
+  gate: FeatureGateInfo,
+  version: string | null | undefined,
+  enabledFeatureGates: readonly string[],
+  disabledFeatureGates: readonly string[]
+): boolean {
+  const state = getGateStateForVersion(gate, version);
+  if (state === 'GA') return true;
+  if (enabledFeatureGates.includes(gate.name)) return true;
+  if (disabledFeatureGates.includes(gate.name)) return false;
+  return state === 'Beta';
+}
+
+export function updateFeatureGateLists(
+  gate: string,
+  state: FeatureGateState | null,
+  enabled: boolean,
+  enabledFeatureGates: readonly string[],
+  disabledFeatureGates: readonly string[]
+): { enabledFeatureGates: string[]; disabledFeatureGates: string[] } {
+  let nextEnabled = enabledFeatureGates.filter(featureGate => featureGate !== gate);
+  let nextDisabled = disabledFeatureGates.filter(featureGate => featureGate !== gate);
+
+  if (enabled && state !== 'Beta') {
+    nextEnabled = [...nextEnabled, gate];
+  } else if (!enabled && state === 'Beta') {
+    nextDisabled = [...nextDisabled, gate];
+  }
+
+  return { enabledFeatureGates: nextEnabled, disabledFeatureGates: nextDisabled };
+}
+
 // Check if gate is available in version (hide Discontinued gates)
-function isGateAvailableInVersion(gate: FeatureGateInfo, version: string): boolean {
+function isGateAvailableInVersion(
+  gate: FeatureGateInfo,
+  version: string | null | undefined
+): boolean {
   const state = getGateStateForVersion(gate, version);
   return state !== null && state !== 'Discontinued';
 }
@@ -78,7 +123,7 @@ const MATURITY_COLORS: Record<FeatureGateState, string> = {
 };
 
 // Grouped feature gates by category with version history
-const FEATURE_GATE_CATEGORIES: Record<
+export const FEATURE_GATE_CATEGORIES: Record<
   string,
   { icon: string; color: string; gates: FeatureGateInfo[] }
 > = {
@@ -94,22 +139,22 @@ const FEATURE_GATE_CATEGORIES: Record<
       {
         name: 'VMExport',
         description: 'Export VMs to external storage',
-        versionHistory: { '0.55': 'Alpha', '1.3': 'Beta' },
+        versionHistory: { '0.55': 'Alpha', '1.3': 'Beta', '1.9': 'GA' },
       },
       {
         name: 'HotplugVolumes',
         description: 'Hot-plug storage disks to running VMs',
-        versionHistory: { '0.39': 'Alpha' },
+        versionHistory: { '0.39': 'Alpha', '1.9': 'Deprecated' },
       },
       {
         name: 'DeclarativeHotplugVolumes',
         description: 'Declarative volume hotplug via spec editing',
-        versionHistory: { '1.6': 'Alpha' },
+        versionHistory: { '1.6': 'Alpha', '1.9': 'Beta' },
       },
       {
         name: 'ExpandDisks',
         description: 'Auto-expand VM disks when PVC is resized',
-        versionHistory: { '0.51': 'Alpha' },
+        versionHistory: { '0.51': 'Alpha', '1.8': 'GA' },
       },
       {
         name: 'IncrementalBackup',
@@ -155,6 +200,11 @@ const FEATURE_GATE_CATEGORIES: Record<
         name: 'ContainerPathVolumes',
         description: 'Expose virt-launcher paths to VM via virtiofs (credential injection)',
         versionHistory: { '1.8': 'Alpha' },
+      },
+      {
+        name: 'OCIExport',
+        description: 'Export VM disks as OCI image layout archives',
+        versionHistory: { '1.9': 'Alpha' },
       },
     ],
   },
@@ -210,7 +260,12 @@ const FEATURE_GATE_CATEGORIES: Record<
       {
         name: 'LiveUpdateNADRef',
         description: 'Dynamic NAD reference updates on running VMs',
-        versionHistory: { '1.8': 'Beta' },
+        versionHistory: { '1.8': 'Beta', '1.9': 'GA' },
+      },
+      {
+        name: 'PortRangesSpec',
+        description: 'Configure contiguous port-forwarding ranges for VM interfaces',
+        versionHistory: { '1.9': 'Alpha' },
       },
     ],
   },
@@ -256,12 +311,12 @@ const FEATURE_GATE_CATEGORIES: Record<
       {
         name: 'RebootPolicy',
         description: 'Terminate VMI on guest reboot for config refresh',
-        versionHistory: { '1.8': 'Alpha' },
+        versionHistory: { '1.8': 'Alpha', '1.9': 'Beta' },
       },
       {
         name: 'VmiMemoryOverheadReport',
         description: 'Report memory overhead in VMI status',
-        versionHistory: { '1.8': 'Alpha' },
+        versionHistory: { '1.8': 'Alpha', '1.9': 'Beta' },
       },
       {
         name: 'ReservedOverheadMemlock',
@@ -272,6 +327,21 @@ const FEATURE_GATE_CATEGORIES: Record<
         name: 'ConfigurableHypervisor',
         description: 'Use non-KVM hypervisors via HypervisorConfigurations',
         versionHistory: { '1.8': 'Alpha' },
+      },
+      {
+        name: 'VMStatsCollector',
+        description: 'Collect tiered guest-agent monitoring data for VM statistics',
+        versionHistory: { '1.9': 'Alpha' },
+      },
+      {
+        name: 'FirmwareAutoSelection',
+        description: 'Use libvirt firmware auto-selection for EFI Secure Boot',
+        versionHistory: { '1.9': 'Alpha' },
+      },
+      {
+        name: 'CrossArchitectureVirtualization',
+        description: 'Run VMs across host and guest CPU architectures',
+        versionHistory: { '1.9': 'Alpha' },
       },
     ],
   },
@@ -297,12 +367,12 @@ const FEATURE_GATE_CATEGORIES: Record<
       {
         name: 'GPUsWithDRA',
         description: 'DRA-provisioned GPU allocation',
-        versionHistory: { '1.6': 'Alpha' },
+        versionHistory: { '1.6': 'Alpha', '1.9': 'Beta' },
       },
       {
         name: 'HostDevicesWithDRA',
         description: 'DRA-provisioned host device allocation',
-        versionHistory: { '1.6': 'Alpha' },
+        versionHistory: { '1.6': 'Alpha', '1.9': 'Beta' },
       },
       {
         name: 'DisableMDEVConfiguration',
@@ -312,12 +382,27 @@ const FEATURE_GATE_CATEGORIES: Record<
       {
         name: 'PanicDevices',
         description: 'Panic device support for crash signaling (requires pvpanic kernel module)',
-        versionHistory: { '1.6': 'Alpha', '1.7': 'Beta', '1.8': 'Beta' },
+        versionHistory: { '1.6': 'Alpha', '1.7': 'Beta', '1.9': 'GA' },
       },
       {
         name: 'PCINUMAAwareTopology',
         description: 'NUMA-aware PCIe topology for GPU/host device passthrough',
         versionHistory: { '1.6': 'Alpha' },
+      },
+      {
+        name: 'NetworkDevicesWithDRA',
+        description: 'DRA-provisioned network device allocation',
+        versionHistory: { '1.9': 'Alpha' },
+      },
+      {
+        name: 'GraceIOVirtualization',
+        description: 'Optimized GPU passthrough for NVIDIA Grace platforms',
+        versionHistory: { '1.9': 'Alpha' },
+      },
+      {
+        name: 'IOMMUFD',
+        description: 'Use IOMMUFD for passthrough device isolation',
+        versionHistory: { '1.9': 'Alpha' },
       },
     ],
   },
@@ -333,7 +418,7 @@ const FEATURE_GATE_CATEGORIES: Record<
       {
         name: 'WorkloadEncryptionSEV',
         description: 'AMD SEV memory encryption',
-        versionHistory: { '0.48': 'Alpha' },
+        versionHistory: { '0.48': 'Alpha', '1.9': 'Beta' },
       },
       {
         name: 'WorkloadEncryptionTDX',
@@ -358,7 +443,7 @@ const FEATURE_GATE_CATEGORIES: Record<
       {
         name: 'SecureExecution',
         description: 'IBM Z secure execution',
-        versionHistory: { '1.6': 'Alpha', '1.7': 'Beta' },
+        versionHistory: { '1.6': 'Alpha', '1.7': 'Beta', '1.9': 'GA' },
       },
       {
         name: 'DisableCustomSELinuxPolicy',
@@ -368,7 +453,7 @@ const FEATURE_GATE_CATEGORIES: Record<
       {
         name: 'OptOutRoleAggregation',
         description: 'Opt out of RBAC aggregation to default Kubernetes roles',
-        versionHistory: { '1.8': 'Alpha' },
+        versionHistory: { '1.8': 'Alpha', '1.9': 'Beta' },
       },
     ],
   },
@@ -384,7 +469,7 @@ const FEATURE_GATE_CATEGORIES: Record<
       {
         name: 'MigrationPriorityQueue',
         description: 'Prioritize system migrations over user migrations',
-        versionHistory: { '1.7': 'Alpha', '1.8': 'Beta' },
+        versionHistory: { '1.7': 'Alpha', '1.8': 'Beta', '1.9': 'GA' },
       },
       {
         name: 'VMPersistentState',
@@ -399,7 +484,17 @@ const FEATURE_GATE_CATEGORIES: Record<
       {
         name: 'LibvirtHooksServerAndClient',
         description: 'Pre-migration hooks on target virt-launcher for domain XML mutations',
+        versionHistory: { '1.8': 'Alpha', '1.9': 'Beta' },
+      },
+      {
+        name: 'VGPULiveMigration',
+        description: 'Run the vGPU hook during vGPU live migration',
         versionHistory: { '1.8': 'Alpha' },
+      },
+      {
+        name: 'MigrationStallDetection',
+        description: 'Detect stalled migrations and tune convergence',
+        versionHistory: { '1.9': 'Alpha' },
       },
     ],
   },
@@ -410,7 +505,7 @@ const FEATURE_GATE_CATEGORIES: Record<
       {
         name: 'VideoConfig',
         description: 'Custom video device types (virtio, vga, bochs)',
-        versionHistory: { '1.6': 'Alpha', '1.7': 'Beta' },
+        versionHistory: { '1.6': 'Alpha', '1.7': 'Beta', '1.9': 'GA' },
       },
       {
         name: 'BochsDisplayForEFIGuests',
@@ -446,7 +541,7 @@ const FEATURE_GATE_CATEGORIES: Record<
       {
         name: 'PersistentReservation',
         description: 'SCSI persistent reservation (pr-helper)',
-        versionHistory: { '1.0': 'Alpha' },
+        versionHistory: { '1.0': 'Alpha', '1.9': 'GA' },
       },
       {
         name: 'ObjectGraph',
@@ -476,7 +571,12 @@ const FEATURE_GATE_CATEGORIES: Record<
       {
         name: 'Template',
         description: 'VirtualMachineTemplate CRD and virt-template components',
-        versionHistory: { '1.8': 'Alpha' },
+        versionHistory: { '1.8': 'Alpha', '1.9': 'Beta' },
+      },
+      {
+        name: 'Plugins',
+        description: 'Declarative VM extension with the Plugin API',
+        versionHistory: { '1.9': 'Alpha' },
       },
       {
         name: 'DockerSELinuxMCSWorkaround',
@@ -516,9 +616,13 @@ interface FeatureGatesSectionProps {
     getVersion(): string;
   } | null;
   enabledFeatureGates: string[];
+  disabledFeatureGates: string[];
   sidebarReloadWarnings: string[];
   updating: boolean;
-  onToggleFeatureGate: (gate: string, enabled: boolean) => Promise<void>;
+  onUpdateFeatureGates: (
+    enabledFeatureGates: string[],
+    disabledFeatureGates: string[]
+  ) => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -528,11 +632,18 @@ interface FeatureGatesSectionProps {
 const FeatureGatesSection = React.memo(function FeatureGatesSection(
   props: FeatureGatesSectionProps
 ) {
-  const { kubeVirt, enabledFeatureGates, sidebarReloadWarnings, updating, onToggleFeatureGate } =
-    props;
+  const {
+    kubeVirt,
+    enabledFeatureGates,
+    disabledFeatureGates,
+    sidebarReloadWarnings,
+    updating,
+    onUpdateFeatureGates,
+  } = props;
 
   // Compute GA and Deprecated gates dynamically from version
-  const kvVersion = kubeVirt?.getVersion() || '1.7.0';
+  const kvVersion = kubeVirt?.getVersion();
+  const versionKnown = parseKubeVirtVersion(kvVersion) !== null;
   const { GA_GATES, DEPRECATED_GATES } = useMemo(() => {
     const allGates = Object.values(FEATURE_GATE_CATEGORIES).flatMap(cat => cat.gates);
     return {
@@ -567,8 +678,19 @@ const FeatureGatesSection = React.memo(function FeatureGatesSection(
   }, []);
 
   // Local handlers
-  const handleFeatureGateToggle = (gate: string, enabled: boolean) => {
-    onToggleFeatureGate(gate, enabled);
+  const handleFeatureGateToggle = (
+    gate: string,
+    state: FeatureGateState | null,
+    enabled: boolean
+  ) => {
+    const updated = updateFeatureGateLists(
+      gate,
+      state,
+      enabled,
+      enabledFeatureGates,
+      disabledFeatureGates
+    );
+    onUpdateFeatureGates(updated.enabledFeatureGates, updated.disabledFeatureGates);
   };
 
   return (
@@ -578,6 +700,12 @@ const FeatureGatesSection = React.memo(function FeatureGatesSection(
           Feature gates enable experimental or optional features. Changes require KubeVirt pods to
           restart.
         </Alert>
+
+        {!versionKnown && (
+          <Alert severity="warning" sx={{ mb: 3 }}>
+            KubeVirt version is unavailable. Version-dependent feature gates cannot be shown safely.
+          </Alert>
+        )}
 
         <Box display="flex" gap={3}>
           {/* Floating sidebar navigation */}
@@ -781,7 +909,17 @@ const FeatureGatesSection = React.memo(function FeatureGatesSection(
                   {availableGates.map(({ name, description, currentState }) => {
                     const isGA = GA_GATES.has(name);
                     const isDeprecated = DEPRECATED_GATES.has(name);
-                    const isEnabled = isGA || enabledFeatureGates.includes(name);
+                    const gate = gates.find(candidate => candidate.name === name)!;
+                    const isEnabled = isFeatureGateEnabledForVersion(
+                      gate,
+                      kvVersion,
+                      enabledFeatureGates,
+                      disabledFeatureGates
+                    );
+                    const isEnabledByDefault =
+                      currentState === 'Beta' &&
+                      !enabledFeatureGates.includes(name) &&
+                      !disabledFeatureGates.includes(name);
 
                     return (
                       <Box key={name}>
@@ -826,7 +964,12 @@ const FeatureGatesSection = React.memo(function FeatureGatesSection(
                                 onChange={
                                   isGA
                                     ? undefined
-                                    : e => handleFeatureGateToggle(name, e.target.checked)
+                                    : e =>
+                                        handleFeatureGateToggle(
+                                          name,
+                                          currentState,
+                                          e.target.checked
+                                        )
                                 }
                                 disabled={isGA || updating}
                                 color={isDeprecated ? 'warning' : undefined}
@@ -852,7 +995,13 @@ const FeatureGatesSection = React.memo(function FeatureGatesSection(
                                   minWidth: 70,
                                 }}
                               >
-                                {isGA ? 'Always On' : isEnabled ? 'Enabled' : 'Disabled'}
+                                {isGA
+                                  ? 'Always On'
+                                  : isEnabledByDefault
+                                  ? 'Enabled (default)'
+                                  : isEnabled
+                                  ? 'Enabled'
+                                  : 'Disabled'}
                               </Typography>
                             }
                           />
@@ -913,7 +1062,9 @@ const FeatureGatesSection = React.memo(function FeatureGatesSection(
                           control={
                             <Switch
                               checked
-                              onChange={e => handleFeatureGateToggle(customFG, e.target.checked)}
+                              onChange={e =>
+                                handleFeatureGateToggle(customFG, null, e.target.checked)
+                              }
                               disabled={updating}
                               sx={{
                                 '& .MuiSwitch-switchBase.Mui-checked': {
