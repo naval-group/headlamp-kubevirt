@@ -41,7 +41,8 @@
   },
   "overrides": {
     "typescript": "5.6.2",
-    "lodash": "^4.18.1"
+    "lodash": "^4.18.1",
+    "js-yaml": "^4.3.1"
   },
   "devDependencies": {
     "@kinvolk/headlamp-plugin": "^0.13.1",
@@ -56,7 +57,7 @@
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
     "@novnc/novnc": "^1.5.0",
-    "js-yaml": "^4.1.0",
+    "js-yaml": "^4.3.1",
     "recharts": "^3.8.1"
   },
   "msw": {
