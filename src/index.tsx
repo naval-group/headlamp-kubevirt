@@ -60,7 +60,11 @@ import SnapshotList from './components/VirtualMachineSnapshot/List';
 import VMTemplateDetails from './components/VirtualMachineTemplate/Details';
 import VMTemplateList from './components/VirtualMachineTemplate/List';
 import KubeVirtSettings from './kubevirt/Settings';
-import { areFeatureGatesLoaded, getFeatureGates, loadFeatureGates } from './utils/featureGates';
+import {
+  areFeatureGatesLoaded,
+  isFeatureGateEnabled,
+  loadFeatureGates,
+} from './utils/featureGates';
 import { detectKubeVirtCapabilities } from './utils/kubevirtVersion';
 
 // ── IPAM CRD detection ─────────────────────────────────────────────────
@@ -140,6 +144,7 @@ function KubeVirtUpdateWatcher() {
   const [updateMessage, setUpdateMessage] = useState('');
   const initialVersionRef = useRef<string | null>(null);
   const initialFeatureGatesRef = useRef<string[] | null>(null);
+  const initialDisabledFeatureGatesRef = useRef<string[] | null>(null);
 
   useEffect(() => {
     const checkForUpdates = async () => {
@@ -152,11 +157,14 @@ function KubeVirtUpdateWatcher() {
           const targetVersion = kv?.status?.targetKubeVirtVersion || '';
           const currentFeatureGates: string[] =
             kv?.spec?.configuration?.developerConfiguration?.featureGates || [];
+          const currentDisabledFeatureGates: string[] =
+            kv?.spec?.configuration?.developerConfiguration?.disabledFeatureGates || [];
 
           // Store initial values on first check
           if (initialVersionRef.current === null) {
             initialVersionRef.current = currentVersion;
             initialFeatureGatesRef.current = currentFeatureGates;
+            initialDisabledFeatureGatesRef.current = currentDisabledFeatureGates;
             return;
           }
 
@@ -176,10 +184,13 @@ function KubeVirtUpdateWatcher() {
 
           // Check if sidebar-affecting feature gates changed
           const initialGates = initialFeatureGatesRef.current || [];
+          const initialDisabledGates = initialDisabledFeatureGatesRef.current || [];
           const sidebarGatesChanged = SIDEBAR_AFFECTING_FEATURE_GATES.some(gate => {
             const wasEnabled = initialGates.includes(gate);
             const isEnabled = currentFeatureGates.includes(gate);
-            return wasEnabled !== isEnabled;
+            const wasDisabled = initialDisabledGates.includes(gate);
+            const isDisabled = currentDisabledFeatureGates.includes(gate);
+            return wasEnabled !== isEnabled || wasDisabled !== isDisabled;
           });
 
           if (sidebarGatesChanged) {
@@ -389,26 +400,25 @@ registerAppBarAction(() => <TooltipEnhancer />);
 // Filter sidebar entries based on feature gates
 registerSidebarEntryFilter(entry => {
   const loaded = areFeatureGatesLoaded();
-  const gates = getFeatureGates();
 
   // Hide snapshots if Snapshot feature gate is not enabled
-  if (entry.name === 'snapshots' && loaded && !gates.includes('Snapshot')) {
+  if (entry.name === 'snapshots' && loaded && !isFeatureGateEnabled('Snapshot')) {
     return null;
   }
   // Hide clones if Snapshot feature gate is not enabled (clone requires snapshot)
-  if (entry.name === 'clones' && loaded && !gates.includes('Snapshot')) {
+  if (entry.name === 'clones' && loaded && !isFeatureGateEnabled('Snapshot')) {
     return null;
   }
   // Hide restores if Snapshot feature gate is not enabled
-  if (entry.name === 'restores' && loaded && !gates.includes('Snapshot')) {
+  if (entry.name === 'restores' && loaded && !isFeatureGateEnabled('Snapshot')) {
     return null;
   }
   // Hide exports if VMExport feature gate is not enabled
-  if (entry.name === 'exports' && loaded && !gates.includes('VMExport')) {
+  if (entry.name === 'exports' && loaded && !isFeatureGateEnabled('VMExport')) {
     return null;
   }
   // Hide datavolumes if DataVolumes feature gate is not enabled
-  if (entry.name === 'datavolumes' && loaded && !gates.includes('DataVolumes')) {
+  if (entry.name === 'datavolumes' && loaded && !isFeatureGateEnabled('DataVolumes')) {
     return null;
   }
   // Hide IPAMClaims if the CRD is not available

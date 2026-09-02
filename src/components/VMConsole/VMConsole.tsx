@@ -717,6 +717,7 @@ export const VNCPanel = React.forwardRef<
     const userId = localStorage.getItem('headlamp-userId') || '';
     let cancelled = false;
     let retried = false;
+    let connectedOnce = false;
 
     function connectVNC(protocols: string[]) {
       if (cancelled || !vncDisplayRef.current) return;
@@ -728,6 +729,7 @@ export const VNCPanel = React.forwardRef<
         });
 
         rfb.addEventListener('connect', () => {
+          connectedOnce = true;
           setLocalStatus('connected');
           onStatusChange('connected');
 
@@ -778,8 +780,13 @@ export const VNCPanel = React.forwardRef<
         });
 
         rfb.addEventListener('disconnect', (e: { detail: { clean: boolean } }) => {
-          // If first attempt with auth protocol fails, retry without it
-          if (!retried && !e.detail.clean && protocols.length > 2) {
+          // If the first attempt disconnects before ever connecting while the
+          // Headlamp auth subprotocol is in use, retry without it. In-cluster
+          // OIDC/cookie deployments reject the unresolvable
+          // `base64url.headlamp.authorization.k8s.io.<userId>` subprotocol with a
+          // 404 during the WebSocket upgrade, which surfaces as a *clean* close —
+          // so we key the fallback on "never connected", not on e.detail.clean.
+          if (!retried && !connectedOnce && protocols.length > 2) {
             retried = true;
             rfbRef.current = null;
             connectVNC(['base64.binary.k8s.io', 'plain.kubevirt.io']);

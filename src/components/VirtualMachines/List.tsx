@@ -30,6 +30,7 @@ import VMDoctorDialog from '../VMDoctor/VMDoctorDialog';
 import BulkActionToolbar from './BulkActionToolbar';
 import CloneDialog from './CloneDialog';
 import VirtualMachine from './VirtualMachine';
+import { DEFAULT_VM_ARCHITECTURE } from './vmArchitecture';
 import VMFormWrapper from './VMFormWrapper';
 
 function DeleteProtectionBadge({ vm }: { vm: VirtualMachine }) {
@@ -247,6 +248,7 @@ const EMPTY_VM = {
     template: {
       metadata: {},
       spec: {
+        architecture: DEFAULT_VM_ARCHITECTURE,
         domain: {
           devices: {
             disks: [
