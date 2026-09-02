@@ -1,7 +1,19 @@
 import { ApiProxy } from '@kinvolk/headlamp-plugin/lib';
+import {
+  FEATURE_GATE_CATEGORIES,
+  isFeatureGateEnabledForVersion,
+} from '../kubevirt/Settings/FeatureGatesSection';
+
+const KNOWN_FEATURE_GATES = new Map(
+  Object.values(FEATURE_GATE_CATEGORIES)
+    .flatMap(category => category.gates)
+    .map(gate => [gate.name, gate])
+);
 
 // Global state for feature gates
 let featureGates: string[] = [];
+let disabledFeatureGates: string[] = [];
+let kubeVirtVersion: string | null = null;
 let featureGatesLoaded = false;
 let listeners: Array<() => void> = [];
 let retryTimeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -20,7 +32,14 @@ export async function loadFeatureGates() {
     const response = await ApiProxy.request('/apis/kubevirt.io/v1/kubevirts');
     const items = response?.items || [];
     if (items.length > 0) {
-      featureGates = items[0]?.spec?.configuration?.developerConfiguration?.featureGates || [];
+      const kubeVirt = items[0];
+      const developerConfiguration = kubeVirt?.spec?.configuration?.developerConfiguration;
+      featureGates = developerConfiguration?.featureGates || [];
+      disabledFeatureGates = developerConfiguration?.disabledFeatureGates || [];
+      kubeVirtVersion =
+        kubeVirt?.status?.observedKubeVirtVersion ||
+        kubeVirt?.status?.targetKubeVirtVersion ||
+        null;
     }
     featureGatesLoaded = true;
     retryCount = 0;
@@ -63,7 +82,15 @@ export function areFeatureGatesLoaded(): boolean {
 
 // Check if a specific feature gate is enabled
 export function isFeatureGateEnabled(gate: string): boolean {
-  return featureGates.includes(gate);
+  const gateInfo = KNOWN_FEATURE_GATES.get(gate);
+
+  if (!gateInfo) return featureGates.includes(gate);
+  return isFeatureGateEnabledForVersion(
+    gateInfo,
+    kubeVirtVersion,
+    featureGates,
+    disabledFeatureGates
+  );
 }
 
 // Subscribe to feature gate changes
@@ -75,8 +102,14 @@ export function subscribeToFeatureGates(listener: () => void): () => void {
 }
 
 // Update feature gates (used by Settings page or watcher)
-export function updateFeatureGates(gates: string[]) {
+export function updateFeatureGates(
+  gates: string[],
+  disabledGates: string[] = disabledFeatureGates,
+  version: string | null = kubeVirtVersion
+) {
   featureGates = gates;
+  disabledFeatureGates = disabledGates;
+  kubeVirtVersion = version;
   featureGatesLoaded = true;
   listeners.forEach(listener => listener());
 }

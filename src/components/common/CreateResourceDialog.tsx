@@ -22,8 +22,9 @@ import {
 import { useTheme } from '@mui/material/styles';
 import yaml from 'js-yaml';
 import { useSnackbar } from 'notistack';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import CRDDocsViewer from './CRDDocsViewer';
+import UnsavedChangesGuard from './UnsavedChangesGuard';
 
 const { SimpleEditor } = Resource;
 
@@ -75,6 +76,7 @@ export default function CreateResourceDialog({
   const [reviewOpen, setReviewOpen] = useState(false);
   const [showDiffOnly, setShowDiffOnly] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
+  const [dirty, setDirty] = useState(false);
   const isValid = validate ? validate(resource) : true;
 
   // Sync initialTab when dialog opens
@@ -105,13 +107,19 @@ export default function CreateResourceDialog({
     }
   }, [resource, activeTab]);
 
+  const updateResource = useCallback((r: KubeResourceBuilder) => {
+    setResource(r);
+    setDirty(true);
+  }, []);
+
   const handleYamlChange = (newYaml: string | undefined) => {
     if (!newYaml) return;
     setYamlContent(newYaml);
+    setDirty(true);
     try {
       const parsed = yaml.load(newYaml, { schema: yaml.JSON_SCHEMA });
       setYamlError(null);
-      setResource(parsed);
+      updateResource(parsed);
     } catch (error: unknown) {
       setYamlError(`Invalid YAML: ${(error as Error).message}`);
     }
@@ -162,13 +170,14 @@ export default function CreateResourceDialog({
     }
   };
 
-  const handleClose = () => {
+  const resetAndClose = () => {
     setResource(initialResource);
     setYamlContent('');
     setYamlError(null);
     setUploadUrl('');
     setActiveTab(0);
     setShowErrors(false);
+    setDirty(false);
     onClose();
   };
 
@@ -181,7 +190,7 @@ export default function CreateResourceDialog({
       try {
         const content = e.target?.result as string;
         const parsed = yaml.load(content, { schema: yaml.JSON_SCHEMA });
-        setResource(parsed);
+        updateResource(parsed);
         setYamlContent(content);
         setYamlError(null);
         setActiveTab(1);
@@ -249,7 +258,7 @@ export default function CreateResourceDialog({
         }, new Uint8Array())
       );
       const parsed = yaml.load(content, { schema: yaml.JSON_SCHEMA });
-      setResource(parsed);
+      updateResource(parsed);
       setYamlContent(content);
       setYamlError(null);
       setActiveTab(1);
@@ -263,365 +272,385 @@ export default function CreateResourceDialog({
   };
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="lg" fullWidth>
-      <Box sx={{ borderBottom: 1, borderColor: 'divider', display: 'flex', alignItems: 'center' }}>
-        <Typography variant="h6" sx={{ px: 3, py: 2, flexGrow: 1 }}>
-          {title}
-        </Typography>
-        <Tabs value={activeTab} onChange={(_, newValue) => setActiveTab(newValue)} sx={{ mr: 1 }}>
-          <Tab label="Form" icon={<Icon icon="mdi:form-textbox" />} iconPosition="start" />
-          <Tab label="Editor" icon={<Icon icon="mdi:code-braces" />} iconPosition="start" />
-          <Tab
-            label="Documentation"
-            icon={<Icon icon="mdi:book-open-page-variant" />}
-            iconPosition="start"
-          />
-          <Tab label="Upload" icon={<Icon icon="mdi:upload" />} iconPosition="start" />
-        </Tabs>
-        <IconButton onClick={handleClose} sx={{ mr: 1 }} size="small">
-          <Icon icon="mdi:close" />
-        </IconButton>
-      </Box>
-
-      <DialogContent
-        sx={{ p: 0, height: '70vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
-      >
-        {activeTab === 0 ? (
-          // Form Tab
-          <Box sx={{ p: 3, flex: 1, overflow: 'auto' }}>
-            <FormComponent
-              resource={resource}
-              onChange={setResource}
-              editMode={editMode}
-              showErrors={showErrors}
-            />
-          </Box>
-        ) : activeTab === 1 ? (
-          // Editor Tab
-          <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-            <Box
-              sx={{
-                p: 1.5,
-                borderBottom: 1,
-                borderColor: 'divider',
-                display: 'flex',
-                justifyContent: 'flex-end',
-              }}
+    <UnsavedChangesGuard dirty={dirty} onClose={resetAndClose}>
+      {guardedClose => (
+        <Dialog open={open} onClose={guardedClose} maxWidth="lg" fullWidth>
+          <Box
+            sx={{ borderBottom: 1, borderColor: 'divider', display: 'flex', alignItems: 'center' }}
+          >
+            <Typography variant="h6" sx={{ px: 3, py: 2, flexGrow: 1 }}>
+              {title}
+            </Typography>
+            <Tabs
+              value={activeTab}
+              onChange={(_, newValue) => setActiveTab(newValue)}
+              sx={{ mr: 1 }}
             >
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={useMinimalEditor}
-                    onChange={e => setUseMinimalEditor(e.target.checked)}
-                    size="small"
-                  />
-                }
-                label="Use minimal editor"
+              <Tab label="Form" icon={<Icon icon="mdi:form-textbox" />} iconPosition="start" />
+              <Tab label="Editor" icon={<Icon icon="mdi:code-braces" />} iconPosition="start" />
+              <Tab
+                label="Documentation"
+                icon={<Icon icon="mdi:book-open-page-variant" />}
+                iconPosition="start"
               />
-            </Box>
-            {yamlError && (
-              <Box
-                sx={{
-                  px: 2,
-                  py: 0.5,
-                  bgcolor: 'action.hover',
-                  borderBottom: 1,
-                  borderColor: 'warning.main',
-                }}
-              >
-                <Typography variant="caption" color="warning.main" noWrap>
-                  {yamlError}
-                </Typography>
-              </Box>
-            )}
-            <Box sx={{ flex: 1, minHeight: 0, position: 'relative', p: 2 }}>
-              {useMinimalEditor ? (
-                <Box sx={{ height: '100%', overflow: 'auto' }}>
-                  <SimpleEditor language="yaml" value={yamlContent} onChange={handleYamlChange} />
-                </Box>
-              ) : (
-                <Box sx={{ position: 'absolute', top: 16, left: 16, right: 16, bottom: 16 }}>
-                  <Editor
-                    language="yaml"
-                    theme={theme.palette.mode === 'dark' ? 'vs-dark' : 'light'}
-                    value={yamlContent}
-                    onChange={handleYamlChange}
-                    options={{
-                      lineNumbers: 'on',
-                      minimap: {
-                        enabled: true,
-                        scale: 2,
-                        showSlider: 'always',
-                      },
-                      scrollBeyondLastLine: false,
-                      wordWrap: 'on',
-                      wrappingIndent: 'indent',
-                      fontSize: 14,
-                      tabSize: 2,
-                      automaticLayout: true,
-                      padding: { top: 8, bottom: 8 },
-                    }}
-                  />
-                </Box>
-              )}
-            </Box>
-          </Box>
-        ) : activeTab === 2 ? (
-          // Documentation Tab
-          <Box sx={{ flex: 1, overflow: 'auto' }}>
-            <CRDDocsViewer apiVersion={resourceClass.apiVersion} kind={resourceClass.kind} />
-          </Box>
-        ) : (
-          // Upload Tab
-          <Box sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 3, flex: 1 }}>
-            <Tabs value={uploadMethod} onChange={(_, val) => setUploadMethod(val)}>
-              <Tab label="Upload File" />
-              <Tab label="Load from URL" />
+              <Tab label="Upload" icon={<Icon icon="mdi:upload" />} iconPosition="start" />
             </Tabs>
+            <IconButton onClick={guardedClose} sx={{ mr: 1 }} size="small">
+              <Icon icon="mdi:close" />
+            </IconButton>
+          </Box>
 
-            {uploadMethod === 0 ? (
-              <Box
-                sx={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: 3,
-                  mt: 4,
-                }}
-              >
-                <Typography variant="h6" color="text.secondary">
-                  Select a YAML or JSON file
-                </Typography>
-                <input
-                  type="file"
-                  accept=".yaml,.yml,.json"
-                  style={{ display: 'none' }}
-                  id="file-upload"
-                  onChange={handleFileUpload}
+          <DialogContent
+            sx={{
+              p: 0,
+              height: '70vh',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+          >
+            {activeTab === 0 ? (
+              // Form Tab
+              <Box sx={{ p: 3, flex: 1, overflow: 'auto' }}>
+                <FormComponent
+                  resource={resource}
+                  onChange={updateResource}
+                  editMode={editMode}
+                  showErrors={showErrors}
                 />
-                <label htmlFor="file-upload">
-                  <Button
-                    variant="contained"
-                    component="span"
-                    size="large"
-                    startIcon={<Icon icon="mdi:upload" />}
-                  >
-                    Select File
-                  </Button>
-                </label>
-                <Typography variant="caption" color="text.secondary">
-                  Drag and drop is not supported yet. Click the button to select a file.
-                </Typography>
               </Box>
-            ) : (
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
-                <Typography variant="h6" color="text.secondary">
-                  Load from a remote URL
-                </Typography>
-                <TextField
-                  fullWidth
-                  label="Resource URL"
-                  placeholder="https://example.com/resource.yaml"
-                  value={uploadUrl}
-                  onChange={e => setUploadUrl(e.target.value)}
-                  helperText="Enter a URL to a YAML or JSON file"
-                />
-                <Button
-                  variant="contained"
-                  onClick={handleUrlLoad}
-                  size="large"
-                  startIcon={<Icon icon="mdi:download" />}
-                  disabled={!uploadUrl}
+            ) : activeTab === 1 ? (
+              // Editor Tab
+              <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                <Box
+                  sx={{
+                    p: 1.5,
+                    borderBottom: 1,
+                    borderColor: 'divider',
+                    display: 'flex',
+                    justifyContent: 'flex-end',
+                  }}
                 >
-                  Load from URL
-                </Button>
-              </Box>
-            )}
-          </Box>
-        )}
-      </DialogContent>
-
-      <DialogActions sx={{ px: 3, py: 2 }}>
-        <Button onClick={handleClose}>Cancel</Button>
-        <Box sx={{ flex: 1 }} />
-        {showErrors && !isValid && (
-          <Chip
-            icon={<Icon icon="mdi:alert-circle-outline" />}
-            label="Some required fields are missing"
-            color="warning"
-            size="small"
-            variant="outlined"
-          />
-        )}
-        <Button
-          onClick={() => setReviewOpen(true)}
-          startIcon={<Icon icon="mdi:eye-outline" />}
-          disabled={!!yamlError || !resource?.metadata?.name}
-        >
-          Review
-        </Button>
-        <Button
-          variant="contained"
-          onClick={() => {
-            if (validate && !isValid) {
-              setShowErrors(true);
-              // Scroll to the first missing mandatory field
-              setTimeout(() => {
-                const firstMissing = document.querySelector('[data-mandatory-empty="true"]');
-                if (firstMissing) {
-                  firstMissing.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }
-              }, 50);
-              return;
-            }
-            handleSave();
-          }}
-          startIcon={<Icon icon="mdi:check" />}
-          disabled={!!yamlError}
-        >
-          {editMode ? 'Save' : 'Create'}
-        </Button>
-      </DialogActions>
-
-      {/* Review Dialog */}
-      <Dialog open={reviewOpen} onClose={() => setReviewOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Icon icon="mdi:eye-outline" />
-            Review {resource?.kind || 'Resource'}
-          </Box>
-        </DialogTitle>
-        <DialogContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {/* Summary Cards */}
-            <Paper variant="outlined" sx={{ p: 2 }}>
-              <Typography variant="overline" color="text.secondary">
-                Resource Information
-              </Typography>
-              <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 1 }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <Typography variant="body2" fontWeight="bold">
-                    Kind:
-                  </Typography>
-                  <Chip label={resource?.kind || '-'} size="small" color="primary" />
-                </Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <Typography variant="body2" fontWeight="bold">
-                    API Version:
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {resource?.apiVersion || '-'}
-                  </Typography>
-                </Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <Typography variant="body2" fontWeight="bold">
-                    Name:
-                  </Typography>
-                  <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
-                    {resource?.metadata?.name || '-'}
-                  </Typography>
-                </Box>
-                {resource?.metadata?.namespace && (
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <Typography variant="body2" fontWeight="bold">
-                      Namespace:
-                    </Typography>
-                    <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
-                      {resource.metadata.namespace}
-                    </Typography>
-                  </Box>
-                )}
-              </Box>
-            </Paper>
-
-            <Divider />
-
-            {/* YAML Preview */}
-            <Box>
-              <Box display="flex" alignItems="center" justifyContent="space-between">
-                <Typography variant="overline" color="text.secondary" gutterBottom>
-                  {showDiffOnly ? 'Changes' : 'YAML Configuration'}
-                </Typography>
-                {editMode && (
                   <FormControlLabel
                     control={
                       <Switch
+                        checked={useMinimalEditor}
+                        onChange={e => setUseMinimalEditor(e.target.checked)}
                         size="small"
-                        checked={showDiffOnly}
-                        onChange={(_, checked) => setShowDiffOnly(checked)}
                       />
                     }
-                    label="Show diff only"
+                    label="Use minimal editor"
                   />
-                )}
-              </Box>
-              <Box
-                sx={{
-                  border: 1,
-                  borderColor: 'divider',
-                  borderRadius: 1,
-                  overflow: 'hidden',
-                  bgcolor: 'action.hover',
-                }}
-              >
-                {showDiffOnly && editMode ? (
-                  <DiffEditor
-                    height="400px"
-                    language="yaml"
-                    theme={theme.palette.mode === 'dark' ? 'vs-dark' : 'light'}
-                    original={yaml.dump(initialResource, { lineWidth: -1, noRefs: true })}
-                    modified={yaml.dump(resource, { lineWidth: -1, noRefs: true })}
-                    options={{
-                      readOnly: true,
-                      minimap: { enabled: false },
-                      lineNumbers: 'on',
-                      scrollBeyondLastLine: false,
-                      fontSize: 12,
-                      renderSideBySide: false,
-                      hideUnchangedRegions: {
-                        enabled: true,
-                        contextLineCount: 5,
-                        minimumLineCount: 3,
-                        revealLineCount: 10,
-                      },
+                </Box>
+                {yamlError && (
+                  <Box
+                    sx={{
+                      px: 2,
+                      py: 0.5,
+                      bgcolor: 'action.hover',
+                      borderBottom: 1,
+                      borderColor: 'warning.main',
                     }}
-                  />
+                  >
+                    <Typography variant="caption" color="warning.main" noWrap>
+                      {yamlError}
+                    </Typography>
+                  </Box>
+                )}
+                <Box sx={{ flex: 1, minHeight: 0, position: 'relative', p: 2 }}>
+                  {useMinimalEditor ? (
+                    <Box sx={{ height: '100%', overflow: 'auto' }}>
+                      <SimpleEditor
+                        language="yaml"
+                        value={yamlContent}
+                        onChange={handleYamlChange}
+                      />
+                    </Box>
+                  ) : (
+                    <Box sx={{ position: 'absolute', top: 16, left: 16, right: 16, bottom: 16 }}>
+                      <Editor
+                        language="yaml"
+                        theme={theme.palette.mode === 'dark' ? 'vs-dark' : 'light'}
+                        value={yamlContent}
+                        onChange={handleYamlChange}
+                        options={{
+                          lineNumbers: 'on',
+                          minimap: {
+                            enabled: true,
+                            scale: 2,
+                            showSlider: 'always',
+                          },
+                          scrollBeyondLastLine: false,
+                          wordWrap: 'on',
+                          wrappingIndent: 'indent',
+                          fontSize: 14,
+                          tabSize: 2,
+                          automaticLayout: true,
+                          padding: { top: 8, bottom: 8 },
+                        }}
+                      />
+                    </Box>
+                  )}
+                </Box>
+              </Box>
+            ) : activeTab === 2 ? (
+              // Documentation Tab
+              <Box sx={{ flex: 1, overflow: 'auto' }}>
+                <CRDDocsViewer apiVersion={resourceClass.apiVersion} kind={resourceClass.kind} />
+              </Box>
+            ) : (
+              // Upload Tab
+              <Box sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 3, flex: 1 }}>
+                <Tabs value={uploadMethod} onChange={(_, val) => setUploadMethod(val)}>
+                  <Tab label="Upload File" />
+                  <Tab label="Load from URL" />
+                </Tabs>
+
+                {uploadMethod === 0 ? (
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: 3,
+                      mt: 4,
+                    }}
+                  >
+                    <Typography variant="h6" color="text.secondary">
+                      Select a YAML or JSON file
+                    </Typography>
+                    <input
+                      type="file"
+                      accept=".yaml,.yml,.json"
+                      style={{ display: 'none' }}
+                      id="file-upload"
+                      onChange={handleFileUpload}
+                    />
+                    <label htmlFor="file-upload">
+                      <Button
+                        variant="contained"
+                        component="span"
+                        size="large"
+                        startIcon={<Icon icon="mdi:upload" />}
+                      >
+                        Select File
+                      </Button>
+                    </label>
+                    <Typography variant="caption" color="text.secondary">
+                      Drag and drop is not supported yet. Click the button to select a file.
+                    </Typography>
+                  </Box>
                 ) : (
-                  <Editor
-                    height="400px"
-                    language="yaml"
-                    theme={theme.palette.mode === 'dark' ? 'vs-dark' : 'light'}
-                    value={yaml.dump(resource, { lineWidth: -1, noRefs: true })}
-                    options={{
-                      readOnly: true,
-                      minimap: { enabled: false },
-                      lineNumbers: 'on',
-                      scrollBeyondLastLine: false,
-                      wordWrap: 'on',
-                      fontSize: 12,
-                      tabSize: 2,
-                    }}
-                  />
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
+                    <Typography variant="h6" color="text.secondary">
+                      Load from a remote URL
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      label="Resource URL"
+                      placeholder="https://example.com/resource.yaml"
+                      value={uploadUrl}
+                      onChange={e => setUploadUrl(e.target.value)}
+                      helperText="Enter a URL to a YAML or JSON file"
+                    />
+                    <Button
+                      variant="contained"
+                      onClick={handleUrlLoad}
+                      size="large"
+                      startIcon={<Icon icon="mdi:download" />}
+                      disabled={!uploadUrl}
+                    >
+                      Load from URL
+                    </Button>
+                  </Box>
                 )}
               </Box>
-            </Box>
-          </Box>
-        </DialogContent>
-        <DialogActions sx={{ px: 3, py: 2 }}>
-          <Button onClick={() => setReviewOpen(false)}>Close</Button>
-          <Button
-            variant="contained"
-            onClick={() => {
-              setReviewOpen(false);
-              handleSave();
-            }}
-            startIcon={<Icon icon="mdi:check" />}
-            disabled={!!yamlError}
-          >
-            {editMode ? 'Confirm & Save' : 'Confirm & Create'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </Dialog>
+            )}
+          </DialogContent>
+
+          <DialogActions sx={{ px: 3, py: 2 }}>
+            <Button onClick={guardedClose}>Cancel</Button>
+            <Box sx={{ flex: 1 }} />
+            {showErrors && !isValid && (
+              <Chip
+                icon={<Icon icon="mdi:alert-circle-outline" />}
+                label="Some required fields are missing"
+                color="warning"
+                size="small"
+                variant="outlined"
+              />
+            )}
+            <Button
+              onClick={() => setReviewOpen(true)}
+              startIcon={<Icon icon="mdi:eye-outline" />}
+              disabled={!!yamlError || !resource?.metadata?.name}
+            >
+              Review
+            </Button>
+            <Button
+              variant="contained"
+              onClick={() => {
+                if (validate && !isValid) {
+                  setShowErrors(true);
+                  // Scroll to the first missing mandatory field
+                  setTimeout(() => {
+                    const firstMissing = document.querySelector('[data-mandatory-empty="true"]');
+                    if (firstMissing) {
+                      firstMissing.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                  }, 50);
+                  return;
+                }
+                handleSave();
+              }}
+              startIcon={<Icon icon="mdi:check" />}
+              disabled={!!yamlError}
+            >
+              {editMode ? 'Save' : 'Create'}
+            </Button>
+          </DialogActions>
+
+          {/* Review Dialog */}
+          <Dialog open={reviewOpen} onClose={() => setReviewOpen(false)} maxWidth="md" fullWidth>
+            <DialogTitle>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Icon icon="mdi:eye-outline" />
+                Review {resource?.kind || 'Resource'}
+              </Box>
+            </DialogTitle>
+            <DialogContent>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {/* Summary Cards */}
+                <Paper variant="outlined" sx={{ p: 2 }}>
+                  <Typography variant="overline" color="text.secondary">
+                    Resource Information
+                  </Typography>
+                  <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography variant="body2" fontWeight="bold">
+                        Kind:
+                      </Typography>
+                      <Chip label={resource?.kind || '-'} size="small" color="primary" />
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography variant="body2" fontWeight="bold">
+                        API Version:
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {resource?.apiVersion || '-'}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography variant="body2" fontWeight="bold">
+                        Name:
+                      </Typography>
+                      <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+                        {resource?.metadata?.name || '-'}
+                      </Typography>
+                    </Box>
+                    {resource?.metadata?.namespace && (
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <Typography variant="body2" fontWeight="bold">
+                          Namespace:
+                        </Typography>
+                        <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+                          {resource.metadata.namespace}
+                        </Typography>
+                      </Box>
+                    )}
+                  </Box>
+                </Paper>
+
+                <Divider />
+
+                {/* YAML Preview */}
+                <Box>
+                  <Box display="flex" alignItems="center" justifyContent="space-between">
+                    <Typography variant="overline" color="text.secondary" gutterBottom>
+                      {showDiffOnly ? 'Changes' : 'YAML Configuration'}
+                    </Typography>
+                    {editMode && (
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            size="small"
+                            checked={showDiffOnly}
+                            onChange={(_, checked) => setShowDiffOnly(checked)}
+                          />
+                        }
+                        label="Show diff only"
+                      />
+                    )}
+                  </Box>
+                  <Box
+                    sx={{
+                      border: 1,
+                      borderColor: 'divider',
+                      borderRadius: 1,
+                      overflow: 'hidden',
+                      bgcolor: 'action.hover',
+                    }}
+                  >
+                    {showDiffOnly && editMode ? (
+                      <DiffEditor
+                        height="400px"
+                        language="yaml"
+                        theme={theme.palette.mode === 'dark' ? 'vs-dark' : 'light'}
+                        original={yaml.dump(initialResource, { lineWidth: -1, noRefs: true })}
+                        modified={yaml.dump(resource, { lineWidth: -1, noRefs: true })}
+                        options={{
+                          readOnly: true,
+                          minimap: { enabled: false },
+                          lineNumbers: 'on',
+                          scrollBeyondLastLine: false,
+                          fontSize: 12,
+                          renderSideBySide: false,
+                          hideUnchangedRegions: {
+                            enabled: true,
+                            contextLineCount: 5,
+                            minimumLineCount: 3,
+                            revealLineCount: 10,
+                          },
+                        }}
+                      />
+                    ) : (
+                      <Editor
+                        height="400px"
+                        language="yaml"
+                        theme={theme.palette.mode === 'dark' ? 'vs-dark' : 'light'}
+                        value={yaml.dump(resource, { lineWidth: -1, noRefs: true })}
+                        options={{
+                          readOnly: true,
+                          minimap: { enabled: false },
+                          lineNumbers: 'on',
+                          scrollBeyondLastLine: false,
+                          wordWrap: 'on',
+                          fontSize: 12,
+                          tabSize: 2,
+                        }}
+                      />
+                    )}
+                  </Box>
+                </Box>
+              </Box>
+            </DialogContent>
+            <DialogActions sx={{ px: 3, py: 2 }}>
+              <Button onClick={() => setReviewOpen(false)}>Close</Button>
+              <Button
+                variant="contained"
+                onClick={() => {
+                  setReviewOpen(false);
+                  handleSave();
+                }}
+                startIcon={<Icon icon="mdi:check" />}
+                disabled={!!yamlError}
+              >
+                {editMode ? 'Confirm & Save' : 'Confirm & Create'}
+              </Button>
+            </DialogActions>
+          </Dialog>
+        </Dialog>
+      )}
+    </UnsavedChangesGuard>
   );
 }

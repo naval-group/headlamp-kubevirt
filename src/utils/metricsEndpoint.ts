@@ -87,21 +87,23 @@ async function readFromConfigMap(): Promise<{
     // KubeVirt API not available, continue with defaults
   }
 
-  for (const ns of namespacesToCheck) {
-    try {
-      const resp = (await ApiProxy.request(
-        `/api/v1/namespaces/${ns}/configmaps/${CONFIGMAP_NAME}`
-      )) as { data?: Record<string, string> };
-      if (resp?.data?.[CONFIGMAP_KEY]) {
+  // Use a label selector to find the ConfigMap across all namespaces in a single call
+  // This avoids 404 noise from probing individual namespaces
+  try {
+    const allCMs = (await ApiProxy.request(
+      `/api/v1/configmaps?fieldSelector=metadata.name=${CONFIGMAP_NAME}`
+    )) as { items?: Array<{ metadata: { namespace: string }; data?: Record<string, string> }> };
+    for (const cm of allCMs?.items || []) {
+      if (cm?.data?.[CONFIGMAP_KEY]) {
         return {
-          url: resp.data[CONFIGMAP_KEY],
-          orgId: resp.data[CONFIGMAP_ORGID_KEY] || null,
-          namespace: ns,
+          url: cm.data[CONFIGMAP_KEY],
+          orgId: cm.data[CONFIGMAP_ORGID_KEY] || null,
+          namespace: cm.metadata.namespace,
         };
       }
-    } catch {
-      // ConfigMap not in this namespace, try next
     }
+  } catch {
+    // ConfigMap API not accessible
   }
   return { url: null, orgId: null, namespace: null };
 }
