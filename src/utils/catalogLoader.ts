@@ -1,5 +1,5 @@
 import { ApiProxy } from '@kinvolk/headlamp-plugin/lib';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import IMAGE_CATALOG, {
   CatalogImage,
   CatalogImageTag,

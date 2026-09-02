@@ -1,4 +1,4 @@
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 
 /** Standard options for YAML dump across the plugin */
 export const YAML_DUMP_OPTIONS: yaml.DumpOptions = { lineWidth: -1, noRefs: true };
