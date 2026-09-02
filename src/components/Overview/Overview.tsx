@@ -449,13 +449,13 @@ export default function VirtualizationOverview() {
                                 {consumer.name}
                               </Typography>
                               <Typography variant="caption" fontWeight="bold" sx={{ ml: 1 }}>
-                                {(consumer.value * 100).toFixed(1)}%
+                                {((consumer.value / (consumer.vcpus || 1)) * 100).toFixed(1)}%
                                 {consumer.vcpus ? ` / ${consumer.vcpus} vCPU` : ''}
                               </Typography>
                             </Box>
                             <LinearProgress
                               variant="determinate"
-                              value={Math.min(consumer.value * 100, 100)}
+                              value={Math.min((consumer.value / (consumer.vcpus || 1)) * 100, 100)}
                               sx={{
                                 height: 6,
                                 borderRadius: 1,
