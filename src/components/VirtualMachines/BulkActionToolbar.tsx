@@ -11,16 +11,18 @@ type BulkAction = 'start' | 'stop' | 'forceStop' | 'migrate' | 'delete';
 
 interface BulkActionToolbarProps {
   table: MRT_TableInstance<VirtualMachine>;
+  onMultiConsole?: (vms: VirtualMachine[]) => void;
 }
 
-export default function BulkActionToolbar({ table }: BulkActionToolbarProps) {
+export default function BulkActionToolbar({ table, onMultiConsole }: BulkActionToolbarProps) {
   const { enqueueSnackbar } = useSnackbar();
   const [confirmAction, setConfirmAction] = useState<BulkAction | null>(null);
   const [compareOpen, setCompareOpen] = useState(false);
 
   const selectedVMs = table.getSelectedRowModel().rows.map(r => r.original);
 
-  const hasRunning = selectedVMs.some(vm => vm.status?.printableStatus === 'Running');
+  const runningSelected = selectedVMs.filter(vm => vm.status?.printableStatus === 'Running');
+  const hasRunning = runningSelected.length > 0;
   const hasStopped = selectedVMs.some(vm => vm.status?.printableStatus === 'Stopped');
   const hasNotStopped = selectedVMs.some(vm => vm.status?.printableStatus !== 'Stopped');
   const hasMigratable = selectedVMs.some(
@@ -107,6 +109,14 @@ export default function BulkActionToolbar({ table }: BulkActionToolbarProps) {
   return (
     <>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+        <Tooltip title="Clear selection">
+          <span>
+            <IconButton onClick={() => table.resetRowSelection()} sx={{ fontSize: '1.5rem' }}>
+              <Icon icon="mdi:select-remove" />
+            </IconButton>
+          </span>
+        </Tooltip>
+
         <Tooltip title="Start">
           <span>
             <IconButton
@@ -169,6 +179,26 @@ export default function BulkActionToolbar({ table }: BulkActionToolbarProps) {
               sx={{ fontSize: '1.5rem' }}
             >
               <Icon icon="mdi:compare" />
+            </IconButton>
+          </span>
+        </Tooltip>
+
+        <Tooltip
+          title={
+            runningSelected.length === 0
+              ? 'No running VMs selected'
+              : runningSelected.length > 4
+              ? 'Select up to 4 running VMs'
+              : `Multi Console (${runningSelected.length} VMs)`
+          }
+        >
+          <span>
+            <IconButton
+              onClick={() => onMultiConsole?.(runningSelected)}
+              disabled={runningSelected.length === 0 || runningSelected.length > 4}
+              sx={{ fontSize: '1.5rem' }}
+            >
+              <Icon icon="mdi:console-network" />
             </IconButton>
           </span>
         </Tooltip>

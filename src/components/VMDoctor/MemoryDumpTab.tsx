@@ -875,7 +875,7 @@ export default function MemoryDumpTab({
 
     if (hasKernelInfo) {
       // Kernel detected via guest agent — add ISF init container to copy pre-built symbols
-      const isfImage = `${forensic.isfRegistry}/${forensic.isfRepo}:${kernelRelease}`;
+      const isfImage = `${forensic.isfRegistry}/${forensic.isfRepo}:${kernelRelease}${forensic.isfSuffix}`;
       const isfPullPolicy = forensic.isfRegistry.startsWith('localhost') ? 'Never' : 'IfNotPresent';
       initContainers.push({
         name: 'isf-init',
@@ -1442,6 +1442,7 @@ export default function MemoryDumpTab({
                           <code style={{ fontSize: '0.7rem' }}>
                             {getForensicSettings().isfRegistry}/{getForensicSettings().isfRepo}:
                             {kernelRelease}
+                            {getForensicSettings().isfSuffix}
                           </code>
                         </>
                       ) : (
@@ -1652,7 +1653,7 @@ export default function MemoryDumpTab({
                       hasKernelInfo
                         ? `ISF: ${getForensicSettings().isfRegistry}/${
                             getForensicSettings().isfRepo
-                          }:${kernelRelease}`
+                          }:${kernelRelease}${getForensicSettings().isfSuffix}`
                         : 'QEMU Guest Agent not available — kernel not detected'
                     }
                     arrow

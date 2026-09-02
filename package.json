@@ -1,6 +1,6 @@
 {
   "name": "kubevirt",
-  "version": "0.1.0",
+  "version": "0.2.2",
   "description": "A comprehensive Headlamp plugin for managing KubeVirt virtual machines in Kubernetes",
   "author": "Alexandre Knecht",
   "homepage": "https://github.com/naval-group/headlamp-kubevirt",
@@ -47,7 +47,7 @@
     "@kinvolk/headlamp-plugin": "^0.13.1",
     "@storybook/addon-webpack5-compiler-swc": "^1.0.6",
     "@types/js-yaml": "^4.0.9",
-    "fast-check": "^4.6.0",
+    "fast-check": "^4.9.0",
     "msw": "^2.12.14",
     "msw-storybook-addon": "^2.0.7",
     "path-browserify": "^1.0.1",

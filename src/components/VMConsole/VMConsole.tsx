@@ -73,12 +73,12 @@ function QuickActions({ vm }: { vm?: VirtualMachine }) {
   return (
     <Box display="flex" alignItems="center" gap={0.5} sx={{ ml: 2 }}>
       <Box
-        sx={{
+        sx={theme => ({
           width: '1px',
           height: 24,
-          backgroundColor: 'rgba(255,255,255,0.3)',
+          backgroundColor: theme.palette.divider,
           mx: 0.5,
-        }}
+        })}
       />
       {quickActions.map(a => (
         <Tooltip key={a.id} title={a.label}>
@@ -90,11 +90,14 @@ function QuickActions({ vm }: { vm?: VirtualMachine }) {
                 e.stopPropagation();
                 a.handler();
               }}
-              sx={{
-                color: a.disabled ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.8)',
-                '&:hover': { color: '#fff', backgroundColor: 'rgba(255,255,255,0.1)' },
+              sx={theme => ({
+                color: a.disabled ? theme.palette.action.disabled : theme.palette.text.secondary,
+                '&:hover': {
+                  color: theme.palette.text.primary,
+                  backgroundColor: theme.palette.action.hover,
+                },
                 padding: '4px',
-              }}
+              })}
             >
               <Icon icon={a.icon} width={18} />
             </IconButton>
@@ -119,14 +122,19 @@ export const TerminalPanel = React.forwardRef<
     active: boolean;
     onStatusChange: (status: 'connecting' | 'connected') => void;
     compact?: boolean;
+    onInput?: (text: string) => void;
   }
->(function TerminalPanel({ item, active, onStatusChange, compact }, ref) {
+>(function TerminalPanel({ item, active, onStatusChange, compact, onInput }, ref) {
   const { t } = useTranslation(['translation', 'glossary']);
   const execRef = useRef<execReturn | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const xtermRef = useRef<XTerminalConnected | null>(null);
   const [terminalRef, setTerminalRef] = useState<HTMLElement | null>(null);
   const [fontSize, setFontSize] = useState(14);
+  const onInputRef = useRef(onInput);
+  onInputRef.current = onInput;
+  const onStatusChangeRef = useRef(onStatusChange);
+  onStatusChangeRef.current = onStatusChange;
 
   const encoderRef = useRef(new TextEncoder());
   const decoderRef = useRef(new TextDecoder('utf-8'));
@@ -179,7 +187,10 @@ export const TerminalPanel = React.forwardRef<
   function setupTerminal(itemRef: HTMLElement, xterm: XTerminal, fitAddon: FitAddon) {
     if (!itemRef) return;
     xterm.open(itemRef);
-    xterm.onData(data => send(0, data));
+    xterm.onData(data => {
+      send(0, data);
+      onInputRef.current?.(data);
+    });
     xterm.attachCustomKeyEventHandler(arg => {
       if (arg.ctrlKey && arg.type === 'keydown') {
         if (arg.code === 'KeyC') {
@@ -227,7 +238,7 @@ export const TerminalPanel = React.forwardRef<
     xtermRef.current.xterm.loadAddon(fitAddonRef.current);
 
     (async function () {
-      onStatusChange('connecting');
+      onStatusChangeRef.current('connecting');
       execRef.current = await item.exec(items => onData(xtermRef.current!, items), {
         reconnectOnFailure: false,
         failCb: () => {
@@ -235,7 +246,7 @@ export const TerminalPanel = React.forwardRef<
         },
         connectCb: () => {
           if (xtermRef.current) xtermRef.current.connected = true;
-          onStatusChange('connected');
+          onStatusChangeRef.current('connected');
           setTimeout(() => send(0, '\x15\r'), 500);
         },
         tty: false,
@@ -287,7 +298,7 @@ export const TerminalPanel = React.forwardRef<
             overflowY: 'hidden !important',
           },
         },
-        '& #xterm-container': {
+        '& .xterm-container': {
           overflow: 'hidden',
           width: '100%',
           '& .terminal.xterm': {
@@ -358,7 +369,7 @@ export const TerminalPanel = React.forwardRef<
         })}
       >
         <div
-          id="xterm-container"
+          className="xterm-container"
           ref={x => setTerminalRef(x)}
           style={{ flex: 1, display: 'flex', flexDirection: 'column-reverse' }}
         />
@@ -668,103 +679,146 @@ export const VNCPanel = React.forwardRef<
     setErrorMessage('');
     setTabletWarning(false);
 
-    // Build WebSocket URL matching Headlamp's ApiProxy.stream() format
+    // Build WebSocket URL matching Headlamp's getAppUrl() logic exactly
     const ns = item.getNamespace();
     const name = item.getName();
-    const backendPort = (window as any).headlampBackendPort || 4466;
-    const isDesktop = !!(window as any).desktopApi || window.location.protocol === 'file:';
-    const wsBase = isDesktop
+
+    // Replicate isElectron() — checks renderer process, electron version, or user agent
+    const isElectron =
+      (typeof window !== 'undefined' &&
+        typeof (window as any).process === 'object' &&
+        (window as any).process.type === 'renderer') ||
+      (typeof process !== 'undefined' &&
+        typeof process.versions === 'object' &&
+        !!(process.versions as any).electron) ||
+      (typeof navigator === 'object' && navigator.userAgent.indexOf('Electron') >= 0);
+    const isDockerDesktop = navigator.userAgent.indexOf('Docker Desktop') >= 0;
+
+    let backendPort = 4466;
+    let useLocalhost = false;
+    if (isElectron) {
+      if ((window as any).headlampBackendPort) {
+        backendPort = (window as any).headlampBackendPort;
+      }
+      useLocalhost = true;
+    }
+    if (isDockerDesktop) {
+      backendPort = 64446;
+      useLocalhost = true;
+    }
+
+    const wsBase = useLocalhost
       ? `ws://localhost:${backendPort}`
       : window.location.origin.replace(/^http/, 'ws');
     const cluster = (item as any).cluster || 'default';
     const vncPath = `/apis/subresources.kubevirt.io/v1/namespaces/${ns}/virtualmachineinstances/${name}/vnc`;
     const wsUrl = `${wsBase}/clusters/${cluster}${vncPath}`;
 
-    // Include auth protocols matching what ApiProxy.stream() sends
     const userId = localStorage.getItem('headlamp-userId') || '';
-    const wsProtocols = [
-      'base64.binary.k8s.io',
-      'plain.kubevirt.io',
-      ...(userId ? [`base64url.headlamp.authorization.k8s.io.${userId}`] : []),
-    ];
+    let cancelled = false;
+    let retried = false;
+    let connectedOnce = false;
 
-    try {
-      const rfb = new RFBCreate(vncDisplayRef.current, wsUrl, {
-        wsProtocols,
-        scaleViewport: true,
-      });
+    function connectVNC(protocols: string[]) {
+      if (cancelled || !vncDisplayRef.current) return;
 
-      rfb.addEventListener('connect', () => {
-        setLocalStatus('connected');
-        onStatusChange('connected');
+      try {
+        const rfb = new RFBCreate(vncDisplayRef.current, wsUrl, {
+          wsProtocols: protocols,
+          scaleViewport: true,
+        });
 
-        // Periodically check if this is a desktop VM without tablet
-        if (vmRef.current) {
-          const devices = (vmRef.current as any).jsonData?.spec?.template?.spec?.domain?.devices;
-          const hasTablet = devices?.inputs?.some((i: any) => i.type === 'tablet');
-          const hasAutoAttach = devices?.autoattachInputDevice === true;
-          if (!hasTablet && !hasAutoAttach) {
-            let checkCount = 0;
-            const maxChecks = 10; // check for up to ~5 minutes
-            const checkDesktop = () => {
-              checkCount++;
-              const canvas = vncDisplayRef.current?.querySelector('canvas') as HTMLCanvasElement;
-              if (!canvas) return;
-              const ctx = canvas.getContext('2d');
-              if (!ctx) return;
-              const w = canvas.width;
-              const h = canvas.height;
-              if (w === 0 || h === 0) return;
-              const imgData = ctx.getImageData(0, 0, w, h).data;
-              const step = Math.max(1, Math.floor(Math.min(w, h) / 20));
-              let colorfulPixels = 0;
-              let totalSampled = 0;
-              for (let y = step; y < h - step; y += step) {
-                for (let x = step; x < w - step; x += step) {
-                  const i = (y * w + x) * 4;
-                  const r = imgData[i];
-                  const g = imgData[i + 1];
-                  const b = imgData[i + 2];
-                  const max = Math.max(r, g, b);
-                  const min = Math.min(r, g, b);
-                  const saturation = max === 0 ? 0 : (max - min) / max;
-                  if (saturation > 0.15 && max > 30) colorfulPixels++;
-                  totalSampled++;
+        rfb.addEventListener('connect', () => {
+          connectedOnce = true;
+          setLocalStatus('connected');
+          onStatusChange('connected');
+
+          // Periodically check if this is a desktop VM without tablet
+          if (vmRef.current) {
+            const devices = (vmRef.current as any).jsonData?.spec?.template?.spec?.domain?.devices;
+            const hasTablet = devices?.inputs?.some((i: any) => i.type === 'tablet');
+            const hasAutoAttach = devices?.autoattachInputDevice === true;
+            if (!hasTablet && !hasAutoAttach) {
+              let checkCount = 0;
+              const maxChecks = 10;
+              const checkDesktop = () => {
+                checkCount++;
+                const canvas = vncDisplayRef.current?.querySelector('canvas') as HTMLCanvasElement;
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) return;
+                const w = canvas.width;
+                const h = canvas.height;
+                if (w === 0 || h === 0) return;
+                const imgData = ctx.getImageData(0, 0, w, h).data;
+                const step = Math.max(1, Math.floor(Math.min(w, h) / 20));
+                let colorfulPixels = 0;
+                let totalSampled = 0;
+                for (let y = step; y < h - step; y += step) {
+                  for (let x = step; x < w - step; x += step) {
+                    const i = (y * w + x) * 4;
+                    const r = imgData[i];
+                    const g = imgData[i + 1];
+                    const b = imgData[i + 2];
+                    const max = Math.max(r, g, b);
+                    const min = Math.min(r, g, b);
+                    const saturation = max === 0 ? 0 : (max - min) / max;
+                    if (saturation > 0.15 && max > 30) colorfulPixels++;
+                    totalSampled++;
+                  }
                 }
-              }
-              const colorRatio = totalSampled > 0 ? colorfulPixels / totalSampled : 0;
-              if (colorRatio > 0.05) {
-                setTabletWarning(true);
-                // Stop checking — desktop detected
-              } else if (checkCount < maxChecks) {
-                desktopCheckTimerRef.current = window.setTimeout(checkDesktop, 30000);
-              }
-            };
-            desktopCheckTimerRef.current = window.setTimeout(checkDesktop, 3000);
+                const colorRatio = totalSampled > 0 ? colorfulPixels / totalSampled : 0;
+                if (colorRatio > 0.05) {
+                  setTabletWarning(true);
+                } else if (checkCount < maxChecks) {
+                  desktopCheckTimerRef.current = window.setTimeout(checkDesktop, 30000);
+                }
+              };
+              desktopCheckTimerRef.current = window.setTimeout(checkDesktop, 3000);
+            }
           }
-        }
-      });
+        });
 
-      rfb.addEventListener('disconnect', (e: { detail: { clean: boolean } }) => {
+        rfb.addEventListener('disconnect', (e: { detail: { clean: boolean } }) => {
+          // If the first attempt disconnects before ever connecting while the
+          // Headlamp auth subprotocol is in use, retry without it. In-cluster
+          // OIDC/cookie deployments reject the unresolvable
+          // `base64url.headlamp.authorization.k8s.io.<userId>` subprotocol with a
+          // 404 during the WebSocket upgrade, which surfaces as a *clean* close —
+          // so we key the fallback on "never connected", not on e.detail.clean.
+          if (!retried && !connectedOnce && protocols.length > 2) {
+            retried = true;
+            rfbRef.current = null;
+            connectVNC(['base64.binary.k8s.io', 'plain.kubevirt.io']);
+            return;
+          }
+          setLocalStatus('disconnected');
+          onStatusChange('disconnected');
+          if (!e.detail.clean) {
+            setErrorMessage('VNC connection lost.');
+          }
+        });
+
+        rfb.scaleViewport = true;
+        rfb.resizeSession = false;
+        rfbRef.current = rfb;
+      } catch (error) {
+        console.error('VNC connection error:', error);
         setLocalStatus('disconnected');
         onStatusChange('disconnected');
-        if (!e.detail.clean) {
-          setErrorMessage('VNC connection lost.');
-        }
-      });
-
-      rfb.scaleViewport = true;
-      rfb.resizeSession = false;
-
-      rfbRef.current = rfb;
-    } catch (error) {
-      console.error('VNC connection error:', error);
-      setLocalStatus('disconnected');
-      onStatusChange('disconnected');
-      setErrorMessage('Failed to create VNC connection.');
+        setErrorMessage('Failed to create VNC connection.');
+      }
     }
 
+    // Try with auth protocol first, falls back to without on disconnect
+    const protocols = ['base64.binary.k8s.io', 'plain.kubevirt.io'];
+    if (userId) {
+      protocols.push(`base64url.headlamp.authorization.k8s.io.${userId}`);
+    }
+    connectVNC(protocols);
+
     return () => {
+      cancelled = true;
       if (desktopCheckTimerRef.current) {
         clearTimeout(desktopCheckTimerRef.current);
         desktopCheckTimerRef.current = null;
@@ -1083,7 +1137,12 @@ export default function VMConsole(props: VMConsoleProps) {
               }}
             />
             <Box
-              sx={{ width: '1px', height: 24, backgroundColor: 'rgba(255,255,255,0.3)', mx: 0.5 }}
+              sx={theme => ({
+                width: '1px',
+                height: 24,
+                backgroundColor: theme.palette.divider,
+                mx: 0.5,
+              })}
             />
             <ToggleButtonGroup
               value={activeTab}
@@ -1095,24 +1154,24 @@ export default function VMConsole(props: VMConsoleProps) {
                 }
               }}
               size="small"
-              sx={{
+              sx={theme => ({
                 height: 28,
                 '& .MuiToggleButton-root': {
-                  color: 'rgba(255,255,255,0.6)',
-                  borderColor: 'rgba(255,255,255,0.3)',
+                  color: theme.palette.text.secondary,
+                  borderColor: theme.palette.divider,
                   textTransform: 'none',
                   fontSize: '0.8rem',
                   px: 1.5,
                   py: 0,
                   gap: 0.5,
                   '&.Mui-selected': {
-                    color: '#fff',
-                    backgroundColor: 'rgba(255,255,255,0.15)',
-                    '&:hover': { backgroundColor: 'rgba(255,255,255,0.2)' },
+                    color: theme.palette.text.primary,
+                    backgroundColor: theme.palette.action.selected,
+                    '&:hover': { backgroundColor: theme.palette.action.hover },
                   },
-                  '&:hover': { backgroundColor: 'rgba(255,255,255,0.08)' },
+                  '&:hover': { backgroundColor: theme.palette.action.hover },
                 },
-              }}
+              })}
             >
               <ToggleButton value="vnc">
                 <Icon icon="mdi:monitor" width={14} />

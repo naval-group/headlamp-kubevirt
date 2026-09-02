@@ -24,10 +24,13 @@ import ResourceEditorDialog from '../ResourceEditorDialog';
 import VirtualMachineInstance from '../VirtualMachineInstance/VirtualMachineInstance';
 import CreateSnapshotDialog from '../VirtualMachineSnapshot/CreateSnapshotDialog';
 import SaveAsTemplateDialog from '../VirtualMachineTemplate/SaveAsTemplateDialog';
+import MultiConsole from '../VMConsole/MultiConsole';
+import VMConsole from '../VMConsole/VMConsole';
 import VMDoctorDialog from '../VMDoctor/VMDoctorDialog';
 import BulkActionToolbar from './BulkActionToolbar';
 import CloneDialog from './CloneDialog';
 import VirtualMachine from './VirtualMachine';
+import { DEFAULT_VM_ARCHITECTURE } from './vmArchitecture';
 import VMFormWrapper from './VMFormWrapper';
 
 function DeleteProtectionBadge({ vm }: { vm: VirtualMachine }) {
@@ -52,6 +55,7 @@ function VMRowActionMenuItems({
   closeMenu,
   snapshotEnabled,
   onDoctor,
+  onConsole,
   onClone,
   onSnapshot,
   onLaunchLikeThis,
@@ -68,6 +72,7 @@ function VMRowActionMenuItems({
   onSnapshot: (vm: VirtualMachine) => void;
   onLaunchLikeThis: (vm: VirtualMachine) => void;
   onSaveAsTemplate: (vm: VirtualMachine) => void;
+  onConsole: (vm: VirtualMachine, tab: 'vnc' | 'terminal') => void;
   onEdit: (vm: VirtualMachine) => void;
   onViewYaml: (vm: VirtualMachine) => void;
   onDelete: (vm: VirtualMachine) => void;
@@ -76,9 +81,38 @@ function VMRowActionMenuItems({
   const [liveVM] = VirtualMachine.useGet(vm.getName(), vm.getNamespace());
   const { actions, isProtected } = useVMActions(liveVM || vm);
   const templateEnabled = useFeatureGate('Template');
+  const currentVM = liveVM || vm;
+  const isRunning = currentVM.status?.printableStatus === 'Running';
 
   return (
     <>
+      <MenuItem
+        key="vnc-console"
+        onClick={() => {
+          closeMenu();
+          onConsole(currentVM, 'vnc');
+        }}
+        disabled={!isRunning}
+      >
+        <ListItemIcon>
+          <Icon icon="mdi:monitor" />
+        </ListItemIcon>
+        <ListItemText>VNC Console</ListItemText>
+      </MenuItem>
+      <MenuItem
+        key="serial-console"
+        onClick={() => {
+          closeMenu();
+          onConsole(currentVM, 'terminal');
+        }}
+        disabled={!isRunning}
+      >
+        <ListItemIcon>
+          <Icon icon="mdi:console" />
+        </ListItemIcon>
+        <ListItemText>Serial Console</ListItemText>
+      </MenuItem>
+      <Divider />
       {actions.map(a => (
         <MenuItem
           key={a.id}
@@ -214,6 +248,7 @@ const EMPTY_VM = {
     template: {
       metadata: {},
       spec: {
+        architecture: DEFAULT_VM_ARCHITECTURE,
         domain: {
           devices: {
             disks: [
@@ -254,8 +289,64 @@ export default function VirtualMachineList() {
   const [snapshotVM, setSnapshotVM] = useState<VirtualMachine | null>(null);
   const [saveAsTemplateVM, setSaveAsTemplateVM] = useState<VirtualMachine | null>(null);
   const [launchLikeThisVM, setLaunchLikeThisVM] = useState<VirtualMachine | null>(null);
+  const [consoleVM, setConsoleVM] = useState<VirtualMachine | null>(null);
+  const [consoleTab, setConsoleTab] = useState<'vnc' | 'terminal'>('vnc');
+  const [multiConsoleVMs, setMultiConsoleVMs] = useState<VirtualMachine[]>([]);
+  const [vmMetrics, setVmMetrics] = useState<Map<string, { podCpu?: string; podMem?: string }>>(
+    new Map()
+  );
   useEffect(() => {
     setCustomLabelColumns(getLabelColumns());
+  }, []);
+
+  // Fetch pod-level metrics from metrics-server for CPU/Memory usage
+  useEffect(() => {
+    const fetchAll = async () => {
+      const map = new Map<string, { podCpu?: string; podMem?: string }>();
+
+      // 1. Metrics-server (pod-level)
+      try {
+        const resp = (await ApiProxy.request(
+          '/apis/metrics.k8s.io/v1beta1/pods?labelSelector=vm.kubevirt.io/name'
+        )) as {
+          items?: Array<{
+            metadata: { namespace: string; labels?: Record<string, string> };
+            containers: Array<{ usage: { cpu: string; memory: string } }>;
+          }>;
+        };
+        for (const pod of resp?.items || []) {
+          const vmName = pod.metadata.labels?.['vm.kubevirt.io/name'];
+          if (!vmName) continue;
+          const key = `${pod.metadata.namespace}/${vmName}`;
+          let cpuNano = 0;
+          let memKi = 0;
+          for (const c of pod.containers || []) {
+            const cpuStr = c.usage?.cpu || '0';
+            if (cpuStr.endsWith('n')) cpuNano += parseInt(cpuStr) || 0;
+            else if (cpuStr.endsWith('m')) cpuNano += (parseInt(cpuStr) || 0) * 1e6;
+            else cpuNano += (parseFloat(cpuStr) || 0) * 1e9;
+            const memStr = c.usage?.memory || '0';
+            if (memStr.endsWith('Ki')) memKi += parseInt(memStr) || 0;
+            else if (memStr.endsWith('Mi')) memKi += (parseInt(memStr) || 0) * 1024;
+            else if (memStr.endsWith('Gi')) memKi += (parseInt(memStr) || 0) * 1024 * 1024;
+          }
+          const cpuMillis = Math.round(cpuNano / 1e6);
+          const memMi = Math.round(memKi / 1024);
+          const entry = map.get(key) || {};
+          entry.podCpu = cpuMillis >= 1000 ? `${(cpuMillis / 1000).toFixed(1)}` : `${cpuMillis}m`;
+          entry.podMem = memMi >= 1024 ? `${(memMi / 1024).toFixed(1)} GiB` : `${memMi} MiB`;
+          map.set(key, entry);
+        }
+      } catch {
+        // metrics-server not available
+      }
+
+      setVmMetrics(map);
+    };
+
+    fetchAll();
+    const id = setInterval(fetchAll, 30000);
+    return () => clearInterval(id);
   }, []);
 
   const snapshotEnabled = useFeatureGate('Snapshot');
@@ -458,6 +549,70 @@ export default function VirtualMachineList() {
       }
     );
 
+    // CPU column — clean vCPU count, tooltip with topology + pod usage
+    cols.push({
+      id: 'cpu',
+      header: 'CPU',
+      accessorFn: (vm: VirtualMachine) => {
+        const cpu = vm.spec?.template?.spec?.domain?.cpu;
+        if (!cpu) return '-';
+        return `${(cpu.sockets || 1) * (cpu.cores || 1) * (cpu.threads || 1)} vCPU`;
+      },
+      Cell: ({ row }: { row: { original: VirtualMachine } }) => {
+        const vm = row.original;
+        const cpu = vm.spec?.template?.spec?.domain?.cpu;
+        if (!cpu) return '-';
+        const s = cpu.sockets || 1;
+        const c = cpu.cores || 1;
+        const t = cpu.threads || 1;
+        const total = s * c * t;
+        const key = `${vm.getNamespace()}/${vm.getName()}`;
+        const m = vmMetrics.get(key);
+        const rows = [
+          { label: 'Sockets', value: s },
+          { label: 'Cores', value: c },
+          { label: 'Threads', value: t },
+          ...(m?.podCpu ? [{ label: 'Pod Usage', value: m.podCpu }] : []),
+        ];
+        return (
+          <TitledTooltip title="CPU Topology" rows={rows}>
+            <span style={{ cursor: 'help' }}>{total} vCPU</span>
+          </TitledTooltip>
+        );
+      },
+    });
+
+    // Memory column — clean allocated, tooltip with pod usage
+    cols.push({
+      id: 'memory',
+      header: 'Memory',
+      accessorFn: (vm: VirtualMachine) => {
+        return (
+          vm.spec?.template?.spec?.domain?.resources?.requests?.memory ||
+          vm.spec?.template?.spec?.domain?.memory?.guest ||
+          '-'
+        );
+      },
+      Cell: ({ row }: { row: { original: VirtualMachine } }) => {
+        const vm = row.original;
+        const mem =
+          vm.spec?.template?.spec?.domain?.resources?.requests?.memory ||
+          vm.spec?.template?.spec?.domain?.memory?.guest ||
+          '-';
+        const key = `${vm.getNamespace()}/${vm.getName()}`;
+        const m = vmMetrics.get(key);
+        const rows = [
+          { label: 'Allocated', value: mem },
+          ...(m?.podMem ? [{ label: 'Pod Usage', value: m.podMem }] : []),
+        ];
+        return (
+          <TitledTooltip title="Memory Details" rows={rows}>
+            <span style={{ cursor: 'help' }}>{mem}</span>
+          </TitledTooltip>
+        );
+      },
+    });
+
     // Custom label columns from settings
     customLabelColumns.forEach(col => {
       cols.push({
@@ -482,7 +637,7 @@ export default function VirtualMachineList() {
     });
 
     return cols;
-  }, [getVMI, customLabelColumns]);
+  }, [getVMI, customLabelColumns, vmMetrics]);
 
   const openDoctor = useCallback(async (vm: VirtualMachine) => {
     const vmName = vm.getName();
@@ -521,6 +676,11 @@ export default function VirtualMachineList() {
     setDoctorVM(vm);
   }, []);
 
+  const openConsole = useCallback((vm: VirtualMachine, tab: 'vnc' | 'terminal') => {
+    setConsoleTab(tab);
+    setConsoleVM(vm);
+  }, []);
+
   // Row action menu items (per-row three-dot menu)
   const renderRowActionMenuItems = useCallback(
     ({ row, closeMenu }: { row: { original: VirtualMachine }; closeMenu: () => void }) => [
@@ -530,6 +690,7 @@ export default function VirtualMachineList() {
         closeMenu={closeMenu}
         snapshotEnabled={snapshotEnabled}
         onDoctor={openDoctor}
+        onConsole={openConsole}
         onClone={setCloneVM}
         onSnapshot={setSnapshotVM}
         onLaunchLikeThis={setLaunchLikeThisVM}
@@ -539,7 +700,7 @@ export default function VirtualMachineList() {
         onDelete={setDeleteVM}
       />,
     ],
-    [snapshotEnabled, openDoctor]
+    [snapshotEnabled, openDoctor, openConsole]
   );
 
   return (
@@ -574,7 +735,9 @@ export default function VirtualMachineList() {
           enableFacetedValues
           enableFullScreenToggle={false}
           renderRowActionMenuItems={renderRowActionMenuItems}
-          renderRowSelectionToolbar={({ table }) => <BulkActionToolbar table={table} />}
+          renderRowSelectionToolbar={({ table }) => (
+            <BulkActionToolbar table={table} onMultiConsole={setMultiConsoleVMs} />
+          )}
           getRowId={(vm: VirtualMachine) => vm.metadata?.uid ?? vm.getName()}
         />
       </SectionBox>
@@ -686,6 +849,22 @@ export default function VirtualMachineList() {
           initialResource={buildLaunchTemplate(launchLikeThisVM.jsonData)}
           formComponent={VMFormWrapper}
           validate={r => !!(r?.metadata?.name && r?.metadata?.namespace)}
+        />
+      )}
+
+      <MultiConsole
+        open={multiConsoleVMs.length > 0}
+        vms={multiConsoleVMs}
+        onClose={() => setMultiConsoleVMs([])}
+      />
+
+      {consoleVM && (
+        <VMConsole
+          open={!!consoleVM}
+          item={consoleVM}
+          vm={consoleVM}
+          initialTab={consoleTab}
+          onClose={() => setConsoleVM(null)}
         />
       )}
     </>

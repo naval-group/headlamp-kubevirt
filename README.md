@@ -297,6 +297,65 @@ spec:
           emptyDir: {}
 ```
 
+### Option 3: In-Cluster (Image Volume)
+
+For Kubernetes clusters running Headlamp where you'd rather mount the plugin via the
+[Kubernetes image volume source](https://kubernetes.io/docs/concepts/storage/volumes/#image)
+instead of using an init container. Requires Kubernetes >= 1.35 (on by default) or 1.34
+with the `ImageVolume` feature gate enabled, and a container runtime with image volume
+support (containerd >= 2.1, CRI-O >= 1.31).
+
+The plugin is published as a file-only image (`FROM scratch`) at
+`ghcr.io/naval-group/headlamp-kubevirt-oci`. `main.js` and `package.json` sit at the
+image root, so mounting the volume directly under the Headlamp plugins-dir gives you a
+ready-to-load plugin sub-directory.
+
+#### Using Helm
+
+```yaml
+# values.yaml
+volumes:
+  - name: kubevirt-plugin
+    image:
+      reference: ghcr.io/naval-group/headlamp-kubevirt-oci:latest
+      pullPolicy: IfNotPresent
+
+volumeMounts:
+  - name: kubevirt-plugin
+    mountPath: /headlamp/plugins/kubevirt
+    readOnly: true
+```
+
+#### Using kubectl
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: headlamp
+spec:
+  template:
+    spec:
+      containers:
+        - name: headlamp
+          image: ghcr.io/headlamp-k8s/headlamp:latest
+          args:
+            - '-plugins-dir=/headlamp/plugins'
+          volumeMounts:
+            - name: kubevirt-plugin
+              mountPath: /headlamp/plugins/kubevirt
+              readOnly: true
+      volumes:
+        - name: kubevirt-plugin
+          image:
+            reference: ghcr.io/naval-group/headlamp-kubevirt-oci:latest
+            pullPolicy: IfNotPresent
+```
+
+Compared to the init-container approach, this skips an extra Pod startup step and lets
+the kubelet's image cache serve the plugin directly. Pin a specific version tag (e.g.
+`:0.2.2`) in production rather than `:latest`.
+
 ## Development
 
 ```bash

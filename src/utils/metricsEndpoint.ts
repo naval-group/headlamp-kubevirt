@@ -49,9 +49,20 @@ function metricsRequestOpts(orgId?: string | null): Record<string, unknown> {
   return {};
 }
 
-/** Make a metrics API request with optional org ID header. */
+/** Make a metrics API request with optional org ID header.
+ * External URLs (https:// or http://) are fetched directly,
+ * K8s proxy paths are routed through ApiProxy. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function metricsRequest(url: string, orgId?: string | null): Promise<any> {
+  const isExternal = url.startsWith('https://') || url.startsWith('http://');
+  if (isExternal) {
+    const headers: Record<string, string> = { Accept: 'application/json' };
+    if (orgId) headers['X-Scope-OrgID'] = orgId;
+    return fetch(url, { headers }).then(resp => {
+      if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
+      return resp.json();
+    });
+  }
   return ApiProxy.request(url, metricsRequestOpts(orgId));
 }
 
@@ -76,21 +87,23 @@ async function readFromConfigMap(): Promise<{
     // KubeVirt API not available, continue with defaults
   }
 
-  for (const ns of namespacesToCheck) {
-    try {
-      const resp = (await ApiProxy.request(
-        `/api/v1/namespaces/${ns}/configmaps/${CONFIGMAP_NAME}`
-      )) as { data?: Record<string, string> };
-      if (resp?.data?.[CONFIGMAP_KEY]) {
+  // Use a label selector to find the ConfigMap across all namespaces in a single call
+  // This avoids 404 noise from probing individual namespaces
+  try {
+    const allCMs = (await ApiProxy.request(
+      `/api/v1/configmaps?fieldSelector=metadata.name=${CONFIGMAP_NAME}`
+    )) as { items?: Array<{ metadata: { namespace: string }; data?: Record<string, string> }> };
+    for (const cm of allCMs?.items || []) {
+      if (cm?.data?.[CONFIGMAP_KEY]) {
         return {
-          url: resp.data[CONFIGMAP_KEY],
-          orgId: resp.data[CONFIGMAP_ORGID_KEY] || null,
-          namespace: ns,
+          url: cm.data[CONFIGMAP_KEY],
+          orgId: cm.data[CONFIGMAP_ORGID_KEY] || null,
+          namespace: cm.metadata.namespace,
         };
       }
-    } catch {
-      // ConfigMap not in this namespace, try next
     }
+  } catch {
+    // ConfigMap API not accessible
   }
   return { url: null, orgId: null, namespace: null };
 }
@@ -195,15 +208,12 @@ export async function clearMetricsEndpoint(): Promise<void> {
 // ── Test function ──────────────────────────────────────────────────────
 
 export async function testMetricsEndpoint(url: string, orgId?: string): Promise<TestResult> {
-  const opts = metricsRequestOpts(orgId);
   let lastError: string | undefined;
 
   for (const query of ['up', 'kubevirt_info']) {
     try {
-      const resp = (await ApiProxy.request(
-        `${url}/api/v1/query?query=${encodeURIComponent(query)}`,
-        opts
-      )) as Record<string, unknown>;
+      const queryUrl = `${url}/api/v1/query?query=${encodeURIComponent(query)}`;
+      const resp = (await metricsRequest(queryUrl, orgId)) as Record<string, unknown>;
       if (resp?.status !== 'success') continue;
       const results = ((resp.data as Record<string, unknown>)?.result as unknown[]) || [];
       return { ok: true, count: results.length };

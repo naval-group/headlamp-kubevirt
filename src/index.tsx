@@ -35,6 +35,8 @@ import DataImportCronList from './components/DataImportCrons/List';
 import CatalogPage from './components/ImageCatalog/CatalogPage';
 import InstanceTypeDetails from './components/InstanceTypes/Details';
 import InstanceTypeList from './components/InstanceTypes/List';
+import IPAMClaimDetails from './components/IPAMClaims/Details';
+import IPAMClaimList from './components/IPAMClaims/List';
 import MigrationDetails from './components/Migrations/Details';
 import MigrationList from './components/Migrations/List';
 import NADDetails from './components/NetworkAttachmentDefinitions/Details';
@@ -58,8 +60,24 @@ import SnapshotList from './components/VirtualMachineSnapshot/List';
 import VMTemplateDetails from './components/VirtualMachineTemplate/Details';
 import VMTemplateList from './components/VirtualMachineTemplate/List';
 import KubeVirtSettings from './kubevirt/Settings';
-import { areFeatureGatesLoaded, getFeatureGates, loadFeatureGates } from './utils/featureGates';
+import {
+  areFeatureGatesLoaded,
+  isFeatureGateEnabled,
+  loadFeatureGates,
+} from './utils/featureGates';
 import { detectKubeVirtCapabilities } from './utils/kubevirtVersion';
+
+// ── IPAM CRD detection ─────────────────────────────────────────────────
+let ipamCRDAvailable = false;
+
+async function detectIPAMCRD() {
+  try {
+    await ApiProxy.request('/apis/k8s.cni.cncf.io/v1alpha1/ipamclaims');
+    ipamCRDAvailable = true;
+  } catch {
+    ipamCRDAvailable = false;
+  }
+}
 
 // Route registration helper - DRY pattern for KubeVirt resources
 interface ResourceRoute {
@@ -115,6 +133,7 @@ function registerKubeVirtResource(config: ResourceRoute) {
 // Load feature gates and detect capabilities on plugin initialization
 loadFeatureGates();
 detectKubeVirtCapabilities();
+detectIPAMCRD();
 
 // Feature gates that affect sidebar visibility
 const SIDEBAR_AFFECTING_FEATURE_GATES = ['Snapshot', 'VMExport', 'DataVolumes'];
@@ -125,6 +144,7 @@ function KubeVirtUpdateWatcher() {
   const [updateMessage, setUpdateMessage] = useState('');
   const initialVersionRef = useRef<string | null>(null);
   const initialFeatureGatesRef = useRef<string[] | null>(null);
+  const initialDisabledFeatureGatesRef = useRef<string[] | null>(null);
 
   useEffect(() => {
     const checkForUpdates = async () => {
@@ -137,11 +157,14 @@ function KubeVirtUpdateWatcher() {
           const targetVersion = kv?.status?.targetKubeVirtVersion || '';
           const currentFeatureGates: string[] =
             kv?.spec?.configuration?.developerConfiguration?.featureGates || [];
+          const currentDisabledFeatureGates: string[] =
+            kv?.spec?.configuration?.developerConfiguration?.disabledFeatureGates || [];
 
           // Store initial values on first check
           if (initialVersionRef.current === null) {
             initialVersionRef.current = currentVersion;
             initialFeatureGatesRef.current = currentFeatureGates;
+            initialDisabledFeatureGatesRef.current = currentDisabledFeatureGates;
             return;
           }
 
@@ -161,10 +184,13 @@ function KubeVirtUpdateWatcher() {
 
           // Check if sidebar-affecting feature gates changed
           const initialGates = initialFeatureGatesRef.current || [];
+          const initialDisabledGates = initialDisabledFeatureGatesRef.current || [];
           const sidebarGatesChanged = SIDEBAR_AFFECTING_FEATURE_GATES.some(gate => {
             const wasEnabled = initialGates.includes(gate);
             const isEnabled = currentFeatureGates.includes(gate);
-            return wasEnabled !== isEnabled;
+            const wasDisabled = initialDisabledGates.includes(gate);
+            const isDisabled = currentDisabledFeatureGates.includes(gate);
+            return wasEnabled !== isEnabled || wasDisabled !== isDisabled;
           });
 
           if (sidebarGatesChanged) {
@@ -374,26 +400,29 @@ registerAppBarAction(() => <TooltipEnhancer />);
 // Filter sidebar entries based on feature gates
 registerSidebarEntryFilter(entry => {
   const loaded = areFeatureGatesLoaded();
-  const gates = getFeatureGates();
 
   // Hide snapshots if Snapshot feature gate is not enabled
-  if (entry.name === 'snapshots' && loaded && !gates.includes('Snapshot')) {
+  if (entry.name === 'snapshots' && loaded && !isFeatureGateEnabled('Snapshot')) {
     return null;
   }
   // Hide clones if Snapshot feature gate is not enabled (clone requires snapshot)
-  if (entry.name === 'clones' && loaded && !gates.includes('Snapshot')) {
+  if (entry.name === 'clones' && loaded && !isFeatureGateEnabled('Snapshot')) {
     return null;
   }
   // Hide restores if Snapshot feature gate is not enabled
-  if (entry.name === 'restores' && loaded && !gates.includes('Snapshot')) {
+  if (entry.name === 'restores' && loaded && !isFeatureGateEnabled('Snapshot')) {
     return null;
   }
   // Hide exports if VMExport feature gate is not enabled
-  if (entry.name === 'exports' && loaded && !gates.includes('VMExport')) {
+  if (entry.name === 'exports' && loaded && !isFeatureGateEnabled('VMExport')) {
     return null;
   }
   // Hide datavolumes if DataVolumes feature gate is not enabled
-  if (entry.name === 'datavolumes' && loaded && !gates.includes('DataVolumes')) {
+  if (entry.name === 'datavolumes' && loaded && !isFeatureGateEnabled('DataVolumes')) {
+    return null;
+  }
+  // Hide IPAMClaims if the CRD is not available
+  if (entry.name === 'ipamclaims' && !ipamCRDAvailable) {
     return null;
   }
   return entry;
@@ -586,8 +615,6 @@ registerKubeVirtResource({
 });
 
 // Image Catalog — not a CRD, registered as a simple page
-// NOTE: Using registerKubeVirtResource pattern with a dummy list component
-// to avoid Headlamp's _class resolution error on Cluster page
 registerSidebarEntry({
   parent: 'kubevirt',
   name: 'kubevirt-imagecatalog',
@@ -597,7 +624,7 @@ registerSidebarEntry({
 });
 registerRoute({
   path: '/kubevirt/imagecatalog',
-  sidebar: 'kubevirt',
+  sidebar: 'kubevirt-imagecatalog',
   component: () => (
     <ErrorBoundary>
       <CatalogPage />
@@ -615,6 +642,38 @@ registerKubeVirtResource({
   DetailsComponent: DataImportCronDetails,
   detailsRouteName: 'dataimportcron',
   hasNamespace: true,
+});
+
+// IPAMClaims - child of Networks, conditionally shown based on CRD availability
+registerSidebarEntry({
+  parent: 'networks',
+  name: 'ipamclaims',
+  label: 'IPAMClaims',
+  url: '/kubevirt/ipamclaims',
+  icon: 'mdi:ip-network',
+});
+
+registerRoute({
+  path: '/kubevirt/ipamclaims',
+  sidebar: 'ipamclaims',
+  component: () => (
+    <ErrorBoundary>
+      <IPAMClaimList />
+    </ErrorBoundary>
+  ),
+  exact: true,
+});
+
+registerRoute({
+  path: '/kubevirt/ipamclaims/:namespace/:name',
+  sidebar: 'ipamclaims',
+  component: () => (
+    <ErrorBoundary>
+      <IPAMClaimDetails />
+    </ErrorBoundary>
+  ),
+  exact: true,
+  name: 'ipamclaim',
 });
 
 // Settings - Last in sidebar
