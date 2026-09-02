@@ -52,6 +52,16 @@ import CatalogButton from '../DataImportCrons/CatalogButton';
 import ImageCatalogPicker, { CatalogSelection } from '../DataImportCrons/ImageCatalogPicker';
 import VirtualMachineClusterInstanceType from '../InstanceTypes/VirtualMachineClusterInstanceType';
 import NetworkAttachmentDefinition from '../NetworkAttachmentDefinitions/NetworkAttachmentDefinition';
+import type { VMArchitecture } from './vmArchitecture';
+import {
+  DEFAULT_VM_ARCHITECTURE,
+  getCPUModelsForArchitecture,
+  isCPUModelCompatible,
+  isMachineTypeCompatible,
+  MACHINE_TYPE_OPTIONS,
+  supportsCPUModelSelection,
+  VM_ARCHITECTURES,
+} from './vmArchitecture';
 
 /** Parse a Kubernetes size string (e.g. "30Gi", "500Mi") to bytes for comparison */
 function parseSizeToBytes(size: string): number {
@@ -634,6 +644,9 @@ export default function VMFormFull({
   const enableLiveMigrate = resource.spec?.template?.spec?.evictionStrategy === 'LiveMigrate';
 
   // Parse advanced details (Virtual Hardware + User Data)
+  const architecture =
+    (resource.spec?.template?.spec?.architecture as VMArchitecture | undefined) ||
+    DEFAULT_VM_ARCHITECTURE;
   const firmwareType = resource.spec?.template?.spec?.domain?.firmware?.bootloader?.efi
     ? 'uefi'
     : 'bios';
@@ -643,6 +656,7 @@ export default function VMFormFull({
       (f: KubeResourceBuilder) => f.name === 'vmx' || f.name === 'svm'
     ) || false;
   const machineType = resource.spec?.template?.spec?.domain?.machine?.type || '';
+  const machineTypeOptions = MACHINE_TYPE_OPTIONS[architecture];
   const enableAcpi = resource.spec?.template?.spec?.domain?.features?.acpi?.enabled !== false;
   const enableTPM = !!resource.spec?.template?.spec?.domain?.devices?.tpm;
   const enableEfiPersistent =
@@ -740,6 +754,14 @@ export default function VMFormFull({
   const [volumeSnapshots, setVolumeSnapshots] = useState<string[]>([]);
   const [dataVolumes, setDataVolumes] = useState<string[]>([]);
   const [nodeLabels, setNodeLabels] = useState<string[]>([]); // Available node label keys
+  const [cpuModelsByArchitecture, setCpuModelsByArchitecture] = useState<
+    Record<VMArchitecture, string[]>
+  >({ amd64: [], arm64: [], s390x: [] });
+  const [cpuModelsLoading, setCpuModelsLoading] = useState(true);
+  const [cpuModelsError, setCpuModelsError] = useState(false);
+  const availableCpuModels = cpuModelsByArchitecture[architecture];
+  const currentCpuModelUnavailable =
+    !!cpuModel && !isCPUModelCompatible(cpuModel, architecture, availableCpuModels);
 
   // Fetch permitted host devices from KubeVirt CR for device passthrough
   const permittedPciDevices = kvConfig?.getPciHostDevices() || [];
@@ -938,10 +960,19 @@ export default function VMFormFull({
             }
           });
           setNodeLabels(Array.from(labelKeysSet).sort());
+          setCpuModelsByArchitecture({
+            amd64: getCPUModelsForArchitecture(nodes, 'amd64'),
+            arm64: getCPUModelsForArchitecture(nodes, 'arm64'),
+            s390x: getCPUModelsForArchitecture(nodes, 's390x'),
+          });
+          setCpuModelsLoading(false);
         }
       )
       .catch(err => {
-        if (!cancelled) console.error('Failed to fetch nodes:', err);
+        if (cancelled) return;
+        console.error('Failed to fetch nodes:', err);
+        setCpuModelsError(true);
+        setCpuModelsLoading(false);
       });
     return () => {
       cancelled = true;
@@ -2130,6 +2161,40 @@ export default function VMFormFull({
       cpu: {
         ...currentCpu,
         model: model || undefined,
+      },
+    });
+  };
+
+  const handleArchitectureChange = (nextArchitecture: VMArchitecture) => {
+    const currentDomain = resource.spec?.template?.spec?.domain || {};
+    const currentCpu = currentDomain.cpu || {};
+    const currentCpuModel = currentCpu.model || '';
+    const currentMachineType = currentDomain.machine?.type || '';
+    const remainingCpuFeatures =
+      nextArchitecture === 'amd64'
+        ? currentCpu.features
+        : currentCpu.features?.filter(
+            (feature: KubeResourceBuilder) => feature.name !== 'vmx' && feature.name !== 'svm'
+          );
+
+    updateTemplateSpec({
+      architecture: nextArchitecture,
+      domain: {
+        ...currentDomain,
+        cpu: {
+          ...currentCpu,
+          model: isCPUModelCompatible(
+            currentCpuModel,
+            nextArchitecture,
+            cpuModelsByArchitecture[nextArchitecture]
+          )
+            ? currentCpu.model
+            : undefined,
+          features: remainingCpuFeatures?.length ? remainingCpuFeatures : undefined,
+        },
+        machine: isMachineTypeCompatible(currentMachineType, nextArchitecture)
+          ? currentDomain.machine
+          : undefined,
       },
     });
   };
@@ -5027,6 +5092,32 @@ export default function VMFormFull({
               Virtual Hardware
             </Typography>
 
+            {/* Guest Architecture */}
+            <FormControl fullWidth sx={{ mb: 2 }}>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ mb: 0.5, display: 'block' }}
+              >
+                Architecture
+              </Typography>
+              <Select
+                size="small"
+                value={architecture}
+                onChange={e => handleArchitectureChange(e.target.value as VMArchitecture)}
+              >
+                {VM_ARCHITECTURES.map(option => (
+                  <MenuItem key={option.value} value={option.value}>
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </Select>
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
+                Sets the guest architecture and filters architecture-specific CPU and machine
+                models.
+              </Typography>
+            </FormControl>
+
             {/* Firmware/BIOS */}
             <FormControl fullWidth sx={{ mb: 2 }}>
               <Typography
@@ -5077,79 +5168,71 @@ export default function VMFormFull({
             )}
 
             {/* CPU Model */}
-            <FormControl fullWidth sx={{ mb: 2 }}>
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                sx={{ mb: 0.5, display: 'block' }}
-              >
-                CPU Model (optional)
-              </Typography>
-              <Select
-                size="small"
-                value={cpuModel}
-                onChange={e => handleCpuModelChange(e.target.value)}
-                displayEmpty
-              >
-                <MenuItem value="">Default</MenuItem>
-                <MenuItem value="host-passthrough">host-passthrough (Direct passthrough)</MenuItem>
-                <MenuItem value="host-model">host-model (Host-like model)</MenuItem>
-                <MenuItem disabled>───── Intel x86_64 ─────</MenuItem>
-                <MenuItem value="Conroe">Conroe</MenuItem>
-                <MenuItem value="Penryn">Penryn</MenuItem>
-                <MenuItem value="Nehalem">Nehalem</MenuItem>
-                <MenuItem value="Westmere">Westmere</MenuItem>
-                <MenuItem value="SandyBridge">SandyBridge</MenuItem>
-                <MenuItem value="IvyBridge">IvyBridge</MenuItem>
-                <MenuItem value="Haswell">Haswell</MenuItem>
-                <MenuItem value="Broadwell">Broadwell</MenuItem>
-                <MenuItem value="Skylake-Client">Skylake-Client</MenuItem>
-                <MenuItem value="Skylake-Server">Skylake-Server</MenuItem>
-                <MenuItem value="Cascadelake-Server">Cascadelake-Server</MenuItem>
-                <MenuItem value="Cooperlake">Cooperlake</MenuItem>
-                <MenuItem value="Icelake-Server">Icelake-Server</MenuItem>
-                <MenuItem value="Sapphirerapids">Sapphirerapids</MenuItem>
-                <MenuItem disabled>───── AMD x86_64 ─────</MenuItem>
-                <MenuItem value="Opteron_G1">Opteron G1</MenuItem>
-                <MenuItem value="Opteron_G2">Opteron G2</MenuItem>
-                <MenuItem value="Opteron_G3">Opteron G3</MenuItem>
-                <MenuItem value="Opteron_G4">Opteron G4</MenuItem>
-                <MenuItem value="Opteron_G5">Opteron G5</MenuItem>
-                <MenuItem value="EPYC">EPYC</MenuItem>
-                <MenuItem value="EPYC-Rome">EPYC-Rome</MenuItem>
-                <MenuItem value="EPYC-Milan">EPYC-Milan</MenuItem>
-                <MenuItem value="EPYC-Genoa">EPYC-Genoa</MenuItem>
-                <MenuItem disabled>───── ARM64 ─────</MenuItem>
-                <MenuItem value="cortex-a57">Cortex-A57</MenuItem>
-                <MenuItem value="cortex-a72">Cortex-A72</MenuItem>
-                <MenuItem value="cortex-a53">Cortex-A53</MenuItem>
-                <MenuItem value="max">ARM Max (latest features)</MenuItem>
-                <MenuItem disabled>───── IBM Power ─────</MenuItem>
-                <MenuItem value="POWER8">POWER8</MenuItem>
-                <MenuItem value="POWER9">POWER9</MenuItem>
-                <MenuItem value="POWER10">POWER10</MenuItem>
-                <MenuItem disabled>───── IBM s390x ─────</MenuItem>
-                <MenuItem value="z13">z13</MenuItem>
-                <MenuItem value="z14">z14</MenuItem>
-                <MenuItem value="z15">z15</MenuItem>
-              </Select>
-            </FormControl>
+            {supportsCPUModelSelection(architecture) && (
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ mb: 0.5, display: 'block' }}
+                >
+                  CPU Model (optional)
+                </Typography>
+                <Select
+                  size="small"
+                  value={cpuModel}
+                  onChange={e => handleCpuModelChange(e.target.value)}
+                  displayEmpty
+                >
+                  <MenuItem value="">Default</MenuItem>
+                  <MenuItem value="host-passthrough">
+                    host-passthrough (Direct passthrough)
+                  </MenuItem>
+                  <MenuItem value="host-model">host-model (Host-like model)</MenuItem>
+                  {currentCpuModelUnavailable && (
+                    <MenuItem value={cpuModel}>{cpuModel} (currently configured)</MenuItem>
+                  )}
+                  {availableCpuModels.length > 0 && (
+                    <MenuItem disabled>───── Available on {architecture} nodes ─────</MenuItem>
+                  )}
+                  {availableCpuModels.map(model => (
+                    <MenuItem key={model} value={model}>
+                      {model}
+                    </MenuItem>
+                  ))}
+                </Select>
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
+                  {cpuModelsLoading
+                    ? 'Loading named CPU models from cluster nodes…'
+                    : cpuModelsError
+                    ? 'Named CPU models could not be loaded from cluster nodes.'
+                    : availableCpuModels.length === 0
+                    ? `No named CPU models are advertised by ${architecture} nodes.`
+                    : 'Named CPU models are loaded from matching cluster nodes.'}
+                </Typography>
+              </FormControl>
+            )}
 
             {/* Nested Virtualization */}
-            <Box sx={{ mb: 2 }}>
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={enableNestedVirtualization}
-                    onChange={e => handleNestedVirtualizationChange(e.target.checked)}
-                  />
-                }
-                label="Enable Nested Virtualization"
-              />
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', ml: 4 }}>
-                Adds both vmx (Intel) and svm (AMD) CPU features with policy: require
-              </Typography>
-            </Box>
+            {architecture === 'amd64' && (
+              <Box sx={{ mb: 2 }}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={enableNestedVirtualization}
+                      onChange={e => handleNestedVirtualizationChange(e.target.checked)}
+                    />
+                  }
+                  label="Enable Nested Virtualization"
+                />
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ display: 'block', ml: 4 }}
+                >
+                  Adds both vmx (Intel) and svm (AMD) CPU features with policy: require
+                </Typography>
+              </Box>
+            )}
           </Box>
 
           {/* ── User Data ── */}
@@ -5410,12 +5493,11 @@ export default function VMFormFull({
                 onChange={e => handleMachineTypeChange(e.target.value)}
                 displayEmpty
               >
-                <MenuItem value="">Default (q35)</MenuItem>
-                <MenuItem value="pc-q35-rhel9.2.0">pc-q35-rhel9.2.0</MenuItem>
-                <MenuItem value="pc-q35-rhel9.0.0">pc-q35-rhel9.0.0</MenuItem>
-                <MenuItem value="q35">q35</MenuItem>
-                <MenuItem value="pc-i440fx-rhel7.6.0">pc-i440fx-rhel7.6.0</MenuItem>
-                <MenuItem value="pc">pc (i440fx)</MenuItem>
+                {machineTypeOptions.map(option => (
+                  <MenuItem key={option.value} value={option.value}>
+                    {option.label}
+                  </MenuItem>
+                ))}
               </Select>
             </FormControl>
 
