@@ -199,7 +199,9 @@ jobs:
   # ArtifactHub requires archive-checksum and CI tarballs have non-reproducible timestamps.
   update-artifacthub:
     needs: [build, release]
-    if: startsWith(github.ref, 'refs/tags/v')
+    # Skip prereleases (e.g. -rc tags): only the final release should point
+    # ArtifactHub at its tarball, so RC tags don't spawn throwaway PRs.
+    if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-rc')
     runs-on: ubuntu-latest
     permissions:
       contents: write
