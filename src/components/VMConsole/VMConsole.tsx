@@ -679,57 +679,23 @@ export const VNCPanel = React.forwardRef<
     setErrorMessage('');
     setTabletWarning(false);
 
-    // Build WebSocket URL matching Headlamp's getAppUrl() logic exactly
-    const ns = item.getNamespace();
-    const name = item.getName();
-
-    // Replicate isElectron() — checks renderer process, electron version, or user agent
-    const isElectron =
-      (typeof window !== 'undefined' &&
-        typeof (window as any).process === 'object' &&
-        (window as any).process.type === 'renderer') ||
-      (typeof process !== 'undefined' &&
-        typeof process.versions === 'object' &&
-        !!(process.versions as any).electron) ||
-      (typeof navigator === 'object' && navigator.userAgent.indexOf('Electron') >= 0);
-    const isDockerDesktop = navigator.userAgent.indexOf('Docker Desktop') >= 0;
-
-    let backendPort = 4466;
-    let useLocalhost = false;
-    if (isElectron) {
-      if ((window as any).headlampBackendPort) {
-        backendPort = (window as any).headlampBackendPort;
-      }
-      useLocalhost = true;
-    }
-    if (isDockerDesktop) {
-      backendPort = 64446;
-      useLocalhost = true;
-    }
-
-    const wsBase = useLocalhost
-      ? `ws://localhost:${backendPort}`
-      : window.location.origin.replace(/^http/, 'ws');
-    const cluster = (item as any).cluster || 'default';
-    const vncPath = `/apis/subresources.kubevirt.io/v1/namespaces/${ns}/virtualmachineinstances/${name}/vnc`;
-    const wsUrl = `${wsBase}/clusters/${cluster}${vncPath}`;
-
-    const userId = localStorage.getItem('headlamp-userId') || '';
+    // Route VNC through Headlamp's MANAGED stream (item.vnc -> ApiProxy.stream),
+    // the same authenticated socket the serial console (item.exec) uses. We hand
+    // that WebSocket to noVNC's RFB instead of hand-rolling a raw ws:// socket,
+    // which the desktop backend rejects (VNC 1006 while serial works).
     let cancelled = false;
-    let retried = false;
-    let connectedOnce = false;
+    let vncConn: { cancel: () => void; getSocket: () => WebSocket } | null = null;
 
-    function connectVNC(protocols: string[]) {
+    function connectVNC(socket: WebSocket) {
       if (cancelled || !vncDisplayRef.current) return;
 
       try {
-        const rfb = new RFBCreate(vncDisplayRef.current, wsUrl, {
-          wsProtocols: protocols,
+        socket.binaryType = 'arraybuffer';
+        const rfb = new RFBCreate(vncDisplayRef.current, socket, {
           scaleViewport: true,
         });
 
         rfb.addEventListener('connect', () => {
-          connectedOnce = true;
           setLocalStatus('connected');
           onStatusChange('connected');
 
@@ -780,18 +746,6 @@ export const VNCPanel = React.forwardRef<
         });
 
         rfb.addEventListener('disconnect', (e: { detail: { clean: boolean } }) => {
-          // If the first attempt disconnects before ever connecting while the
-          // Headlamp auth subprotocol is in use, retry without it. In-cluster
-          // OIDC/cookie deployments reject the unresolvable
-          // `base64url.headlamp.authorization.k8s.io.<userId>` subprotocol with a
-          // 404 during the WebSocket upgrade, which surfaces as a *clean* close —
-          // so we key the fallback on "never connected", not on e.detail.clean.
-          if (!retried && !connectedOnce && protocols.length > 2) {
-            retried = true;
-            rfbRef.current = null;
-            connectVNC(['base64.binary.k8s.io', 'plain.kubevirt.io']);
-            return;
-          }
           setLocalStatus('disconnected');
           onStatusChange('disconnected');
           if (!e.detail.clean) {
@@ -810,12 +764,31 @@ export const VNCPanel = React.forwardRef<
       }
     }
 
-    // Try with auth protocol first, falls back to without on disconnect
-    const protocols = ['base64.binary.k8s.io', 'plain.kubevirt.io'];
-    if (userId) {
-      protocols.push(`base64url.headlamp.authorization.k8s.io.${userId}`);
+    // ApiProxy.stream creates the socket asynchronously, so getSocket() is null
+    // right after the call — poll for it and attach noVNC as soon as it exists,
+    // while it's still CONNECTING, so the RFB handshake isn't missed.
+    try {
+      vncConn = item.vnc(() => {}, { reconnect: false } as StreamArgs);
+    } catch (error) {
+      console.error('VNC stream error:', error);
     }
-    connectVNC(protocols);
+    let waitAttempts = 0;
+    const attachWhenReady = () => {
+      if (cancelled || rfbRef.current) return;
+      const s = vncConn?.getSocket?.();
+      if (s) {
+        connectVNC(s);
+        return;
+      }
+      if (waitAttempts++ < 300) {
+        window.setTimeout(attachWhenReady, 10);
+      } else {
+        setLocalStatus('disconnected');
+        onStatusChange('disconnected');
+        setErrorMessage('Failed to open VNC stream.');
+      }
+    };
+    attachWhenReady();
 
     return () => {
       cancelled = true;
@@ -826,6 +799,11 @@ export const VNCPanel = React.forwardRef<
       if (rfbRef.current) {
         rfbRef.current.disconnect();
         rfbRef.current = null;
+      }
+      try {
+        vncConn?.cancel?.();
+      } catch {
+        /* ignore */
       }
     };
   }, [active, item]);
