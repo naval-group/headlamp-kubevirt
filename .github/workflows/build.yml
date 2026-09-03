@@ -174,22 +174,31 @@ jobs:
           TARBALL=$(ls headlamp-kubevirt-*.tar.gz)
           cp "${{ steps.attest.outputs.bundle-path }}" "${TARBALL}.intoto.jsonl"
 
-      # Sign the tarball with cosign (keyless/Sigstore OIDC)
-      # Produces .sig file (required by OpenSSF Scorecard for signed releases)
+      # Sign the tarball with cosign (keyless/Sigstore OIDC).
+      # cosign 3.x defaults to the new Sigstore bundle format, which packs the
+      # signature, Fulcio certificate, and Rekor inclusion proof into a single
+      # self-verifying .sigstore.json (supersedes the old detached .sig/.pem).
+      # Verify with:
+      #   cosign verify-blob --bundle headlamp-kubevirt-<ver>.tar.gz.sigstore.json \
+      #     --certificate-identity-regexp '^https://github.com/naval-group/headlamp-kubevirt/' \
+      #     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+      #     headlamp-kubevirt-<ver>.tar.gz
+      # (OpenSSF Scorecard's signed-releases check is satisfied by the SLSA
+      # provenance .intoto.jsonl above.)
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       - name: Sign release artifacts
         run: |
           TARBALL=$(ls headlamp-kubevirt-*.tar.gz)
-          cosign sign-blob --yes --output-signature "${TARBALL}.sig" "${TARBALL}"
+          cosign sign-blob --yes --bundle "${TARBALL}.sigstore.json" "${TARBALL}"
 
       - uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
         with:
           files: |
             headlamp-kubevirt-*.tar.gz
             headlamp-kubevirt-*.tar.gz.intoto.jsonl
-            headlamp-kubevirt-*.tar.gz.sig
+            headlamp-kubevirt-*.tar.gz.sigstore.json
             checksums.txt
             sbom-headlamp-kubevirt.spdx.json
           generate_release_notes: true
