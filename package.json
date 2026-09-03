@@ -42,7 +42,16 @@
   "overrides": {
     "typescript": "5.6.2",
     "lodash": "^4.18.1",
-    "js-yaml": "^5.4.1"
+    "js-yaml": "^5.4.1",
+    "brace-expansion": "^5.0.9",
+    "tar": "^7.5.22",
+    "ws": "^8.21.3",
+    "qs": "^6.16.0",
+    "tmp": "^0.2.7",
+    "form-data": "^4.0.6",
+    "browserslist": "^4.28.8",
+    "postcss-selector-parser": "^7.1.5",
+    "fast-uri": "^4.1.4"
   },
   "devDependencies": {
     "@kinvolk/headlamp-plugin": "^0.14.0",
