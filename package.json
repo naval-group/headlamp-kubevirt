@@ -41,11 +41,21 @@
   },
   "overrides": {
     "typescript": "5.6.2",
-    "lodash": "^4.18.1"
+    "lodash": "^4.18.1",
+    "js-yaml": "^5.4.1",
+    "brace-expansion": "^5.0.9",
+    "tar": "^7.5.22",
+    "ws": "^8.21.3",
+    "qs": "^6.16.0",
+    "tmp": "^0.2.7",
+    "form-data": "^4.0.6",
+    "browserslist": "^4.28.8",
+    "postcss-selector-parser": "^7.1.5",
+    "fast-uri": "^4.1.4"
   },
   "devDependencies": {
-    "@kinvolk/headlamp-plugin": "^0.13.1",
-    "@storybook/addon-webpack5-compiler-swc": "^1.0.6",
+    "@kinvolk/headlamp-plugin": "^0.14.0",
+    "@storybook/addon-webpack5-compiler-swc": "^4.0.3",
     "@types/js-yaml": "^4.0.9",
     "fast-check": "^4.9.0",
     "msw": "^2.15.0",
@@ -56,8 +66,8 @@
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
     "@novnc/novnc": "^1.5.0",
-    "js-yaml": "^4.1.0",
-    "recharts": "^3.8.1"
+    "js-yaml": "^5.4.1",
+    "recharts": "^3.10.1"
   },
   "msw": {
     "workerDirectory": [

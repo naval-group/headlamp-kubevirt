@@ -11,7 +11,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import { useSnackbar } from 'notistack';
 import React, { useState } from 'react';
 import FormDialog from '../common/FormDialog';

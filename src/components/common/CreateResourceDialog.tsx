@@ -20,7 +20,7 @@ import {
   Typography,
 } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import { useSnackbar } from 'notistack';
 import React, { useCallback, useEffect, useState } from 'react';
 import CRDDocsViewer from './CRDDocsViewer';
