@@ -236,6 +236,10 @@ jobs:
 
           sed -i "s|headlamp/plugin/archive-url:.*|headlamp/plugin/archive-url: https://github.com/naval-group/headlamp-kubevirt/releases/download/${TAG}/headlamp-kubevirt-${VERSION}.tar.gz|" artifacthub-pkg.yml
           sed -i "s|headlamp/plugin/archive-checksum:.*|headlamp/plugin/archive-checksum: sha256:${CHECKSUM}|" artifacthub-pkg.yml
+          # Bump digest so ArtifactHub reprocesses this version and picks up the
+          # corrected archive-url/checksum. Without this, AH keeps whatever it
+          # first indexed (it only re-reads a version when its digest changes).
+          sed -i "s|^digest:.*|digest: \"sha256:${CHECKSUM}\"|" artifacthub-pkg.yml
 
           if git diff --quiet artifacthub-pkg.yml; then
             echo "No changes needed"
