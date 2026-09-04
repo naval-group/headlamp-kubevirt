@@ -229,7 +229,60 @@ mkdir -p ~/.var/app/io.kinvolk.Headlamp/config/Headlamp/plugins/kubevirt
 cp dist/main.js package.json ~/.var/app/io.kinvolk.Headlamp/config/Headlamp/plugins/kubevirt/
 ```
 
-### Option 2: In-Cluster (Container Mode)
+### Option 2: In-Cluster (Plugin Manager)
+
+**Recommended for in-cluster deployments.** Headlamp's official
+[plugin manager](https://headlamp.dev/docs/latest/installation/in-cluster/#plugin-management)
+runs a sidecar that installs this plugin straight from ArtifactHub, verifies its
+checksum, and keeps the artifact cached — no custom image or init container to
+build and maintain. With `config.watchPlugins` enabled it also picks up new
+versions without recreating the Pod.
+
+#### Using Helm
+
+Enable `pluginsManager` in the
+[official Helm chart](https://headlamp.dev/docs/latest/installation/in-cluster/)
+and point it at this plugin's ArtifactHub package:
+
+```yaml
+# values.yaml
+pluginsManager:
+  enabled: true
+  configContent: |
+    plugins:
+      - name: headlamp_kubevirt
+        source: https://artifacthub.io/packages/headlamp/headlamp-kubevirt/headlamp_kubevirt
+        version: 0.3.1
+    installOptions:
+      parallel: true
+      maxConcurrent: 3
+
+# Optional: let the main container hot-reload plugins the manager updates,
+# without recreating the Pod.
+config:
+  watchPlugins: true
+```
+
+```bash
+helm upgrade --install headlamp headlamp/headlamp -f values.yaml
+```
+
+Alternatively, keep the plugin list in a standalone [`plugin.yml`](examples/plugin.yml)
+and pass it inline:
+
+```bash
+helm upgrade --install headlamp headlamp/headlamp \
+  --set pluginsManager.enabled=true \
+  --set pluginsManager.configContent="$(cat examples/plugin.yml)"
+```
+
+Under the hood the sidecar runs `@headlamp-k8s/pluginctl install`, which resolves
+the release tarball from the package's ArtifactHub metadata (`archive-url` +
+`archive-checksum`), verifies the SHA-256, and extracts it into Headlamp's plugins
+directory. Requires Headlamp >= 0.24.0. Pin `version:` to a specific release for
+reproducible rollouts.
+
+### Option 3: In-Cluster (Container Mode)
 
 For Headlamp deployed as a Kubernetes service. The plugin is served as an init container that copies the built plugin into a shared volume.
 
@@ -297,7 +350,7 @@ spec:
           emptyDir: {}
 ```
 
-### Option 3: In-Cluster (Image Volume)
+### Option 4: In-Cluster (Image Volume)
 
 For Kubernetes clusters running Headlamp where you'd rather mount the plugin via the
 [Kubernetes image volume source](https://kubernetes.io/docs/concepts/storage/volumes/#image)

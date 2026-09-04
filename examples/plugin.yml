@@ -1,0 +1,20 @@
+# Headlamp plugin-manager configuration for the KubeVirt plugin.
+#
+# Consumed by Headlamp's in-cluster plugin manager (the `pluginsManager` sidecar,
+# which runs `@headlamp-k8s/pluginctl install`). See the "In-Cluster (Plugin
+# Manager)" section of the README.
+#
+# Apply with the official Headlamp Helm chart:
+#   helm upgrade --install headlamp headlamp/headlamp \
+#     --set pluginsManager.enabled=true \
+#     --set pluginsManager.configContent="$(cat examples/plugin.yml)"
+plugins:
+  - name: headlamp_kubevirt
+    source: https://artifacthub.io/packages/headlamp/headlamp-kubevirt/headlamp_kubevirt
+    # Pin to a specific release for reproducible rollouts. Omit to track the
+    # latest version published on ArtifactHub. Requires Headlamp >= 0.24.0.
+    version: 0.3.1
+
+installOptions:
+  parallel: true
+  maxConcurrent: 3
