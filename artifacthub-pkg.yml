@@ -1,5 +1,5 @@
 version: 0.3.1
-digest: "2026-04-28T10:00:00Z"
+digest: "sha256:cfa1cd937c9267366ec8e8be0bbbf865d891c5d97a5a48a37a385c24ddb90a71"
 name: headlamp_kubevirt
 displayName: KubeVirt
 createdAt: "2025-03-23T00:00:00Z"
