@@ -1,4 +1,4 @@
-import { isFeatureGateEnabled, updateFeatureGates } from './featureGates';
+import { areFeatureGatesReliable, isFeatureGateEnabled, updateFeatureGates } from './featureGates';
 
 vi.mock('@kinvolk/headlamp-plugin/lib', () => ({
   ApiProxy: { request: vi.fn() },
@@ -41,5 +41,19 @@ describe('isFeatureGateEnabled', () => {
 
     updateFeatureGates(['Snapshot'], [], null);
     expect(isFeatureGateEnabled('Snapshot')).toBe(true);
+  });
+});
+
+describe('areFeatureGatesReliable', () => {
+  afterEach(() => updateFeatureGates([], [], null));
+
+  it('is reliable once a KubeVirt version was resolved', () => {
+    updateFeatureGates([], [], '1.8.4');
+    expect(areFeatureGatesReliable()).toBe(true);
+  });
+
+  it('is unreliable when the version is unknown (CR unreadable/empty)', () => {
+    updateFeatureGates([], [], null);
+    expect(areFeatureGatesReliable()).toBe(false);
   });
 });

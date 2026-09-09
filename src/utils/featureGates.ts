@@ -80,6 +80,16 @@ export function areFeatureGatesLoaded(): boolean {
   return featureGatesLoaded;
 }
 
+// Whether the loaded gate data is reliable, i.e. we actually read the KubeVirt
+// CR and resolved its version. This is false when the CR couldn't be read (the
+// request threw and exhausted retries, or returned an empty list because the
+// ServiceAccount lacks cluster-wide `kubevirts` list access / KubeVirt lives in
+// a namespace not covered by the SA's RBAC). Callers use this to fail OPEN
+// rather than hide version-gated UI when we simply couldn't determine the state.
+export function areFeatureGatesReliable(): boolean {
+  return kubeVirtVersion !== null;
+}
+
 // Check if a specific feature gate is enabled
 export function isFeatureGateEnabled(gate: string): boolean {
   const gateInfo = KNOWN_FEATURE_GATES.get(gate);
