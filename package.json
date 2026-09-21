@@ -57,7 +57,7 @@
     "@kinvolk/headlamp-plugin": "^0.14.0",
     "@storybook/addon-webpack5-compiler-swc": "^4.0.3",
     "@types/js-yaml": "^4.0.9",
-    "fast-check": "^4.9.0",
+    "fast-check": "^4.10.1",
     "msw": "^2.15.0",
     "msw-storybook-addon": "^2.0.7",
     "path-browserify": "^1.0.1",
