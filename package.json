@@ -58,7 +58,7 @@
     "@storybook/addon-webpack5-compiler-swc": "^4.0.3",
     "@types/js-yaml": "^4.0.9",
     "fast-check": "^4.9.0",
-    "msw": "^2.15.0",
+    "msw": "^3.0.3",
     "msw-storybook-addon": "^2.0.7",
     "path-browserify": "^1.0.1",
     "process": "^0.11.10"
