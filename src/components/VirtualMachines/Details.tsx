@@ -44,6 +44,7 @@ import VirtualMachineSnapshot from '../VirtualMachineSnapshot/VirtualMachineSnap
 import SaveAsTemplateDialog from '../VirtualMachineTemplate/SaveAsTemplateDialog';
 import VMConsole from '../VMConsole/VMConsole';
 import VMDoctorDialog from '../VMDoctor/VMDoctorDialog';
+import CdromPanel from './CdromPanel';
 import CloneDialog from './CloneDialog';
 import CloneVolumeDialog from './CloneVolumeDialog';
 import FloatingNav from './FloatingNav';
@@ -1718,6 +1719,7 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                       </SectionBox>
                     );
                   })()}
+                  {name && namespace && <CdromPanel namespace={namespace} name={name} />}
                 </Box>
               ),
             },
