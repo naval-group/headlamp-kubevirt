@@ -70,7 +70,7 @@ function defaultVMResource(): KubeResourceBuilder {
         spec: {
           domain: {
             devices: { disks: [{ name: 'rootdisk', disk: { bus: 'virtio' } }] },
-            resources: { requests: { memory: '1Gi' } },
+            memory: { guest: '1Gi' },
           },
           volumes: [
             { name: 'rootdisk', containerDisk: { image: 'quay.io/containerdisks/fedora:latest' } },

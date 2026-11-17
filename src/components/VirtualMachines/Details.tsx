@@ -28,6 +28,7 @@ import { formatDuration } from '../../utils/formatDuration';
 import { hasFeature } from '../../utils/kubevirtVersion';
 import { buildLaunchTemplate } from '../../utils/launchTemplate';
 import { safeError } from '../../utils/sanitize';
+import { getGuestMemory, quantityToBytes } from '../../utils/vmMemory';
 import { shortAccessModes } from '../../utils/volumeDialog';
 import DataVolume from '../BootableVolumes/DataVolume';
 import ConfirmDialog from '../common/ConfirmDialog';
@@ -84,12 +85,9 @@ function getPendingChanges(
   }
 
   // Memory
-  const vmMem =
-    vm.spec?.template?.spec?.domain?.resources?.requests?.memory ||
-    vm.spec?.template?.spec?.domain?.memory?.guest;
-  const vmiMem =
-    vmi.spec.domain?.resources?.requests?.memory || vmi.spec.domain?.resources?.limits?.memory;
-  if (vmMem && vmiMem && vmMem !== vmiMem) {
+  const vmMem = getGuestMemory(vm.spec?.template?.spec?.domain);
+  const vmiMem = getGuestMemory(vmi.spec.domain);
+  if (vmMem && vmiMem && quantityToBytes(vmMem) !== quantityToBytes(vmiMem)) {
     changes.push(`Memory: ${vmiMem} → ${vmMem}`);
   }
 

@@ -44,6 +44,14 @@ import { DVTStorageSpec } from '../../types';
 import { buildRegistryDataVolumeSource } from '../../utils/dataVolumeSource';
 import { hasFeature } from '../../utils/kubevirtVersion';
 import { TOOLTIPS } from '../../utils/tooltips';
+import {
+  getGuestMemory,
+  hugepagesMemoryError,
+  memoryLimitError,
+  MemoryUnit,
+  toFormMemory,
+  withGuestMemory,
+} from '../../utils/vmMemory';
 import DataSource from '../BootableVolumes/DataSource';
 import CopyCodeBlock from '../common/CopyCodeBlock';
 import InfoTooltip from '../common/InfoTooltip';
@@ -349,11 +357,11 @@ export default function VMFormFull({
 
   // Custom CPU/Memory
   const customCpu = resource.spec?.template?.spec?.domain?.cpu?.cores?.toString() || '2';
-  const customMemoryValue =
-    resource.spec?.template?.spec?.domain?.resources?.requests?.memory || '4Gi';
-  const customMemoryMatch = customMemoryValue.match(/^(\d+)(Mi|Gi)$/);
-  const customMemory = customMemoryMatch ? customMemoryMatch[1] : '4';
-  const customMemoryUnit = (customMemoryMatch ? customMemoryMatch[2] : 'Gi') as 'Mi' | 'Gi';
+  // Guest memory: memory.guest (older VMs: resources.requests/limits.memory)
+  const guestMemory = getGuestMemory(resource.spec?.template?.spec?.domain);
+  const customMemoryForm = toFormMemory(guestMemory);
+  const customMemory = customMemoryForm?.value ?? '';
+  const customMemoryUnit: MemoryUnit = customMemoryForm?.unit ?? 'Gi';
 
   // Advanced CPU topology
   const cpuTopology = resource.spec?.template?.spec?.domain?.cpu;
@@ -663,6 +671,9 @@ export default function VMFormFull({
     !!resource.spec?.template?.spec?.domain?.firmware?.bootloader?.efi?.persistent;
   const isUefi = firmwareType === 'uefi';
   const hugepages = resource.spec?.template?.spec?.domain?.memory?.hugepages?.pageSize || '';
+  const memoryHugepagesError = hugepagesMemoryError(guestMemory, hugepages);
+  const memoryError =
+    memoryHugepagesError || memoryLimitError(resource.spec?.template?.spec?.domain);
   const timezone = resource.spec?.template?.spec?.domain?.clock?.timezone || '';
 
   // Performance
@@ -1072,28 +1083,6 @@ export default function VMFormFull({
     });
   };
 
-  const updateResources = (updates: KubeResourceBuilder) => {
-    onChange({
-      ...resource,
-      spec: {
-        ...resource.spec,
-        template: {
-          ...resource.spec?.template,
-          spec: {
-            ...resource.spec?.template?.spec,
-            domain: {
-              ...resource.spec?.template?.spec?.domain,
-              resources: {
-                ...resource.spec?.template?.spec?.domain?.resources,
-                ...updates,
-              },
-            },
-          },
-        },
-      },
-    });
-  };
-
   // Handler functions
   const handleNameChange = (value: string) => {
     // Just update the name; the boot volume useEffect below keeps
@@ -1232,9 +1221,10 @@ export default function VMFormFull({
       // Clear custom resources, set placeholder instancetype
       const newSpec = { ...resource.spec };
       if (newSpec.template?.spec?.domain) {
-        const domain = { ...newSpec.template.spec.domain };
+        let domain = { ...newSpec.template.spec.domain };
         delete domain.cpu;
         delete domain.resources;
+        domain = withGuestMemory(domain, undefined);
         newSpec.template = {
           ...newSpec.template,
           spec: {
@@ -1268,10 +1258,9 @@ export default function VMFormFull({
                 cpu: {
                   cores: 2,
                 },
-                resources: {
-                  requests: {
-                    memory: '2Gi',
-                  },
+                memory: {
+                  ...newSpec.template?.spec?.domain?.memory,
+                  guest: '2Gi',
                 },
               },
             },
@@ -1305,14 +1294,11 @@ export default function VMFormFull({
     }
   };
 
-  const handleCustomMemoryChange = (value: string, unit: 'Mi' | 'Gi') => {
+  const handleCustomMemoryChange = (value: string, unit: MemoryUnit) => {
     const amount = parseInt(value);
     if (!isNaN(amount) && amount > 0) {
-      updateResources({
-        requests: {
-          memory: `${amount}${unit}`,
-        },
-      });
+      const domain = resource.spec?.template?.spec?.domain || {};
+      updateDomain({ memory: withGuestMemory(domain, `${amount}${unit}`).memory });
     }
   };
 
@@ -3188,11 +3174,18 @@ export default function VMFormFull({
                     value={customMemory}
                     onChange={e => handleCustomMemoryChange(e.target.value, customMemoryUnit)}
                     inputProps={{ min: 1, type: 'number' }}
+                    error={!!memoryError}
+                    helperText={
+                      memoryError ||
+                      (guestMemory && !customMemoryForm
+                        ? `Current: ${guestMemory} (shown as entered in the VM spec)`
+                        : 'Guest memory (spec.domain.memory.guest)')
+                    }
                   />
                   <Select
                     value={customMemoryUnit}
                     onChange={e =>
-                      handleCustomMemoryChange(customMemory, e.target.value as 'Mi' | 'Gi')
+                      handleCustomMemoryChange(customMemory, e.target.value as MemoryUnit)
                     }
                     sx={{ minWidth: 80 }}
                   >
@@ -5561,6 +5554,11 @@ export default function VMFormFull({
                 Pre-allocates large memory pages for the VM — reduces TLB misses and improves
                 performance. Requires hugepages to be configured on the host nodes.
               </Typography>
+              {memoryHugepagesError && (
+                <Typography variant="caption" color="error" sx={{ mt: 0.5, display: 'block' }}>
+                  {memoryHugepagesError}
+                </Typography>
+              )}
             </FormControl>
           </Box>
 

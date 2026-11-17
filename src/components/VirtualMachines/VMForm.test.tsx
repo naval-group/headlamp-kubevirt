@@ -140,7 +140,27 @@ describe('VMForm', () => {
       fireEvent.change(screen.getByLabelText('Memory *'), { target: { value: '16' } });
 
       const updated = onChange.mock.calls[0][0];
-      expect(updated.spec.template.spec.domain.resources.requests.memory).toBe('16Gi');
+      // Guest memory is the field KubeVirt sizes the VM from (and hot-plugs)
+      expect(updated.spec.template.spec.domain.memory.guest).toBe('16Gi');
+      // Existing resources are left untouched (the form never adds or removes them)
+      expect(updated.spec.template.spec.domain.resources.requests.memory).toBe('4Gi');
+    });
+
+    it('shows memory.guest and keeps hugepages when updating it', () => {
+      const onChange = vi.fn();
+      const vm = makeVM();
+      vm.spec.template.spec.domain = {
+        cpu: { cores: 2 },
+        memory: { guest: '16384Mi', hugepages: { pageSize: '1Gi' } },
+      };
+      render(<VMForm resource={vm} onChange={onChange} />);
+
+      expect(screen.getByLabelText('Memory *')).toHaveValue(16);
+
+      fireEvent.change(screen.getByLabelText('Memory *'), { target: { value: '32' } });
+      const domain = onChange.mock.calls[0][0].spec.template.spec.domain;
+      expect(domain.memory).toEqual({ guest: '32Gi', hugepages: { pageSize: '1Gi' } });
+      expect(domain.resources).toBeUndefined();
     });
 
     it('switches to instance type mode', () => {

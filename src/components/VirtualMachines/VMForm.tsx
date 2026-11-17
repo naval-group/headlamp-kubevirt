@@ -17,6 +17,7 @@ import {
 } from '@mui/material';
 import React, { useEffect, useState } from 'react';
 import { KubeListResponse } from '../../types';
+import { getGuestMemory, toFormMemory, withGuestMemory } from '../../utils/vmMemory';
 import DataSource from '../BootableVolumes/DataSource';
 import VirtualMachineClusterInstanceType from '../InstanceTypes/VirtualMachineClusterInstanceType';
 import VirtualMachineClusterPreference from '../Preferences/VirtualMachineClusterPreference';
@@ -98,10 +99,10 @@ export default function VMForm({ resource, onChange }: VMFormProps) {
 
   // Parse custom resources
   const customCpu = resource.spec?.template?.spec?.domain?.cpu?.cores ?? '';
-  const customMemoryGuest = resource.spec?.template?.spec?.domain?.resources?.requests?.memory;
-  const customMemoryMatch = customMemoryGuest?.match?.(/^(\d+)(Mi|Gi)$/);
-  const customMemoryValue = customMemoryMatch ? customMemoryMatch[1] : '';
-  const customMemoryUnit = customMemoryMatch ? customMemoryMatch[2] : 'Gi';
+  const customMemoryGuest = getGuestMemory(resource.spec?.template?.spec?.domain);
+  const customMemoryForm = toFormMemory(customMemoryGuest);
+  const customMemoryValue = customMemoryForm?.value ?? '';
+  const customMemoryUnit = customMemoryForm?.unit ?? 'Gi';
 
   // Storage size
   const storageSize =
@@ -111,30 +112,13 @@ export default function VMForm({ resource, onChange }: VMFormProps) {
   const storageSizeUnit = storageSizeMatch ? storageSizeMatch[2] : 'Gi';
 
   const handleCustomMemoryChange = (value: string, unit: string) => {
+    const domain = resource.spec?.template?.spec?.domain || {};
     if (value === '') {
-      updateTemplate({
-        domain: {
-          ...resource.spec?.template?.spec?.domain,
-          resources: {
-            requests: {
-              memory: undefined,
-            },
-          },
-        },
-      });
+      updateTemplate({ domain: withGuestMemory(domain, undefined) });
     } else {
       const num = parseInt(value);
       if (!isNaN(num)) {
-        updateTemplate({
-          domain: {
-            ...resource.spec?.template?.spec?.domain,
-            resources: {
-              requests: {
-                memory: `${num}${unit}`,
-              },
-            },
-          },
-        });
+        updateTemplate({ domain: withGuestMemory(domain, `${num}${unit}`) });
       }
     }
   };
