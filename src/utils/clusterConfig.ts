@@ -1,4 +1,4 @@
-import { ApiProxy } from '@kinvolk/headlamp-plugin/lib';
+import { ApiProxy, K8s } from '@kinvolk/headlamp-plugin/lib';
 import { useCallback, useEffect, useState } from 'react';
 
 /**
@@ -123,16 +123,19 @@ export function useClusterConfig(): ClusterConfigState & { reload: () => void } 
     error: null,
   });
   const [generation, setGeneration] = useState(0);
+  // Each cluster has its own ConfigMap: reload when the user switches cluster
+  const cluster = K8s.useCluster();
 
   useEffect(() => {
     let cancelled = false;
+    setState(s => ({ ...s, data: {}, loaded: false, error: null }));
     readClusterConfig().then(result => {
       if (!cancelled) setState({ ...result, loaded: true });
     });
     return () => {
       cancelled = true;
     };
-  }, [generation]);
+  }, [generation, cluster]);
 
   const reload = useCallback(() => setGeneration(g => g + 1), []);
   return { ...state, reload };
