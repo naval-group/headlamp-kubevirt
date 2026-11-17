@@ -41,8 +41,14 @@ import React, { useState } from 'react';
 import useFeatureGate from '../../hooks/useFeatureGate';
 import KubeVirt from '../../kubevirt/KubeVirt';
 import { DVTStorageSpec } from '../../types';
+import {
+  parseNamespaceList,
+  SHARED_NAD_NAMESPACES_KEY,
+  useClusterConfig,
+} from '../../utils/clusterConfig';
 import { buildRegistryDataVolumeSource } from '../../utils/dataVolumeSource';
 import { hasFeature } from '../../utils/kubevirtVersion';
+import { buildNadOptions, nadListNamespaces } from '../../utils/nadSelection';
 import { TOOLTIPS } from '../../utils/tooltips';
 import DataSource from '../BootableVolumes/DataSource';
 import CopyCodeBlock from '../common/CopyCodeBlock';
@@ -776,8 +782,41 @@ export default function VMFormFull({
   // Local state for complex UI interactions
   const [useAdvancedTopologyState, setUseAdvancedTopologyState] = useState(useAdvancedTopology);
 
-  // Fetch NADs for the selected namespace
-  const { items: networkAttachmentDefs } = NetworkAttachmentDefinition.useList({ namespace });
+  // NADs: the VM's namespace plus the cluster-wide "shared NAD namespaces" (ConfigMap
+  // headlamp-kubevirt-config). Without that setting, all namespaces are listed; if the user
+  // may not list NADs cluster-wide, fall back to the VM's namespace.
+  const clusterConfig = useClusterConfig();
+  const sharedNadNamespaces = React.useMemo(
+    () => parseNamespaceList(clusterConfig.data[SHARED_NAD_NAMESPACES_KEY]),
+    [clusterConfig.data]
+  );
+  const [nadListAllForbidden, setNadListAllForbidden] = useState(false);
+  const nadNamespaces = React.useMemo(
+    () =>
+      clusterConfig.loaded
+        ? nadListNamespaces(namespace, sharedNadNamespaces, nadListAllForbidden)
+        : [namespace],
+    [clusterConfig.loaded, namespace, sharedNadNamespaces, nadListAllForbidden]
+  );
+  const { items: networkAttachmentDefs, errors: nadListErrors } =
+    NetworkAttachmentDefinition.useList(nadNamespaces ? { namespace: nadNamespaces } : {});
+  React.useEffect(() => {
+    if (!nadNamespaces && nadListErrors?.some(e => e?.status === 403)) {
+      setNadListAllForbidden(true);
+    }
+  }, [nadNamespaces, nadListErrors]);
+  const nadOptions = React.useMemo(
+    () =>
+      buildNadOptions(
+        (networkAttachmentDefs || []).map(nad => ({
+          namespace: nad.getNamespace(),
+          name: nad.getName(),
+        })),
+        namespace,
+        currentNetworkInterfaces.map(iface => iface.nadName || '')
+      ),
+    [networkAttachmentDefs, namespace, currentNetworkInterfaces]
+  );
 
   // Calculate total vCPUs
   const totalVCPUs = useAdvancedTopologyState
@@ -3313,11 +3352,31 @@ export default function VMFormFull({
                       <Autocomplete
                         fullWidth
                         size="small"
-                        options={networkAttachmentDefs?.map(nad => nad.getName()) || []}
-                        value={iface.nadName || ''}
-                        onChange={(_, newValue) =>
-                          updateNetworkInterface(index, { nadName: newValue || undefined })
+                        options={nadOptions}
+                        groupBy={option => option.namespace}
+                        getOptionLabel={option =>
+                          option.namespace === namespace ? option.name : option.value
                         }
+                        isOptionEqualToValue={(option, value) => option.value === value.value}
+                        value={nadOptions.find(o => o.value === iface.nadName) || null}
+                        onChange={(_, option) =>
+                          updateNetworkInterface(index, { nadName: option?.value || undefined })
+                        }
+                        renderOption={(props, option) => (
+                          <li {...props} key={option.value}>
+                            {option.name}
+                            {option.unlisted && (
+                              <Typography
+                                component="span"
+                                variant="caption"
+                                color="text.secondary"
+                                sx={{ ml: 1 }}
+                              >
+                                (not listed)
+                              </Typography>
+                            )}
+                          </li>
+                        )}
                         renderInput={params => (
                           <TextField {...params} placeholder="Search network attachment..." />
                         )}

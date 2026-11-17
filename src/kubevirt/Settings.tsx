@@ -31,6 +31,7 @@ import { useSnackbar } from 'notistack';
 import { useEffect, useRef, useState } from 'react';
 import InfoTooltip from '../components/common/InfoTooltip';
 import MetricsEndpointConfig from '../components/common/MetricsEndpointConfig';
+import SharedNadNamespacesConfig from '../components/common/SharedNadNamespacesConfig';
 import ResourceEditorDialog from '../components/ResourceEditorDialog';
 import { INSPECTOR_IMAGE } from '../components/VMDoctor/constants';
 import { LiveUpdateConfig, NetworkConfig } from '../types';
@@ -1302,6 +1303,13 @@ export default function KubeVirtSettings() {
             <Card variant="outlined" sx={{ mb: 2 }}>
               <CardContent>
                 <MetricsEndpointConfig />
+              </CardContent>
+            </Card>
+
+            {/* Shared NAD namespaces (cluster-wide) */}
+            <Card variant="outlined" sx={{ mb: 2 }}>
+              <CardContent>
+                <SharedNadNamespacesConfig />
               </CardContent>
             </Card>
 
