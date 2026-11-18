@@ -1,4 +1,5 @@
 import '@xterm/xterm/css/xterm.css';
+import { useTranslation } from '@kinvolk/headlamp-plugin/lib';
 import { StreamArgs, StreamResultsCb } from '@kinvolk/headlamp-plugin/lib/ApiProxy';
 import { Dialog } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
 import { KubeObject } from '@kinvolk/headlamp-plugin/lib/K8s/cluster';
@@ -8,7 +9,6 @@ import DialogContent from '@mui/material/DialogContent';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal as XTerminal } from '@xterm/xterm';
 import { useEffect, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import VirtualMachineInstance from '../VirtualMachineInstance/VirtualMachineInstance';
 
 enum Channel {
@@ -49,7 +49,7 @@ export default function Terminal(props: TerminalProps) {
     'connecting'
   );
 
-  const { t } = useTranslation(['translation', 'glossary']);
+  const { t } = useTranslation();
   const encoder = new TextEncoder();
   const decoder = new TextDecoder('utf-8');
   function setupTerminal(itemRef: HTMLElement, xterm: XTerminal, fitAddon: FitAddon) {

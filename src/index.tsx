@@ -68,28 +68,11 @@ import {
   loadFeatureGates,
   reloadFeatureGatesIfClusterChanged,
 } from './utils/featureGates';
+import { detectIPAMCRD, isIPAMCRDAvailable } from './utils/ipamCrd';
 import {
   detectKubeVirtCapabilities,
   redetectCapabilitiesIfClusterChanged,
 } from './utils/kubevirtVersion';
-
-// ── IPAM CRD detection ─────────────────────────────────────────────────
-let ipamCRDAvailable = false;
-let ipamCluster: string | null | undefined = undefined;
-
-async function detectIPAMCRD() {
-  const cluster = currentCluster();
-  ipamCluster = cluster;
-  let available = false;
-  try {
-    await ApiProxy.request('/apis/k8s.cni.cncf.io/v1alpha1/ipamclaims');
-    available = true;
-  } catch {
-    available = false;
-  }
-  // Ignore the answer if the user switched cluster meanwhile
-  if (ipamCluster === cluster) ipamCRDAvailable = available;
-}
 
 // Route registration helper - DRY pattern for KubeVirt resources
 interface ResourceRoute {
@@ -155,10 +138,7 @@ function ClusterChangeWatcher() {
     if (!cluster) return;
     reloadFeatureGatesIfClusterChanged();
     redetectCapabilitiesIfClusterChanged();
-    if (ipamCluster !== cluster) {
-      ipamCRDAvailable = false;
-      detectIPAMCRD();
-    }
+    detectIPAMCRD();
   }, [cluster]);
   return null;
 }
@@ -468,7 +448,7 @@ registerSidebarEntryFilter(entry => {
   // whenever the gate/version couldn't be resolved, which wrongly hid it on
   // clusters where the KubeVirt CR isn't readable (e.g. custom namespace + scoped RBAC).
   // Hide IPAMClaims if the CRD is not available
-  if (entry.name === 'ipamclaims' && !ipamCRDAvailable) {
+  if (entry.name === 'ipamclaims' && !isIPAMCRDAvailable()) {
     return null;
   }
   return entry;

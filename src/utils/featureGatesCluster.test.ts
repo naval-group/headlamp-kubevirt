@@ -73,4 +73,20 @@ describe('feature gates per cluster', () => {
     expect(getFeatureGatesCluster()).toBe('site-a');
     expect(isFeatureGateEnabled('HotplugVolumes')).toBe(false);
   });
+
+  it('does not retry on a cluster without KubeVirt (404)', async () => {
+    vi.useFakeTimers();
+    try {
+      cluster = 'site-c';
+      request.mockReset();
+      request.mockRejectedValue({ status: 404 });
+      reloadFeatureGatesIfClusterChanged();
+      await vi.advanceTimersByTimeAsync(60000);
+      expect(request).toHaveBeenCalledTimes(1);
+      expect(areFeatureGatesLoaded()).toBe(true);
+      expect(isFeatureGateEnabled('Snapshot')).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

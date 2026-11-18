@@ -53,6 +53,13 @@ export async function loadFeatureGates() {
     listeners.forEach(listener => listener());
   } catch (error) {
     if (gatesCluster !== cluster) return;
+    // 404: KubeVirt is not installed on this cluster - nothing to wait for, don't retry
+    if ((error as { status?: number })?.status === 404) {
+      featureGatesLoaded = true;
+      retryCount = 0;
+      listeners.forEach(listener => listener());
+      return;
+    }
     if (retryCount < MAX_RETRIES) {
       retryCount++;
       console.debug(
