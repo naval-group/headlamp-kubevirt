@@ -419,6 +419,7 @@ update the ConfigMap can also edit it from **Settings → General Configuration*
 | Key | Description |
 |-----|-------------|
 | `sharedNadNamespaces` | Comma-separated namespaces whose NetworkAttachmentDefinitions VMs in any namespace may use. When set, the VM network dropdown lists the VM's namespace plus these namespaces; when unset, it lists NADs from all namespaces (or only the VM's namespace if the user cannot list them cluster-wide). With Multus namespace isolation, match `globalNamespaces`. NADs from another namespace are stored as `namespace/name`. |
+| `metricsDisabled` | `"true"` hides all plugin metrics on this cluster: the VM metrics section, Overview top consumers, the VM Doctor Metrics and Querier tabs, system health and the metrics endpoint settings. Use it when metrics are provided elsewhere (e.g. Grafana) or not collected. |
 
 ```yaml
 apiVersion: v1

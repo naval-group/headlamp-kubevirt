@@ -37,6 +37,7 @@ import { INSPECTOR_IMAGE } from '../components/VMDoctor/constants';
 import { LiveUpdateConfig, NetworkConfig } from '../types';
 import { updateFeatureGates } from '../utils/featureGates';
 import { isKubeVirt18OrNewer } from '../utils/kubevirtVersion';
+import useMetricsDisabled from '../utils/metricsDisabled';
 import {
   addLabelColumn,
   defaultForensicSettings,
@@ -112,6 +113,7 @@ const VM_DELETE_PROTECTION_BINDING = {
 
 export default function KubeVirtSettings() {
   const { enqueueSnackbar } = useSnackbar();
+  const metricsDisabled = useMetricsDisabled();
   const [updating, setUpdating] = useState(false);
   const [pluginFeaturesExpanded, setPluginFeaturesExpanded] = useState(false);
   const [deleteProtectionModalOpen, setDeleteProtectionModalOpen] = useState(false);
@@ -716,7 +718,7 @@ export default function KubeVirtSettings() {
         </Box>
       </SectionBox>
 
-      <SystemHealthSection kubevirtNamespace={kubeVirt.getNamespace()} />
+      {!metricsDisabled && <SystemHealthSection kubevirtNamespace={kubeVirt.getNamespace()} />}
       {/* Plugin Features */}
       <Box
         mt={3}
@@ -1302,7 +1304,15 @@ export default function KubeVirtSettings() {
             {/* Metrics Endpoint */}
             <Card variant="outlined" sx={{ mb: 2 }}>
               <CardContent>
-                <MetricsEndpointConfig />
+                {metricsDisabled ? (
+                  <Typography variant="body2" color="text.secondary">
+                    Plugin metrics are disabled for this cluster (
+                    <code>metricsDisabled: &quot;true&quot;</code> in ConfigMap{' '}
+                    <code>headlamp-kubevirt-config</code>).
+                  </Typography>
+                ) : (
+                  <MetricsEndpointConfig />
+                )}
               </CardContent>
             </Card>
 

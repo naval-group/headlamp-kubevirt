@@ -6,6 +6,7 @@ import React, { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import usePolling from '../../hooks/usePolling';
 import { VMIData } from '../../types';
+import useMetricsDisabled from '../../utils/metricsDisabled';
 import { getVMIPhaseColor } from '../../utils/statusColors';
 import VirtualMachine from '../VirtualMachines/VirtualMachine';
 import ConsoleLogTab from './ConsoleLogTab';
@@ -17,6 +18,7 @@ import PodLogsTab from './PodLogsTab';
 export default function VMDoctor() {
   const { namespace, name } = useParams<{ namespace: string; name: string }>();
   const [activeTab, setActiveTab] = useState(0);
+  const metricsDisabled = useMetricsDisabled();
   const [vmItem] = VirtualMachine.useGet(name, namespace);
   const [vmiData, setVmiData] = useState<VMIData | null>(null);
   const [podName, setPodName] = useState<string>('');
@@ -107,6 +109,7 @@ export default function VMDoctor() {
             icon={<Icon icon="mdi:chart-line" width={20} />}
             iconPosition="start"
             label="Metrics"
+            sx={metricsDisabled ? { display: 'none' } : undefined}
           />
           <Tab
             icon={<Icon icon="mdi:console" width={20} />}
@@ -125,7 +128,7 @@ export default function VMDoctor() {
         <GuestInfoTab vmName={name} namespace={namespace} vmiData={vmiData} vmItem={vmItem} />
       )}
       {activeTab === 1 && <EventsTab vmName={name} namespace={namespace} />}
-      {activeTab === 2 && (
+      {activeTab === 2 && !metricsDisabled && (
         <MetricsDashboardTab
           vmName={name}
           namespace={namespace}
