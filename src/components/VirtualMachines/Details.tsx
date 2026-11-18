@@ -1,5 +1,5 @@
 import { Icon } from '@iconify/react';
-import { ApiProxy } from '@kinvolk/headlamp-plugin/lib';
+import { ApiProxy, useTranslation } from '@kinvolk/headlamp-plugin/lib';
 import {
   Link,
   Resource,
@@ -19,12 +19,12 @@ import {
 } from '@mui/material';
 import { useSnackbar } from 'notistack';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import useFeatureGate from '../../hooks/useFeatureGate';
 import useVMActions from '../../hooks/useVMActions';
 import { VMIData, VMIStatusNetworkInterface, VMIVolumeStatus } from '../../types';
 import { formatDuration } from '../../utils/formatDuration';
+import { useIPAMCRDAvailable } from '../../utils/ipamCrd';
 import { hasFeature } from '../../utils/kubevirtVersion';
 import { buildLaunchTemplate } from '../../utils/launchTemplate';
 import { safeError } from '../../utils/sanitize';
@@ -122,7 +122,7 @@ export interface VirtualMachineDetailsProps {
 export default function VirtualMachineDetails(props: VirtualMachineDetailsProps) {
   const params = useParams<{ namespace: string; name: string }>();
   const { name = params.name, namespace = params.namespace } = props;
-  const { t } = useTranslation('glossary');
+  const { t } = useTranslation();
   const { enqueueSnackbar } = useSnackbar();
   const [showConsole, setShowConsole] = useState(false);
   const [consoleTab, setConsoleTab] = useState<'vnc' | 'terminal'>('vnc');
@@ -142,11 +142,9 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
   const [vmiData, setVmiData] = useState<VMIData | null>(null);
   const [podDeleteConfirm, setPodDeleteConfirm] = useState<'delete' | 'force' | null>(null);
 
-  // Fetch IPAMClaims for this VM (filtered by kubevirt.io/vm label)
-  const { items: allIPAMClaims } = IPAMClaim.useList({ namespace });
-  const vmIPAMClaims = allIPAMClaims?.filter(
-    (c: InstanceType<typeof IPAMClaim>) => c.getOwnerVMName() === name
-  );
+  // Fetch IPAMClaims for this VM (filtered by kubevirt.io/vm label), only where the CRD exists
+  const ipamAvailable = useIPAMCRDAvailable();
+  const [vmIPAMClaims, setVmIPAMClaims] = useState<InstanceType<typeof IPAMClaim>[]>([]);
 
   // Fetch migrations for this VM to find active migration
   const { items: allMigrations } = VirtualMachineInstanceMigration.useList({ namespace });
@@ -2022,6 +2020,9 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
         vmName={name || ''}
         namespace={namespace || ''}
       />
+      {ipamAvailable && name && namespace && (
+        <VMIPAMClaimsLoader namespace={namespace} vmName={name} onChange={setVmIPAMClaims} />
+      )}
       {vmItem && (
         <CreateResourceDialog
           open={showEditDialog}
@@ -2514,4 +2515,21 @@ function MigrationsList({
       ]}
     />
   );
+}
+
+/** Lists this VM's IPAMClaims; only mounted when the IPAMClaim CRD is installed. */
+function VMIPAMClaimsLoader({
+  namespace,
+  vmName,
+  onChange,
+}: {
+  namespace: string;
+  vmName: string;
+  onChange: (claims: InstanceType<typeof IPAMClaim>[]) => void;
+}) {
+  const { items } = IPAMClaim.useList({ namespace });
+  useEffect(() => {
+    onChange((items || []).filter(c => c.getOwnerVMName() === vmName));
+  }, [items, vmName, onChange]);
+  return null;
 }
