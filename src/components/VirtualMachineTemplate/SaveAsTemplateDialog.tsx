@@ -13,6 +13,7 @@ import {
 } from '@mui/material';
 import { useSnackbar } from 'notistack';
 import { useEffect, useState } from 'react';
+import { fetchNamespaceNames } from '../../utils/namespaces';
 import { safeError } from '../../utils/sanitize';
 
 interface SaveAsTemplateDialogProps {
@@ -39,9 +40,9 @@ export default function SaveAsTemplateDialog({
       setTemplateName(`${vmName}-template`);
       setTargetNamespace(namespace);
       setCreating(false);
-      ApiProxy.request('/api/v1/namespaces')
-        .then((resp: { items?: Array<{ metadata: { name: string } }> }) => {
-          setAllNamespaces((resp?.items?.map(ns => ns.metadata.name) || []).sort());
+      fetchNamespaceNames()
+        .then(nsList => {
+          setAllNamespaces(nsList.sort());
         })
         .catch(() => {});
     }

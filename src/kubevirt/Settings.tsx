@@ -36,6 +36,7 @@ import { INSPECTOR_IMAGE } from '../components/VMDoctor/constants';
 import { LiveUpdateConfig, NetworkConfig } from '../types';
 import { updateFeatureGates } from '../utils/featureGates';
 import { isKubeVirt18OrNewer } from '../utils/kubevirtVersion';
+import { fetchNamespaceNames } from '../utils/namespaces';
 import {
   addLabelColumn,
   defaultForensicSettings,
@@ -352,9 +353,9 @@ export default function KubeVirtSettings() {
 
   // Fetch namespaces and service accounts for monitoring config
   useEffect(() => {
-    ApiProxy.request('/api/v1/namespaces')
-      .then((resp: { items?: Array<{ metadata: { name: string } }> }) => {
-        setMonitoringNamespaces(resp?.items?.map(ns => ns.metadata.name) || []);
+    fetchNamespaceNames()
+      .then(nsList => {
+        setMonitoringNamespaces(nsList);
       })
       .catch(() => {
         enqueueSnackbar('Failed to load namespaces for monitoring config', { variant: 'warning' });

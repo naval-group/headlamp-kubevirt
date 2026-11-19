@@ -23,6 +23,7 @@ import {
 import React, { useState } from 'react';
 import useResourceEditor from '../../hooks/useResourceEditor';
 import { KubeListResponse } from '../../types';
+import { fetchNamespaceNames } from '../../utils/namespaces';
 import FormSection from '../common/FormSection';
 import MandatoryTextField, { mandatoryFieldSx } from '../common/MandatoryTextField';
 import DataSource from './DataSource';
@@ -73,11 +74,10 @@ export default function DataSourceForm({
 
   React.useEffect(() => {
     let cancelled = false;
-    ApiProxy.request('/api/v1/namespaces')
-      .then((response: KubeListResponse<KubeNamedItem>) => {
+    fetchNamespaceNames()
+      .then(nsList => {
         if (cancelled) return;
-        const nsList = response?.items?.map(ns => ns.metadata.name) || ['default'];
-        setNamespaces(nsList);
+        setNamespaces(nsList.length > 0 ? nsList : ['default']);
       })
       .catch(err => {
         if (!cancelled) console.error('Failed to fetch namespaces:', err);

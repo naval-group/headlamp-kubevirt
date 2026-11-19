@@ -14,6 +14,7 @@ import {
 import React, { useState } from 'react';
 import useResourceEditor from '../../hooks/useResourceEditor';
 import { KubeListResponse } from '../../types';
+import { fetchNamespaceNames } from '../../utils/namespaces';
 import { TOOLTIPS } from '../../utils/tooltips';
 import FormSection from '../common/FormSection';
 import InfoTooltip from '../common/InfoTooltip';
@@ -92,9 +93,9 @@ export default function VMExportForm({
 
   // Fetch namespaces
   React.useEffect(() => {
-    ApiProxy.request('/api/v1/namespaces')
-      .then((response: KubeListResponse<KubeNamedItem>) => {
-        setNamespaces(response?.items?.map(ns => ns.metadata.name) || ['default']);
+    fetchNamespaceNames()
+      .then(nsList => {
+        setNamespaces(nsList.length > 0 ? nsList : ['default']);
       })
       .catch(() => {});
   }, []);

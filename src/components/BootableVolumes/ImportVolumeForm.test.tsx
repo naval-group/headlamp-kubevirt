@@ -8,6 +8,11 @@ vi.mock('@kinvolk/headlamp-plugin/lib', () => ({
   ApiProxy: {
     request: vi.fn().mockResolvedValue({ items: [] }),
   },
+  K8s: {
+    cluster: {
+      getAllowedNamespaces: () => [],
+    },
+  },
 }));
 
 function makeDV(overrides: any = {}) {
