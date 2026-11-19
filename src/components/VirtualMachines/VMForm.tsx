@@ -17,6 +17,7 @@ import {
 } from '@mui/material';
 import React, { useEffect, useState } from 'react';
 import { KubeListResponse } from '../../types';
+import { fetchNamespaceNames } from '../../utils/namespaces';
 import DataSource from '../BootableVolumes/DataSource';
 import VirtualMachineClusterInstanceType from '../InstanceTypes/VirtualMachineClusterInstanceType';
 import VirtualMachineClusterPreference from '../Preferences/VirtualMachineClusterPreference';
@@ -42,9 +43,8 @@ export default function VMForm({ resource, onChange }: VMFormProps) {
 
   // Fetch namespaces and storage classes
   useEffect(() => {
-    ApiProxy.request('/api/v1/namespaces')
-      .then((response: KubeListResponse<KubeNamedItem>) => {
-        const nsList = response?.items?.map(ns => ns.metadata.name) || [];
+    fetchNamespaceNames()
+      .then(nsList => {
         setNamespaces(nsList);
       })
       .catch(err => console.error('Failed to fetch namespaces:', err));

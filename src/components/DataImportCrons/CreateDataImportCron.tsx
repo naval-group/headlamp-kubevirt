@@ -22,6 +22,7 @@ import {
 import { useSnackbar } from 'notistack';
 import React, { useState } from 'react';
 import { KubeListResponse } from '../../types';
+import { fetchNamespaceNames } from '../../utils/namespaces';
 import CatalogButton from './CatalogButton';
 import { CRON_PRESETS, parseCronExpression } from './cronUtils';
 import ImageCatalogPicker, { CatalogSelection } from './ImageCatalogPicker';
@@ -101,9 +102,8 @@ export default function CreateDataImportCron({ onClose }: CreateDataImportCronPr
   // Fetch available namespaces
   const [namespaces, setNamespaces] = useState<string[]>([]);
   React.useEffect(() => {
-    ApiProxy.request('/api/v1/namespaces')
-      .then((response: KubeListResponse<KubeNamedItem>) => {
-        const nsList = response?.items?.map(ns => ns.metadata.name) || [];
+    fetchNamespaceNames()
+      .then(nsList => {
         setNamespaces(nsList);
       })
       .catch(err => console.error('Failed to fetch namespaces:', err));

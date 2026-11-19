@@ -1,5 +1,4 @@
 import { Icon } from '@iconify/react';
-import { ApiProxy } from '@kinvolk/headlamp-plugin/lib';
 import { Link } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
 import {
   Alert,
@@ -16,8 +15,9 @@ import {
   Typography,
 } from '@mui/material';
 import React, { useState } from 'react';
-import { KubeListResponse, PrometheusQueryResult } from '../../types';
+import { PrometheusQueryResult } from '../../types';
 import { useMetricsEndpoint } from '../../utils/metricsEndpoint';
+import { fetchNamespaceNames } from '../../utils/namespaces';
 import { sanitizePromQL } from '../../utils/sanitize';
 import MetricsEndpointConfig from '../common/MetricsEndpointConfig';
 import VirtualMachineInstanceMigration from '../Migrations/VirtualMachineInstanceMigration';
@@ -66,10 +66,8 @@ export default function VirtualizationOverview() {
 
   // Fetch namespaces
   React.useEffect(() => {
-    ApiProxy.request('/api/v1/namespaces')
-      .then((response: KubeListResponse<{ metadata: { name: string } }>) => {
-        const nsList =
-          response?.items?.map((ns: { metadata: { name: string } }) => ns.metadata.name) || [];
+    fetchNamespaceNames()
+      .then(nsList => {
         setNamespaces(['all', ...nsList]);
       })
       .catch(() => {});

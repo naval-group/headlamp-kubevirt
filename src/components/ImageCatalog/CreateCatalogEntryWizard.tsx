@@ -25,6 +25,7 @@ import { useSnackbar } from 'notistack';
 import { useEffect, useMemo, useState } from 'react';
 import { buildCatalogConfigMap } from '../../utils/catalogLoader';
 import { getErrorMessage, safeIconColor } from '../../utils/catalogUtils';
+import { fetchNamespaceNames } from '../../utils/namespaces';
 import { dumpYaml } from '../../utils/templateUtils';
 import { CatalogCategory, CatalogImage, CatalogImageTag } from '../DataImportCrons/imageCatalog';
 import VirtualMachineClusterPreference from '../Preferences/VirtualMachineClusterPreference';
@@ -117,10 +118,10 @@ export default function CreateCatalogEntryWizard({
         setTags([{ name: 'latest', default: true }]);
       }
 
-      ApiProxy.request('/api/v1/namespaces')
-        .then((resp: { items?: Array<{ metadata: { name: string } }> }) => {
+      fetchNamespaceNames()
+        .then(nsList => {
           if (!cancelled) {
-            setAllNamespaces((resp?.items?.map(ns => ns.metadata.name) || []).sort());
+            setAllNamespaces(nsList.sort());
           }
         })
         .catch(err => console.warn('Failed to load namespaces:', err));

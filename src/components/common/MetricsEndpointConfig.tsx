@@ -30,6 +30,7 @@ import {
   TestResult,
   useMetricsEndpoint,
 } from '../../utils/metricsEndpoint';
+import { fetchNamespaceNames } from '../../utils/namespaces';
 import { discoverPrometheus } from '../../utils/prometheus';
 
 const CONFIGMAP_NAME = 'headlamp-kubevirt-config';
@@ -92,9 +93,8 @@ export default function MetricsEndpointConfig({ compact }: { compact?: boolean }
 
   // Fetch namespaces on mount
   useEffect(() => {
-    ApiProxy.request('/api/v1/namespaces')
-      .then((resp: { items?: Array<{ metadata: { name: string } }> }) => {
-        const nsList = resp?.items?.map(ns => ns.metadata.name) || [];
+    fetchNamespaceNames()
+      .then(nsList => {
         setAllNamespaces(nsList.sort());
       })
       .catch(() => {});

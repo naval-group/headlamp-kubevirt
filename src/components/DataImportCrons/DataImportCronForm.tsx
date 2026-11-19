@@ -16,6 +16,7 @@ import { useSnackbar } from 'notistack';
 import React, { useEffect, useState } from 'react';
 import useResourceEditor from '../../hooks/useResourceEditor';
 import { KubeListResponse } from '../../types';
+import { fetchNamespaceNames } from '../../utils/namespaces';
 import FormSection from '../common/FormSection';
 import MandatoryTextField from '../common/MandatoryTextField';
 import CatalogButton from './CatalogButton';
@@ -137,10 +138,9 @@ export default function DataImportCronForm({
   // Fetch namespaces and storage classes
   useEffect(() => {
     let cancelled = false;
-    ApiProxy.request('/api/v1/namespaces')
-      .then((response: KubeListResponse<KubeNamedItem>) => {
+    fetchNamespaceNames()
+      .then(nsList => {
         if (cancelled) return;
-        const nsList = response?.items?.map(ns => ns.metadata.name) || [];
         setNamespaces(nsList);
       })
       .catch(err => {

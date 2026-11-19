@@ -43,6 +43,7 @@ import KubeVirt from '../../kubevirt/KubeVirt';
 import { DVTStorageSpec } from '../../types';
 import { buildRegistryDataVolumeSource } from '../../utils/dataVolumeSource';
 import { hasFeature } from '../../utils/kubevirtVersion';
+import { fetchNamespaceNames } from '../../utils/namespaces';
 import { TOOLTIPS } from '../../utils/tooltips';
 import DataSource from '../BootableVolumes/DataSource';
 import CopyCodeBlock from '../common/CopyCodeBlock';
@@ -800,18 +801,11 @@ export default function VMFormFull({
 
   React.useEffect(() => {
     let cancelled = false;
-    ApiProxy.request('/api/v1/namespaces')
-      .then(
-        (response: {
-          items?: Array<{ metadata: { name: string; labels?: Record<string, string> } }>;
-        }) => {
-          if (cancelled) return;
-          const nsList = response?.items?.map(
-            (ns: { metadata: { name: string } }) => ns.metadata.name
-          ) || ['default'];
-          setNamespaces(nsList);
-        }
-      )
+    fetchNamespaceNames()
+      .then(nsList => {
+        if (cancelled) return;
+        setNamespaces(nsList.length > 0 ? nsList : ['default']);
+      })
       .catch(err => {
         if (cancelled) return;
         console.error('Failed to fetch namespaces:', err);
