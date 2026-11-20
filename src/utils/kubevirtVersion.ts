@@ -1,4 +1,5 @@
 import { ApiProxy } from '@kinvolk/headlamp-plugin/lib';
+import { currentCluster } from './currentCluster';
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -24,7 +25,7 @@ export interface KubeVirtCapabilities {
 
 // ── Module-level cache ────────────────────────────────────────────────
 
-let cached: KubeVirtCapabilities = {
+const UNRESOLVED: KubeVirtCapabilities = {
   version: '',
   semver: null,
   level: 'unknown',
@@ -38,6 +39,10 @@ let cached: KubeVirtCapabilities = {
   },
   resolved: false,
 };
+
+let cached: KubeVirtCapabilities = UNRESOLVED;
+/** Cluster `cached` belongs to (undefined = never detected). */
+let capabilitiesCluster: string | null | undefined = undefined;
 
 const listeners: Array<() => void> = [];
 
@@ -191,7 +196,11 @@ async function detectFeatures(): Promise<KubeVirtCapabilities['features']> {
 // ── Public API ────────────────────────────────────────────────────────
 
 export async function detectKubeVirtCapabilities(): Promise<KubeVirtCapabilities> {
+  const cluster = currentCluster();
+  capabilitiesCluster = cluster;
   const [version, features] = await Promise.all([detectVersion(), detectFeatures()]);
+  // The user switched cluster while detecting: a newer detection owns the cache
+  if (capabilitiesCluster !== cluster) return cached;
 
   const semver = parseSemver(version);
 
@@ -216,6 +225,14 @@ export async function detectKubeVirtCapabilities(): Promise<KubeVirtCapabilities
   });
   notify();
   return cached;
+}
+
+/** Re-detect capabilities if the cluster shown changed since the last detection. */
+export function redetectCapabilitiesIfClusterChanged(): void {
+  if (capabilitiesCluster === currentCluster()) return;
+  cached = UNRESOLVED;
+  notify();
+  detectKubeVirtCapabilities();
 }
 
 /** Get cached capabilities (may not be resolved yet). */
