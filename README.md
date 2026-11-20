@@ -24,6 +24,7 @@ Originally based on the excellent work from [buttahtoast](https://github.com/but
 ## Features
 
 - **Virtual Machines** - Full lifecycle management (create, start, stop, restart, force stop, migrate, pause, clone, snapshot, export, launch more like this, save as template), bulk actions, compare up to 3 VMs, VNC console with send keys, serial terminal with auto-resize, live per-VM metrics, desktop/tablet device auto-detection
+- **CD-ROM** - Add SATA CD-ROM drives and insert, change or eject ISO discs (DataVolumes/PVCs) from the VM details page or the VNC console toolbar, live on running VMs with KubeVirt declarative volume hotplug (`DeclarativeHotplugVolumes`, Beta and on by default from v1.9; the deprecated `HotplugVolumes` gate must not be enabled)
 - **VM Doctor** - Per-VM diagnostic panel with conditions, events, metrics, PromQL querier, guest OS info, VM/pod shell with virsh command reference, logs, YAML, memory dump with Volatility3 forensic analysis, and disk inspector
 - **VM Templates** - Create, manage, and instantiate VirtualMachineTemplates with parameter substitution. One-click "Save as Template" from any VM
 - **Image Catalog** - Built-in OS images and custom entries via ConfigMaps, with hide/show toggle and icon picker. See [Image Catalog docs](docs/image-catalog/README.md)

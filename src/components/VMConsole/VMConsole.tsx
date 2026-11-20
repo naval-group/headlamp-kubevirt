@@ -29,6 +29,7 @@ import React, { useCallback, useEffect, useImperativeHandle, useRef, useState } 
 import { useTranslation } from 'react-i18next';
 import useVMActions from '../../hooks/useVMActions';
 import VirtualMachine from '../VirtualMachines/VirtualMachine';
+import CdromConsoleMenu from './CdromConsoleMenu';
 
 // ── Terminal types ──────────────────────────────────────────────────────
 
@@ -985,6 +986,12 @@ export const VNCPanel = React.forwardRef<
                 </Tooltip>
 
                 <VNCKeysMenu onSend={keys => actions.sendKeys(keys)} />
+
+                <CdromConsoleMenu
+                  namespace={item.getNamespace()}
+                  name={item.getName()}
+                  container={isFullscreen ? vncContainerRef.current : undefined}
+                />
 
                 <Box
                   sx={{

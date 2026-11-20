@@ -41,6 +41,15 @@ import React, { useState } from 'react';
 import useFeatureGate from '../../hooks/useFeatureGate';
 import KubeVirt from '../../kubevirt/KubeVirt';
 import { DVTStorageSpec } from '../../types';
+import {
+  addCdromDrive,
+  cdromHotplugAvailable,
+  ejectCdromMedia,
+  getCdromDrives,
+  insertCdromMedia,
+  nextCdromName,
+  removeCdromDrive,
+} from '../../utils/cdrom';
 import { buildRegistryDataVolumeSource } from '../../utils/dataVolumeSource';
 import { hasFeature } from '../../utils/kubevirtVersion';
 import { TOOLTIPS } from '../../utils/tooltips';
@@ -52,6 +61,7 @@ import CatalogButton from '../DataImportCrons/CatalogButton';
 import ImageCatalogPicker, { CatalogSelection } from '../DataImportCrons/ImageCatalogPicker';
 import VirtualMachineClusterInstanceType from '../InstanceTypes/VirtualMachineClusterInstanceType';
 import NetworkAttachmentDefinition from '../NetworkAttachmentDefinitions/NetworkAttachmentDefinition';
+import CdromMediaDialog, { CdromMediaOption } from './CdromMediaDialog';
 import type { VMArchitecture } from './vmArchitecture';
 import {
   DEFAULT_VM_ARCHITECTURE,
@@ -403,10 +413,20 @@ export default function VMFormFull({
     const volumes = resource.spec?.template?.spec?.volumes || [];
     const disks = resource.spec?.template?.spec?.domain?.devices?.disks || [];
 
+    // CD-ROM drives are listed separately (editing them as disks would turn them into disks)
+    const cdromNames = new Set(
+      disks
+        .filter((d: KubeResourceBuilder) => d.cdrom !== undefined)
+        .map((d: KubeResourceBuilder) => d.name)
+    );
+
     // Parse volumes, excluding cloudinitdisk and rootdisk
     const additionalVolumes = volumes.filter(
       (v: KubeResourceBuilder) =>
-        v.name !== 'cloudinitdisk' && !v.name?.includes('root') && !v.name?.includes('boot')
+        v.name !== 'cloudinitdisk' &&
+        !v.name?.includes('root') &&
+        !v.name?.includes('boot') &&
+        !cdromNames.has(v.name)
     );
 
     return additionalVolumes.map((vol: KubeResourceBuilder) => {
@@ -731,6 +751,30 @@ export default function VMFormFull({
     ignitionDataSecret ? 'secret' : ignitionDataBase64 ? 'base64' : 'inline'
   );
   const [showDiskForm, setShowDiskForm] = useState(false);
+  // CD-ROM drives
+  const cdromDrives = getCdromDrives(resource.spec?.template?.spec);
+  const cdromHotplug = cdromHotplugAvailable();
+  const [cdromDialog, setCdromDialog] = useState<
+    { mode: 'add' } | { mode: 'insert'; drive: string } | null
+  >(null);
+  const [cdromName, setCdromName] = useState('');
+  const [cdromError, setCdromError] = useState<string | null>(null);
+  const cdromUsedClaims: string[] = (resource.spec?.template?.spec?.volumes || [])
+    .map((v: KubeResourceBuilder) => v.dataVolume?.name || v.persistentVolumeClaim?.claimName)
+    .filter(Boolean);
+  const confirmCdrom = (media: CdromMediaOption | null) => {
+    if (!cdromDialog) return;
+    try {
+      if (cdromDialog.mode === 'add') {
+        onChange(addCdromDrive(resource, cdromName.trim(), media || undefined));
+      } else if (media) {
+        onChange(insertCdromMedia(resource, cdromDialog.drive, media));
+      }
+      setCdromDialog(null);
+    } catch (err) {
+      setCdromError(err instanceof Error ? err.message : String(err));
+    }
+  };
   const [diskEditIndex, setDiskEditIndex] = useState<number | null>(null);
   const [diskFormData, setDiskFormData] = useState<AdditionalDisk>({
     name: '',
@@ -3502,8 +3546,119 @@ export default function VMFormFull({
                     </TableCell>
                   </TableRow>
                 ))}
+
+              {/* CD-ROM drives */}
+              {cdromDrives.map(drive => (
+                <TableRow key={`cdrom-${drive.name}`}>
+                  <TableCell>
+                    <Typography variant="body2">{drive.name}</Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Typography
+                      variant="body2"
+                      color={drive.media ? 'text.primary' : 'text.secondary'}
+                    >
+                      {drive.media?.name || drive.otherMedia || 'Empty (no disc)'}
+                    </Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2" color="text.secondary">
+                      -
+                    </Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2">CD-ROM</Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2">{drive.bus}</Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2" color="text.secondary">
+                      -
+                    </Typography>
+                  </TableCell>
+                  <TableCell align="right">
+                    <Tooltip title={drive.media ? 'Change disc' : 'Insert disc'}>
+                      <span>
+                        <IconButton
+                          size="small"
+                          disabled={!!drive.otherMedia}
+                          onClick={() => {
+                            setCdromError(null);
+                            setCdromDialog({ mode: 'insert', drive: drive.name });
+                          }}
+                        >
+                          <Icon icon="mdi:disc-player" />
+                        </IconButton>
+                      </span>
+                    </Tooltip>
+                    {cdromHotplug && drive.media && (
+                      <Tooltip title="Eject (leave the drive empty)">
+                        <IconButton
+                          size="small"
+                          onClick={() => onChange(ejectCdromMedia(resource, drive.name))}
+                        >
+                          <Icon icon="mdi:eject" />
+                        </IconButton>
+                      </Tooltip>
+                    )}
+                    <Tooltip title="Remove drive">
+                      <IconButton
+                        size="small"
+                        onClick={() => onChange(removeCdromDrive(resource, drive.name))}
+                      >
+                        <Icon icon="mdi:delete" />
+                      </IconButton>
+                    </Tooltip>
+                  </TableCell>
+                </TableRow>
+              ))}
             </TableBody>
           </Table>
+
+          {/* Add CD-ROM drive */}
+          <Button
+            startIcon={<Icon icon="mdi:disc" />}
+            onClick={() => {
+              setCdromName(nextCdromName(resource.spec?.template?.spec));
+              setCdromError(null);
+              setCdromDialog({ mode: 'add' });
+            }}
+            variant="outlined"
+            sx={{ mb: 3, mr: 1 }}
+            disabled={showDiskForm}
+          >
+            Add CD-ROM Drive
+          </Button>
+          <CdromMediaDialog
+            open={!!cdromDialog}
+            namespace={namespace}
+            title={
+              cdromDialog?.mode === 'insert'
+                ? `Insert disc into ${cdromDialog.drive}`
+                : 'Add CD-ROM drive'
+            }
+            usedClaims={cdromUsedClaims}
+            allowEmpty={cdromDialog?.mode === 'add' && cdromHotplug}
+            confirmLabel={cdromDialog?.mode === 'add' ? 'Add drive' : 'Insert'}
+            error={cdromError}
+            onClose={() => setCdromDialog(null)}
+            onConfirm={confirmCdrom}
+          >
+            {cdromDialog?.mode === 'add' && (
+              <TextField
+                size="small"
+                label="Drive name"
+                value={cdromName}
+                onChange={e => setCdromName(e.target.value)}
+                helperText={
+                  cdromHotplug
+                    ? 'SATA CD-ROM drive. Discs can be inserted and ejected while the VM runs.'
+                    : 'SATA CD-ROM drive. Choose a disc: empty drives and live insert/eject need declarative volume hotplug (remove the deprecated HotplugVolumes gate).'
+                }
+              />
+            )}
+          </CdromMediaDialog>
 
           {/* Add Disk Button */}
           <Button
