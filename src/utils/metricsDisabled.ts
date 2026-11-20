@@ -11,8 +11,16 @@ export function isMetricsDisabled(data: Record<string, string> | undefined): boo
   return (data?.[METRICS_DISABLED_KEY] || '').trim().toLowerCase() === 'true';
 }
 
-/** True when the current cluster's admins switched plugin metrics off. */
+/**
+ * Metrics are treated as disabled until the cluster config is known, so pages do not show metrics
+ * panels (or the "configure metrics endpoint" box) for a moment on clusters that turned them off.
+ */
+export function metricsHidden(loaded: boolean, data: Record<string, string> | undefined): boolean {
+  return !loaded || isMetricsDisabled(data);
+}
+
+/** True when the current cluster's admins switched plugin metrics off (or the config is not read yet). */
 export default function useMetricsDisabled(): boolean {
-  const { data } = useClusterConfig();
-  return isMetricsDisabled(data);
+  const { loaded, data } = useClusterConfig();
+  return metricsHidden(loaded, data);
 }

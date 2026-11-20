@@ -384,16 +384,19 @@ export default function VirtualizationOverview() {
             </Select>
           </FormControl>
 
-          <FormControl size="small" sx={{ minWidth: 150 }}>
-            <Select value={timeRange} onChange={e => setTimeRange(e.target.value)}>
-              <MenuItem value="30m">Last 30 minutes</MenuItem>
-              <MenuItem value="1h">Last hour</MenuItem>
-              <MenuItem value="6h">Last 6 hours</MenuItem>
-              <MenuItem value="12h">Last 12 hours</MenuItem>
-              <MenuItem value="1d">Last day</MenuItem>
-              <MenuItem value="7d">Last 7 days</MenuItem>
-            </Select>
-          </FormControl>
+          {/* The time range only applies to the metrics panels */}
+          {!metricsDisabled && (
+            <FormControl size="small" sx={{ minWidth: 150 }}>
+              <Select value={timeRange} onChange={e => setTimeRange(e.target.value)}>
+                <MenuItem value="30m">Last 30 minutes</MenuItem>
+                <MenuItem value="1h">Last hour</MenuItem>
+                <MenuItem value="6h">Last 6 hours</MenuItem>
+                <MenuItem value="12h">Last 12 hours</MenuItem>
+                <MenuItem value="1d">Last day</MenuItem>
+                <MenuItem value="7d">Last 7 days</MenuItem>
+              </Select>
+            </FormControl>
+          )}
         </Box>
       </Box>
 

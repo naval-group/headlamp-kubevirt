@@ -114,23 +114,41 @@ export async function saveClusterConfig(
   });
 }
 
+/**
+ * Last config read per cluster, kept for the browser session. A page that mounts again (e.g. going
+ * back to the Overview) starts from it instead of an empty config, so settings such as
+ * metricsDisabled do not flicker; the hook still re-reads the ConfigMap in the background.
+ */
+const configCache = new Map<string, Omit<ClusterConfigState, 'loaded'>>();
+
+/** For tests. */
+export function clearClusterConfigCache(): void {
+  configCache.clear();
+}
+
+/** Initial hook state for a cluster: the cached config (loaded) or an empty, not-loaded one. */
+export function initialClusterConfigState(cluster: string | null | undefined): ClusterConfigState {
+  const cached = configCache.get(cluster || '');
+  if (cached) return { ...cached, loaded: true };
+  return { data: {}, namespace: DEFAULT_KUBEVIRT_NAMESPACE, loaded: false, error: null };
+}
+
 /** React hook: the cluster-wide plugin config of the current cluster, plus a reload function. */
 export function useClusterConfig(): ClusterConfigState & { reload: () => void } {
-  const [state, setState] = useState<ClusterConfigState>({
-    data: {},
-    namespace: DEFAULT_KUBEVIRT_NAMESPACE,
-    loaded: false,
-    error: null,
-  });
-  const [generation, setGeneration] = useState(0);
   // Each cluster has its own ConfigMap: reload when the user switches cluster
   const cluster = K8s.useCluster();
+  const [state, setState] = useState<ClusterConfigState>(() => initialClusterConfigState(cluster));
+  const [generation, setGeneration] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
-    setState(s => ({ ...s, data: {}, loaded: false, error: null }));
+    const key = cluster || '';
+    // Known cluster: keep showing its cached config while refreshing; unknown: start empty
+    setState(initialClusterConfigState(key));
     readClusterConfig().then(result => {
-      if (!cancelled) setState({ ...result, loaded: true });
+      if (cancelled) return;
+      if (!result.error) configCache.set(key, result);
+      setState({ ...result, loaded: true });
     });
     return () => {
       cancelled = true;
