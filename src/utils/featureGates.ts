@@ -3,6 +3,7 @@ import {
   FEATURE_GATE_CATEGORIES,
   isFeatureGateEnabledForVersion,
 } from '../kubevirt/Settings/FeatureGatesSection';
+import { currentCluster } from './currentCluster';
 
 const KNOWN_FEATURE_GATES = new Map(
   Object.values(FEATURE_GATE_CATEGORIES)
@@ -19,17 +20,23 @@ let listeners: Array<() => void> = [];
 let retryTimeoutId: ReturnType<typeof setTimeout> | null = null;
 const MAX_RETRIES = 12; // ~60s total
 let retryCount = 0;
+/** Cluster the gates above belong to (undefined = never loaded). */
+let gatesCluster: string | null | undefined = undefined;
 
-// Fetch feature gates from KubeVirt
+// Fetch feature gates from KubeVirt (of the cluster currently shown)
 export async function loadFeatureGates() {
   // Clear any pending retry
   if (retryTimeoutId !== null) {
     clearTimeout(retryTimeoutId);
     retryTimeoutId = null;
   }
+  const cluster = currentCluster();
+  gatesCluster = cluster;
 
   try {
     const response = await ApiProxy.request('/apis/kubevirt.io/v1/kubevirts');
+    // The user switched cluster while this was loading: a newer load owns the state
+    if (gatesCluster !== cluster) return;
     const items = response?.items || [];
     if (items.length > 0) {
       const kubeVirt = items[0];
@@ -45,6 +52,7 @@ export async function loadFeatureGates() {
     retryCount = 0;
     listeners.forEach(listener => listener());
   } catch (error) {
+    if (gatesCluster !== cluster) return;
     if (retryCount < MAX_RETRIES) {
       retryCount++;
       console.debug(
@@ -59,6 +67,28 @@ export async function loadFeatureGates() {
       listeners.forEach(listener => listener());
     }
   }
+}
+
+/**
+ * Reload the feature gates if the cluster shown changed since they were loaded.
+ * Until the new cluster's gates arrive, gates read as not loaded (no version), so nothing from
+ * the previous cluster is shown.
+ */
+export function reloadFeatureGatesIfClusterChanged(): void {
+  const cluster = currentCluster();
+  if (gatesCluster === cluster) return;
+  featureGates = [];
+  disabledFeatureGates = [];
+  kubeVirtVersion = null;
+  featureGatesLoaded = false;
+  retryCount = 0;
+  listeners.forEach(listener => listener());
+  loadFeatureGates();
+}
+
+/** Cluster the current feature gates were loaded from (for tests/diagnostics). */
+export function getFeatureGatesCluster(): string | null | undefined {
+  return gatesCluster;
 }
 
 // Cancel any pending retry (call on plugin unload if needed)

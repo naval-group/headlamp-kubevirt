@@ -22,7 +22,7 @@ import {
   registerSidebarEntry,
   registerSidebarEntryFilter,
 } from '@kinvolk/headlamp-plugin/lib';
-import { ApiProxy } from '@kinvolk/headlamp-plugin/lib';
+import { ApiProxy, K8s } from '@kinvolk/headlamp-plugin/lib';
 import { Alert, Box, Button, GlobalStyles, IconButton, Snackbar } from '@mui/material';
 import React, { useEffect, useRef, useState } from 'react';
 import DataVolumeDetails from './components/BootableVolumes/DataVolumeDetails';
@@ -60,23 +60,34 @@ import SnapshotList from './components/VirtualMachineSnapshot/List';
 import VMTemplateDetails from './components/VirtualMachineTemplate/Details';
 import VMTemplateList from './components/VirtualMachineTemplate/List';
 import KubeVirtSettings from './kubevirt/Settings';
+import { currentCluster } from './utils/currentCluster';
 import {
   areFeatureGatesLoaded,
   isFeatureGateEnabled,
   loadFeatureGates,
+  reloadFeatureGatesIfClusterChanged,
 } from './utils/featureGates';
-import { detectKubeVirtCapabilities } from './utils/kubevirtVersion';
+import {
+  detectKubeVirtCapabilities,
+  redetectCapabilitiesIfClusterChanged,
+} from './utils/kubevirtVersion';
 
 // ── IPAM CRD detection ─────────────────────────────────────────────────
 let ipamCRDAvailable = false;
+let ipamCluster: string | null | undefined = undefined;
 
 async function detectIPAMCRD() {
+  const cluster = currentCluster();
+  ipamCluster = cluster;
+  let available = false;
   try {
     await ApiProxy.request('/apis/k8s.cni.cncf.io/v1alpha1/ipamclaims');
-    ipamCRDAvailable = true;
+    available = true;
   } catch {
-    ipamCRDAvailable = false;
+    available = false;
   }
+  // Ignore the answer if the user switched cluster meanwhile
+  if (ipamCluster === cluster) ipamCRDAvailable = available;
 }
 
 // Route registration helper - DRY pattern for KubeVirt resources
@@ -135,11 +146,29 @@ loadFeatureGates();
 detectKubeVirtCapabilities();
 detectIPAMCRD();
 
+// Feature gates, capabilities and CRD checks are per cluster: reload them when the user switches
+// cluster (Headlamp does not reload plugins on a cluster switch).
+function ClusterChangeWatcher() {
+  const cluster = K8s.useCluster();
+  useEffect(() => {
+    if (!cluster) return;
+    reloadFeatureGatesIfClusterChanged();
+    redetectCapabilitiesIfClusterChanged();
+    if (ipamCluster !== cluster) {
+      ipamCRDAvailable = false;
+      detectIPAMCRD();
+    }
+  }, [cluster]);
+  return null;
+}
+registerAppBarAction(() => <ClusterChangeWatcher />);
+
 // Feature gates that affect sidebar visibility
 const SIDEBAR_AFFECTING_FEATURE_GATES = ['Snapshot', 'VMExport', 'DataVolumes'];
 
 // KubeVirt Update Watcher Component
 function KubeVirtUpdateWatcher() {
+  const cluster = K8s.useCluster();
   const [showReloadBanner, setShowReloadBanner] = useState(false);
   const [updateMessage, setUpdateMessage] = useState('');
   const initialVersionRef = useRef<string | null>(null);
@@ -147,9 +176,18 @@ function KubeVirtUpdateWatcher() {
   const initialDisabledFeatureGatesRef = useRef<string[] | null>(null);
 
   useEffect(() => {
+    // Compare against this cluster's own starting state (not the previous cluster's)
+    initialVersionRef.current = null;
+    initialFeatureGatesRef.current = null;
+    initialDisabledFeatureGatesRef.current = null;
+    setShowReloadBanner(false);
+    if (!cluster) return;
+    let active = true;
+
     const checkForUpdates = async () => {
       try {
         const response = await ApiProxy.request('/apis/kubevirt.io/v1/kubevirts');
+        if (!active || currentCluster() !== cluster) return;
         const items = response?.items || [];
         if (items.length > 0) {
           const kv = items[0];
@@ -207,9 +245,10 @@ function KubeVirtUpdateWatcher() {
     const intervalId = setInterval(checkForUpdates, 10000);
 
     return () => {
+      active = false;
       clearInterval(intervalId);
     };
-  }, []);
+  }, [cluster]);
 
   if (!showReloadBanner) {
     return null;
