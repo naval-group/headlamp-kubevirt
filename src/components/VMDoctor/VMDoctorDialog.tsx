@@ -15,6 +15,7 @@ import {
 import { useSnackbar } from 'notistack';
 import React, { useCallback, useState } from 'react';
 import useVMActions from '../../hooks/useVMActions';
+import useMetricsDisabled from '../../utils/metricsDisabled';
 import { safeError } from '../../utils/sanitize';
 import { getVMIPhaseColor } from '../../utils/statusColors';
 import ConfirmDialog from '../common/ConfirmDialog';
@@ -167,6 +168,7 @@ export default function VMDoctorDialog({
     (c: { type: string; status: string }) => c.type === 'AgentConnected' && c.status === 'True'
   );
 
+  const metricsDisabled = useMetricsDisabled();
   const tabs: TabDef[] = [
     {
       icon: 'mdi:card-account-details',
@@ -191,12 +193,14 @@ export default function VMDoctorDialog({
     {
       icon: 'mdi:chart-line',
       label: 'Metrics',
+      hidden: metricsDisabled,
       disabled: !isRunning,
       reason: 'VM is not running. Metrics require an active VM.',
     },
     {
       icon: 'mdi:database-search',
       label: 'Querier',
+      hidden: metricsDisabled,
       disabled: !isRunning,
       reason: 'VM is not running. Querier requires an active VM.',
     },
@@ -352,7 +356,7 @@ export default function VMDoctorDialog({
         <TabContent activeTab={activeTab} index={TAB_EVENTS}>
           <EventsTab vmName={vmName} namespace={namespace} />
         </TabContent>
-        <TabContent activeTab={activeTab} index={TAB_METRICS}>
+        <TabContent activeTab={activeTab} index={metricsDisabled ? -1 : TAB_METRICS}>
           <MetricsDashboardTab
             vmName={vmName}
             namespace={namespace}
@@ -362,9 +366,11 @@ export default function VMDoctorDialog({
         </TabContent>
 
         {/* Kept alive (display:none) to preserve session/scroll state */}
-        <TabContent activeTab={activeTab} index={TAB_QUERIER} keepAlive flex>
-          <PrometheusQuerier vmName={vmName} namespace={namespace} />
-        </TabContent>
+        {!metricsDisabled && (
+          <TabContent activeTab={activeTab} index={TAB_QUERIER} keepAlive flex>
+            <PrometheusQuerier vmName={vmName} namespace={namespace} />
+          </TabContent>
+        )}
         <TabContent activeTab={activeTab} index={TAB_LOGS} keepAlive flex>
           <PodLogsTab podName={podName} namespace={namespace} />
         </TabContent>

@@ -7,6 +7,8 @@ export interface TabDef {
   label: string;
   disabled?: boolean;
   reason?: string;
+  /** Not shown at all (keeps the other tabs' indexes) */
+  hidden?: boolean;
 }
 
 interface TabPanelHeaderProps {
@@ -41,7 +43,13 @@ export function TabPanelHeader({ tabs, activeTab, onChange }: TabPanelHeaderProp
               </Box>
             </Tooltip>
           }
-          sx={tab.disabled ? { opacity: 0.4, cursor: 'default' } : undefined}
+          sx={
+            tab.hidden
+              ? { display: 'none' }
+              : tab.disabled
+              ? { opacity: 0.4, cursor: 'default' }
+              : undefined
+          }
         />
       ))}
     </Tabs>
