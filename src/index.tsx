@@ -62,6 +62,7 @@ import VMTemplateList from './components/VirtualMachineTemplate/List';
 import KubeVirtSettings from './kubevirt/Settings';
 import {
   areFeatureGatesLoaded,
+  areFeatureGatesReliable,
   isFeatureGateEnabled,
   loadFeatureGates,
 } from './utils/featureGates';
@@ -135,8 +136,9 @@ loadFeatureGates();
 detectKubeVirtCapabilities();
 detectIPAMCRD();
 
-// Feature gates that affect sidebar visibility
-const SIDEBAR_AFFECTING_FEATURE_GATES = ['Snapshot', 'VMExport', 'DataVolumes'];
+// Feature gates that affect sidebar visibility. DataVolumes is intentionally
+// excluded: it is GA on every supported KubeVirt version and always shown.
+const SIDEBAR_AFFECTING_FEATURE_GATES = ['Snapshot', 'VMExport'];
 
 // KubeVirt Update Watcher Component
 function KubeVirtUpdateWatcher() {
@@ -399,28 +401,33 @@ registerAppBarAction(() => <TooltipEnhancer />);
 
 // Filter sidebar entries based on feature gates
 registerSidebarEntryFilter(entry => {
-  const loaded = areFeatureGatesLoaded();
+  // Only apply feature-gate-based hiding when we have RELIABLE gate data, i.e. we
+  // successfully read the KubeVirt CR and resolved its version. If the CR can't be
+  // read (SA lacks cluster-wide `kubevirts` list access, KubeVirt in a namespace
+  // not covered by RBAC, or the version is unparseable), fail OPEN and show the
+  // entries rather than silently hiding features we can't evaluate.
+  const applyGates = areFeatureGatesLoaded() && areFeatureGatesReliable();
 
   // Hide snapshots if Snapshot feature gate is not enabled
-  if (entry.name === 'snapshots' && loaded && !isFeatureGateEnabled('Snapshot')) {
+  if (entry.name === 'snapshots' && applyGates && !isFeatureGateEnabled('Snapshot')) {
     return null;
   }
   // Hide clones if Snapshot feature gate is not enabled (clone requires snapshot)
-  if (entry.name === 'clones' && loaded && !isFeatureGateEnabled('Snapshot')) {
+  if (entry.name === 'clones' && applyGates && !isFeatureGateEnabled('Snapshot')) {
     return null;
   }
   // Hide restores if Snapshot feature gate is not enabled
-  if (entry.name === 'restores' && loaded && !isFeatureGateEnabled('Snapshot')) {
+  if (entry.name === 'restores' && applyGates && !isFeatureGateEnabled('Snapshot')) {
     return null;
   }
   // Hide exports if VMExport feature gate is not enabled
-  if (entry.name === 'exports' && loaded && !isFeatureGateEnabled('VMExport')) {
+  if (entry.name === 'exports' && applyGates && !isFeatureGateEnabled('VMExport')) {
     return null;
   }
-  // Hide datavolumes if DataVolumes feature gate is not enabled
-  if (entry.name === 'datavolumes' && loaded && !isFeatureGateEnabled('DataVolumes')) {
-    return null;
-  }
+  // DataVolumes is GA since KubeVirt 1.0 (this plugin supports >= 1.2), so it is
+  // never legitimately gated off — always show it. It was previously hidden here
+  // whenever the gate/version couldn't be resolved, which wrongly hid it on
+  // clusters where the KubeVirt CR isn't readable (e.g. custom namespace + scoped RBAC).
   // Hide IPAMClaims if the CRD is not available
   if (entry.name === 'ipamclaims' && !ipamCRDAvailable) {
     return null;
