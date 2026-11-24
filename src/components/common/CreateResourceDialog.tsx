@@ -53,6 +53,17 @@ interface CreateResourceDialogProps {
   validate?: (resource: KubeResourceBuilder) => boolean;
 }
 
+/** Snackbar text for a failed save, including the API server's reason. */
+export function saveErrorMessage(error: unknown, editMode: boolean): string {
+  const action = editMode ? 'update' : 'create';
+  const status = (error as { status?: number })?.status;
+  if (editMode && status === 409) {
+    return 'Failed to update resource: it was changed by someone else since this dialog was opened. Close and reopen the dialog to load the latest version, then make your change again.';
+  }
+  const message = (error as Error)?.message;
+  return message ? `Failed to ${action} resource: ${message}` : `Failed to ${action} resource.`;
+}
+
 export default function CreateResourceDialog({
   open,
   onClose,
@@ -78,6 +89,21 @@ export default function CreateResourceDialog({
   const [showErrors, setShowErrors] = useState(false);
   const [dirty, setDirty] = useState(false);
   const isValid = validate ? validate(resource) : true;
+
+  // Always edit the latest version of the resource: the dialog stays mounted between uses, so
+  // take a fresh copy of initialResource each time it opens (not just on first mount). A stale
+  // copy shows old values and its old resourceVersion makes the save fail with a conflict.
+  const latestInitialResource = React.useRef(initialResource);
+  latestInitialResource.current = initialResource;
+  useEffect(() => {
+    if (open) {
+      setResource(latestInitialResource.current);
+      setYamlContent('');
+      setYamlError(null);
+      setShowErrors(false);
+      setDirty(false);
+    }
+  }, [open]);
 
   // Sync initialTab when dialog opens
   useEffect(() => {
@@ -164,9 +190,7 @@ export default function CreateResourceDialog({
       onClose();
     } catch (error: unknown) {
       console.error(`Failed to ${editMode ? 'update' : 'create'} resource:`, error);
-      enqueueSnackbar(`Failed to ${editMode ? 'update' : 'create'} resource.`, {
-        variant: 'error',
-      });
+      enqueueSnackbar(saveErrorMessage(error, editMode), { variant: 'error' });
     }
   };
 
