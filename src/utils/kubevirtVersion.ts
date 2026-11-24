@@ -89,7 +89,42 @@ function hasNestedKey(obj: unknown, path: string[]): boolean {
   return true;
 }
 
-/** Fetch the OpenAPI schema for a CRD and check if a field path exists. */
+type Schema = Record<string, unknown>;
+
+/**
+ * Schema of `kind` in the preferred version of `group`, from the cluster's OpenAPI v3
+ * document. Discovery and /openapi/v3 are readable by every authenticated user, so this
+ * works for namespace-scoped users who may not read CRDs.
+ *
+ * Returns null when the group or kind is not served (no further probing needed), and
+ * undefined when the OpenAPI document could not be read (caller falls back to the CRD).
+ */
+async function fetchOpenApiSchema(group: string, kind: string): Promise<Schema | null | undefined> {
+  let version: string | undefined;
+  try {
+    const discovery = (await ApiProxy.request(`/apis/${group}`)) as {
+      preferredVersion?: { version?: string };
+    };
+    version = discovery?.preferredVersion?.version;
+  } catch {
+    return null;
+  }
+  if (!version) return null;
+  try {
+    const doc = (await ApiProxy.request(`/openapi/v3/apis/${group}/${version}`)) as {
+      components?: { schemas?: Record<string, Schema> };
+    };
+    const schemas = doc?.components?.schemas;
+    if (!schemas) return undefined;
+    // Schema keys are '<reversed group>.<version>.<Kind>', e.g. io.kubevirt.v1.VirtualMachine
+    const key = Object.keys(schemas).find(k => k.endsWith(`.${version}.${kind}`));
+    return key ? schemas[key] : null;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Fetch the OpenAPI schema from the CRD itself (needs read access to CRDs). */
 async function probeCrdField(crdName: string, fieldPath: string[]): Promise<boolean> {
   try {
     const resp = (await ApiProxy.request(
@@ -113,12 +148,30 @@ async function probeCrdField(crdName: string, fieldPath: string[]): Promise<bool
   }
 }
 
+/**
+ * Probes for fields in a resource's schema. OpenAPI v3 first; the CRD only when the OpenAPI
+ * document is unavailable. Schemas are fetched once per group/kind for all probes.
+ */
+function makeSchemaProbe() {
+  const schemas = new Map<string, Promise<Schema | null | undefined>>();
+  return async (crdName: string, kind: string, fieldPath: string[]): Promise<boolean> => {
+    const group = crdName.slice(crdName.indexOf('.') + 1);
+    const key = `${group}/${kind}`;
+    if (!schemas.has(key)) schemas.set(key, fetchOpenApiSchema(group, kind));
+    const schema = await schemas.get(key);
+    if (schema === null) return false;
+    if (schema === undefined) return probeCrdField(crdName, fieldPath);
+    return hasNestedKey(schema, fieldPath);
+  };
+}
+
 async function detectFeatures(): Promise<KubeVirtCapabilities['features']> {
-  // Probe CRD schemas and API groups in parallel — no noisy dry-run POSTs
+  // Probe schemas and API groups in parallel — no noisy dry-run POSTs
+  const probeSchemaField = makeSchemaProbe();
   const [containerPath, rebootPolicy, passtBinding, vmBackup, vmPool, snapshotSourceIndications] =
     await Promise.all([
       // containerPath in VM volume spec (1.8+ marker)
-      probeCrdField('virtualmachines.kubevirt.io', [
+      probeSchemaField('virtualmachines.kubevirt.io', 'VirtualMachine', [
         'properties',
         'spec',
         'properties',
@@ -133,7 +186,7 @@ async function detectFeatures(): Promise<KubeVirtCapabilities['features']> {
       ]),
 
       // rebootPolicy in VMI domain spec
-      probeCrdField('virtualmachines.kubevirt.io', [
+      probeSchemaField('virtualmachines.kubevirt.io', 'VirtualMachine', [
         'properties',
         'spec',
         'properties',
@@ -147,7 +200,7 @@ async function detectFeatures(): Promise<KubeVirtCapabilities['features']> {
       ]),
 
       // passtBinding in VMI interface spec
-      probeCrdField('virtualmachines.kubevirt.io', [
+      probeSchemaField('virtualmachines.kubevirt.io', 'VirtualMachine', [
         'properties',
         'spec',
         'properties',
@@ -170,7 +223,7 @@ async function detectFeatures(): Promise<KubeVirtCapabilities['features']> {
       probeApiGroup('pool.kubevirt.io'),
 
       // Snapshot source indications in VirtualMachineSnapshot CRD schema
-      probeCrdField('virtualmachinesnapshots.snapshot.kubevirt.io', [
+      probeSchemaField('virtualmachinesnapshots.snapshot.kubevirt.io', 'VirtualMachineSnapshot', [
         'properties',
         'status',
         'properties',
