@@ -259,7 +259,7 @@ const EMPTY_VM = {
             ],
             interfaces: [{ name: 'default', masquerade: {} }],
           },
-          resources: { requests: { memory: '2Gi' } },
+          memory: { guest: '2Gi' },
           cpu: { cores: 2 },
         },
         networks: [{ name: 'default', pod: {} }],
@@ -588,16 +588,16 @@ export default function VirtualMachineList() {
       header: 'Memory',
       accessorFn: (vm: VirtualMachine) => {
         return (
-          vm.spec?.template?.spec?.domain?.resources?.requests?.memory ||
           vm.spec?.template?.spec?.domain?.memory?.guest ||
+          vm.spec?.template?.spec?.domain?.resources?.requests?.memory ||
           '-'
         );
       },
       Cell: ({ row }: { row: { original: VirtualMachine } }) => {
         const vm = row.original;
         const mem =
-          vm.spec?.template?.spec?.domain?.resources?.requests?.memory ||
           vm.spec?.template?.spec?.domain?.memory?.guest ||
+          vm.spec?.template?.spec?.domain?.resources?.requests?.memory ||
           '-';
         const key = `${vm.getNamespace()}/${vm.getName()}`;
         const m = vmMetrics.get(key);
