@@ -17,6 +17,7 @@ import {
 } from '@mui/material';
 import React, { useState } from 'react';
 import { KubeListResponse, PrometheusQueryResult } from '../../types';
+import useMetricsDisabled from '../../utils/metricsDisabled';
 import { useMetricsEndpoint } from '../../utils/metricsEndpoint';
 import { sanitizePromQL } from '../../utils/sanitize';
 import MetricsEndpointConfig from '../common/MetricsEndpointConfig';
@@ -39,6 +40,7 @@ export default function VirtualizationOverview() {
   const [selectedNamespace, setSelectedNamespace] = useState<string>('all');
   const [timeRange, setTimeRange] = useState<string>('30m');
   const metricsEndpoint = useMetricsEndpoint();
+  const metricsDisabled = useMetricsDisabled();
   const [topCpuConsumers, setTopCpuConsumers] = useState<
     Array<{ name: string; value: number; vcpus?: number }>
   >([]);
@@ -79,7 +81,7 @@ export default function VirtualizationOverview() {
   React.useEffect(() => {
     const fetchPrometheusMetrics = async () => {
       try {
-        if (!metricsEndpoint.available || !metricsEndpoint.baseUrl) return;
+        if (metricsDisabled || !metricsEndpoint.available || !metricsEndpoint.baseUrl) return;
 
         const promBaseUrl = metricsEndpoint.baseUrl;
 
@@ -236,7 +238,13 @@ export default function VirtualizationOverview() {
     const interval = setInterval(fetchPrometheusMetrics, 30000); // Refresh every 30s
 
     return () => clearInterval(interval);
-  }, [selectedNamespace, timeRange, metricsEndpoint.available, metricsEndpoint.baseUrl]);
+  }, [
+    selectedNamespace,
+    timeRange,
+    metricsEndpoint.available,
+    metricsEndpoint.baseUrl,
+    metricsDisabled,
+  ]);
 
   const { items: allVms } = VirtualMachine.useList();
   const { items: migrations } = VirtualMachineInstanceMigration.useList();
@@ -376,29 +384,35 @@ export default function VirtualizationOverview() {
             </Select>
           </FormControl>
 
-          <FormControl size="small" sx={{ minWidth: 150 }}>
-            <Select value={timeRange} onChange={e => setTimeRange(e.target.value)}>
-              <MenuItem value="30m">Last 30 minutes</MenuItem>
-              <MenuItem value="1h">Last hour</MenuItem>
-              <MenuItem value="6h">Last 6 hours</MenuItem>
-              <MenuItem value="12h">Last 12 hours</MenuItem>
-              <MenuItem value="1d">Last day</MenuItem>
-              <MenuItem value="7d">Last 7 days</MenuItem>
-            </Select>
-          </FormControl>
+          {/* The time range only applies to the metrics panels */}
+          {!metricsDisabled && (
+            <FormControl size="small" sx={{ minWidth: 150 }}>
+              <Select value={timeRange} onChange={e => setTimeRange(e.target.value)}>
+                <MenuItem value="30m">Last 30 minutes</MenuItem>
+                <MenuItem value="1h">Last hour</MenuItem>
+                <MenuItem value="6h">Last 6 hours</MenuItem>
+                <MenuItem value="12h">Last 12 hours</MenuItem>
+                <MenuItem value="1d">Last day</MenuItem>
+                <MenuItem value="7d">Last 7 days</MenuItem>
+              </Select>
+            </FormControl>
+          )}
         </Box>
       </Box>
 
       {/* Metrics endpoint configuration */}
-      {stats.total > 0 && !metricsEndpoint.available && !metricsEndpoint.loading && (
-        <Alert severity="info" sx={{ mb: 3, '& .MuiAlert-message': { width: '100%' } }}>
-          <MetricsEndpointConfig compact />
-        </Alert>
-      )}
+      {stats.total > 0 &&
+        !metricsDisabled &&
+        !metricsEndpoint.available &&
+        !metricsEndpoint.loading && (
+          <Alert severity="info" sx={{ mb: 3, '& .MuiAlert-message': { width: '100%' } }}>
+            <MetricsEndpointConfig compact />
+          </Alert>
+        )}
 
       <Grid container spacing={3}>
-        {/* Top Consumers - Full Width */}
-        <Grid item xs={12}>
+        {/* Top Consumers - Full Width (hidden when the cluster's admins disabled metrics) */}
+        <Grid item xs={12} sx={metricsDisabled ? { display: 'none' } : undefined}>
           <Paper sx={{ p: 2, mb: 3 }}>
             <Typography variant="h6" sx={{ mb: 2 }}>
               Top consumers

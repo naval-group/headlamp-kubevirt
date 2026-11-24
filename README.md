@@ -409,6 +409,57 @@ Compared to the init-container approach, this skips an extra Pod startup step an
 the kubelet's image cache serve the plugin directly. Pin a specific version tag (e.g.
 `:0.3.1`) in production rather than `:latest`.
 
+## Cluster-wide Configuration
+
+Settings that must be the same for every user of a cluster are stored in a ConfigMap
+`headlamp-kubevirt-config` in the namespace KubeVirt is installed in (usually `kubevirt`).
+Each cluster has its own ConfigMap, so values can differ per cluster. Users with permission to
+update the ConfigMap can also edit it from **Settings → General Configuration**.
+
+| Key | Description |
+|-----|-------------|
+| `sharedNadNamespaces` | Comma-separated namespaces whose NetworkAttachmentDefinitions VMs in any namespace may use. When set, the VM network dropdown lists the VM's namespace plus these namespaces; when unset, it lists NADs from all namespaces (or only the VM's namespace if the user cannot list them cluster-wide). With Multus namespace isolation, match `globalNamespaces`. NADs from another namespace are stored as `namespace/name`. |
+| `metricsDisabled` | `"true"` hides all plugin metrics on this cluster: the VM metrics section, Overview top consumers, the VM Doctor Metrics and Querier tabs, system health and the metrics endpoint settings. Use it when metrics are provided elsewhere (e.g. Grafana) or not collected. |
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: headlamp-kubevirt-config
+  namespace: kubevirt
+data:
+  sharedNadNamespaces: "networks,default"
+```
+
+Users only need `get` on this one ConfigMap:
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: headlamp-kubevirt-config-reader
+  namespace: kubevirt
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["headlamp-kubevirt-config"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: headlamp-kubevirt-config-reader
+  namespace: kubevirt
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: headlamp-kubevirt-config-reader
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: system:authenticated
+```
+
 ## Development
 
 ```bash

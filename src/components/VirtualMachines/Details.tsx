@@ -27,6 +27,7 @@ import { VMIData, VMIStatusNetworkInterface, VMIVolumeStatus } from '../../types
 import { formatDuration } from '../../utils/formatDuration';
 import { hasFeature } from '../../utils/kubevirtVersion';
 import { buildLaunchTemplate } from '../../utils/launchTemplate';
+import useMetricsDisabled from '../../utils/metricsDisabled';
 import { safeError } from '../../utils/sanitize';
 import { shortAccessModes } from '../../utils/volumeDialog';
 import DataVolume from '../BootableVolumes/DataVolume';
@@ -135,6 +136,7 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
   const [showMigrateDialog, setShowMigrateDialog] = useState(false);
   const [showSaveAsTemplate, setShowSaveAsTemplate] = useState(false);
   const [showResolveDialog, setShowResolveDialog] = useState(false);
+  const metricsDisabled = useMetricsDisabled();
   const [vmItem] = VirtualMachine.useGet(name, namespace);
   const { actions: vmActions } = useVMActions(vmItem);
 
@@ -416,7 +418,7 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
     ...(snapshotEnabled ? [{ id: 'snapshots', label: 'Snapshots', icon: 'mdi:camera' }] : []),
     ...(vmExportEnabled ? [{ id: 'exports', label: 'Exports', icon: 'mdi:export' }] : []),
     { id: 'migrations', label: 'Migrations', icon: 'mdi:swap-horizontal' },
-    { id: 'metrics', label: 'Metrics', icon: 'mdi:chart-line' },
+    ...(metricsDisabled ? [] : [{ id: 'metrics', label: 'Metrics', icon: 'mdi:chart-line' }]),
     { id: 'doctor', label: 'VM Doctor', icon: 'mdi:stethoscope' },
     { id: 'terminal', label: 'Terminal', icon: 'mdi:console' },
     { id: 'vnc', label: 'VNC', icon: 'mdi:monitor' },
@@ -1855,21 +1857,25 @@ export default function VirtualMachineDetails(props: VirtualMachineDetailsProps)
                 </Box>
               ),
             },
-            {
-              id: 'metrics',
-              section: (
-                <Box id="section-metrics">
-                  <SectionBox title="Metrics">
-                    <VMMetrics
-                      vmName={name || ''}
-                      namespace={namespace || ''}
-                      vmiData={vmiData}
-                      vmItem={item}
-                    />
-                  </SectionBox>
-                </Box>
-              ),
-            },
+            ...(metricsDisabled
+              ? []
+              : [
+                  {
+                    id: 'metrics',
+                    section: (
+                      <Box id="section-metrics">
+                        <SectionBox title="Metrics">
+                          <VMMetrics
+                            vmName={name || ''}
+                            namespace={namespace || ''}
+                            vmiData={vmiData}
+                            vmItem={item}
+                          />
+                        </SectionBox>
+                      </Box>
+                    ),
+                  },
+                ]),
             {
               id: 'headlamp.vm-console',
               section: (
