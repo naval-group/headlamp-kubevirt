@@ -10,7 +10,7 @@ RUN npm run build
 
 # Init-container image: started by Headlamp's Pod and copies the plugin files
 # into a shared emptyDir at /headlamp/plugins/.
-FROM busybox:latest@sha256:fd8d9aa63ba2f0982b5304e1ee8d3b90a210bc1ffb5314d980eb6962f1a9715d AS busybox
+FROM busybox:latest@sha256:dc2d74b28e4cf8984fa52af1f39bc7c3d9c73760b41a74d629f5d11b1ab28616 AS busybox
 
 COPY --from=builder /plugin/dist /plugins/kubevirt/
 COPY --from=builder /plugin/package.json /plugins/kubevirt/
