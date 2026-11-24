@@ -19,6 +19,7 @@ import React, { useState } from 'react';
 import { KubeListResponse, PrometheusQueryResult } from '../../types';
 import { useMetricsEndpoint } from '../../utils/metricsEndpoint';
 import { sanitizePromQL } from '../../utils/sanitize';
+import { formatBytes, PvcSizes, pvcSizes, vmStorageTotal } from '../../utils/vmStorage';
 import MetricsEndpointConfig from '../common/MetricsEndpointConfig';
 import VirtualMachineInstanceMigration from '../Migrations/VirtualMachineInstanceMigration';
 import VirtualMachine from '../VirtualMachines/VirtualMachine';
@@ -248,6 +249,59 @@ export default function VirtualizationOverview() {
     return allVms.filter(vm => vm.getNamespace() === selectedNamespace);
   }, [allVms, selectedNamespace]);
 
+  // PVC sizes for the Storage card. Cluster-wide list first; users who can only read PVCs in their
+  // own namespaces fall back to one list per VM namespace (unreadable namespaces are skipped and
+  // their disks use the VM's dataVolumeTemplate size instead).
+  const vmNamespaces = React.useMemo(() => {
+    if (!allVms || !Array.isArray(allVms)) return '';
+    return Array.from(new Set(allVms.map(vm => vm.getNamespace()).filter(Boolean)))
+      .sort()
+      .join(',');
+  }, [allVms]);
+  const [pvcs, setPvcs] = useState<PvcSizes | null>(null);
+
+  React.useEffect(() => {
+    if (!vmNamespaces) return;
+    let cancelled = false;
+    type PvcList = KubeListResponse<Parameters<typeof pvcSizes>[0][number]>;
+    const load = async () => {
+      try {
+        const all = (await ApiProxy.request('/api/v1/persistentvolumeclaims')) as PvcList;
+        return all?.items || [];
+      } catch {
+        const lists = await Promise.allSettled(
+          vmNamespaces
+            .split(',')
+            .map(ns =>
+              ApiProxy.request(
+                `/api/v1/namespaces/${encodeURIComponent(ns)}/persistentvolumeclaims`
+              )
+            )
+        );
+        return lists.flatMap(r =>
+          r.status === 'fulfilled' ? (r.value as PvcList)?.items || [] : []
+        );
+      }
+    };
+    load().then(items => {
+      if (!cancelled) setPvcs(pvcSizes(items));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [vmNamespaces]);
+
+  const storage = React.useMemo(
+    () =>
+      pvcs
+        ? vmStorageTotal(
+            vms.map(vm => vm.jsonData),
+            pvcs
+          )
+        : null,
+    [vms, pvcs]
+  );
+
   const stats = React.useMemo(() => {
     if (!vms || !Array.isArray(vms)) {
       return { total: 0, running: 0, stopped: 0, error: 0, migrating: 0, paused: 0 };
@@ -289,12 +343,11 @@ export default function VirtualizationOverview() {
   // Calculate total allocated resources from VM specs
   const totalResources = React.useMemo(() => {
     if (!vms || !Array.isArray(vms)) {
-      return { cpu: 0, memory: 0, storage: 0 };
+      return { cpu: 0, memory: 0 };
     }
 
     let totalCpu = 0;
     let totalMemory = 0;
-    const totalStorage = 0;
 
     vms.forEach(vm => {
       try {
@@ -325,21 +378,6 @@ export default function VirtualizationOverview() {
             totalMemory += bytes;
           }
         }
-
-        // Storage from volumes
-        if (spec?.volumes) {
-          spec.volumes.forEach(
-            (vol: {
-              dataVolume?: { name: string };
-              persistentVolumeClaim?: { claimName: string };
-            }) => {
-              if (vol.dataVolume?.name || vol.persistentVolumeClaim?.claimName) {
-                // Note: We'd need to fetch PVC/DV to get actual size
-                // For now, we'll skip storage calculation as it requires additional API calls
-              }
-            }
-          );
-        }
       } catch (e) {
         console.warn('Failed to parse VM resources:', e);
       }
@@ -348,7 +386,6 @@ export default function VirtualizationOverview() {
     return {
       cpu: totalCpu,
       memory: totalMemory,
-      storage: totalStorage,
     };
   }, [vms]);
 
@@ -1327,12 +1364,26 @@ export default function VirtualizationOverview() {
                     minHeight: 60,
                   }}
                 >
-                  <Typography variant="body2" color="text.secondary">
-                    Calculation requires PVC data
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
-                    Will be implemented in future update
-                  </Typography>
+                  {!storage ? (
+                    <Typography variant="body2" color="text.secondary">
+                      {stats.total > 0 ? 'Loading...' : 'No storage allocated'}
+                    </Typography>
+                  ) : storage.disks > 0 ? (
+                    <>
+                      <Typography variant="h4" sx={{ fontWeight: 'bold', color: '#f0ab00' }}>
+                        {formatBytes(storage.bytes)}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {storage.disks} disk{storage.disks === 1 ? '' : 's'} across {stats.total}{' '}
+                        VMs
+                        {storage.unknown > 0 ? ` (${storage.unknown} without a known size)` : ''}
+                      </Typography>
+                    </>
+                  ) : (
+                    <Typography variant="body2" color="text.secondary">
+                      No persistent disks
+                    </Typography>
+                  )}
                 </Box>
               </Box>
             </Box>
