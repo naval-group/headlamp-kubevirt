@@ -1,5 +1,6 @@
 import '@xterm/xterm/css/xterm.css';
 import { Icon } from '@iconify/react';
+import { useTranslation } from '@kinvolk/headlamp-plugin/lib';
 import * as ApiProxy from '@kinvolk/headlamp-plugin/lib/ApiProxy';
 import { StreamArgs, StreamResultsCb } from '@kinvolk/headlamp-plugin/lib/ApiProxy';
 import { Dialog } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
@@ -26,7 +27,6 @@ import RFBCreate from '@novnc/novnc/lib/rfb';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal as XTerminal } from '@xterm/xterm';
 import React, { useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import useVMActions from '../../hooks/useVMActions';
 import VirtualMachine from '../VirtualMachines/VirtualMachine';
 
@@ -125,7 +125,7 @@ export const TerminalPanel = React.forwardRef<
     onInput?: (text: string) => void;
   }
 >(function TerminalPanel({ item, active, onStatusChange, compact, onInput }, ref) {
-  const { t } = useTranslation(['translation', 'glossary']);
+  const { t } = useTranslation();
   const execRef = useRef<execReturn | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const xtermRef = useRef<XTerminalConnected | null>(null);
