@@ -1,4 +1,3 @@
-import { ApiProxy } from '@kinvolk/headlamp-plugin/lib';
 import {
   DateLabel,
   Link,
@@ -10,6 +9,7 @@ import { Alert, Chip, Typography } from '@mui/material';
 import React, { useEffect, useState } from 'react';
 import useFilteredList from '../../hooks/useFilteredList';
 import useResourceActions from '../../hooks/useResourceActions';
+import { isApiResourceServed } from '../../utils/apiDiscovery';
 import BulkDeleteToolbar from '../common/BulkDeleteToolbar';
 import CreateButtonWithMode from '../common/CreateButtonWithMode';
 import CreateResourceDialog from '../common/CreateResourceDialog';
@@ -66,11 +66,11 @@ export default function NADList() {
   });
 
   useEffect(() => {
-    ApiProxy.request(
-      '/apis/apiextensions.k8s.io/v1/customresourcedefinitions/network-attachment-definitions.k8s.cni.cncf.io'
-    )
-      .then(() => setMultusInstalled(true))
-      .catch(() => setMultusInstalled(false));
+    // API discovery, not the CRD: reading CRDs needs cluster-scoped access that
+    // namespace-scoped users do not have, so they were told Multus is not installed.
+    isApiResourceServed('k8s.cni.cncf.io/v1', 'network-attachment-definitions').then(
+      setMultusInstalled
+    );
   }, []);
 
   if (multusInstalled === false) {
