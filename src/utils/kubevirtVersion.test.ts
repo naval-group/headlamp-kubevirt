@@ -35,8 +35,11 @@ const VM_SCHEMA = {
 };
 const SNAPSHOT_SCHEMA = { properties: { status: { properties: { sourceIndications: {} } } } };
 
-const forbidden = () => Promise.reject(new Error('403 Forbidden'));
-const notFound = () => Promise.reject(new Error('404 Not Found'));
+const httpError = (status: number, text: string) =>
+  Promise.reject(Object.assign(new Error(`${status} ${text}`), { status }));
+const forbidden = () => httpError(403, 'Forbidden');
+const notFound = () => httpError(404, 'Not Found');
+const badGateway = () => httpError(502, 'Bad Gateway');
 
 /** Answers requests by path; anything not listed is a 404. */
 function serve(routes: Record<string, () => Promise<unknown>>) {
@@ -122,6 +125,62 @@ describe('detectKubeVirtCapabilities', () => {
 
     expect(caps.features.containerPath).toBe(true);
     expect(caps.features.passtBinding).toBe(true);
+  });
+
+  it('waits while the cluster API is not answering yet (login race), then detects', async () => {
+    vi.useFakeTimers();
+    try {
+      const openApi = () =>
+        Promise.resolve({
+          components: { schemas: { 'io.kubevirt.v1.VirtualMachine': VM_SCHEMA } },
+        });
+      serve({ '/apis/kubevirt.io': badGateway, '/openapi/v3/apis/kubevirt.io/v1': badGateway });
+
+      const pending = detectKubeVirtCapabilities();
+      await vi.advanceTimersByTimeAsync(0);
+      // The token is in place now: the cluster answers
+      serve({ '/apis/kubevirt.io': discovery('v1'), '/openapi/v3/apis/kubevirt.io/v1': openApi });
+      await vi.advanceTimersByTimeAsync(5000);
+      const caps = await pending;
+
+      expect(caps.features.containerPath).toBe(true);
+      expect(caps.level).toBe('1.8+');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('retries when only some requests fail (502 on the OpenAPI document)', async () => {
+    vi.useFakeTimers();
+    try {
+      const openApi = () =>
+        Promise.resolve({
+          components: { schemas: { 'io.kubevirt.v1.VirtualMachine': VM_SCHEMA } },
+        });
+      serve({
+        '/apis/kubevirt.io': discovery('v1'),
+        '/openapi/v3/apis/kubevirt.io/v1': badGateway,
+      });
+
+      const pending = detectKubeVirtCapabilities();
+      await vi.advanceTimersByTimeAsync(0);
+      serve({ '/apis/kubevirt.io': discovery('v1'), '/openapi/v3/apis/kubevirt.io/v1': openApi });
+      await vi.advanceTimersByTimeAsync(5000);
+      const caps = await pending;
+
+      expect(caps.features.containerPath).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not wait when KubeVirt is not installed (404)', async () => {
+    serve({});
+
+    const caps = await detectKubeVirtCapabilities();
+
+    expect(caps.features.containerPath).toBe(false);
+    expect(caps.level).toBe('unknown');
   });
 
   it('does not read the CRD of an API group the cluster does not serve', async () => {

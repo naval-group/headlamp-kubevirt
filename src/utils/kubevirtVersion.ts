@@ -47,6 +47,24 @@ function notify() {
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
+/**
+ * Set when a detection request failed in a way that may go away by itself: no answer, 401 or
+ * 5xx. Right after login, Headlamp can send requests before the user's token is in place and
+ * they fail with 502; a feature must not be reported as missing because of that.
+ * 403 and 404 are real answers (not allowed / not served).
+ */
+let transientFailure = false;
+
+async function request(path: string): Promise<unknown> {
+  try {
+    return await ApiProxy.request(path);
+  } catch (err) {
+    const status = (err as { status?: number })?.status;
+    if (status === undefined || status === 401 || status >= 500) transientFailure = true;
+    throw err;
+  }
+}
+
 function parseSemver(v: string): KubeVirtCapabilities['semver'] {
   const match = v.match(/^v?(\d+)\.(\d+)\.(\d+)/);
   if (!match) return null;
@@ -56,7 +74,7 @@ function parseSemver(v: string): KubeVirtCapabilities['semver'] {
 /** Check if an API group exists. */
 async function probeApiGroup(group: string): Promise<boolean> {
   try {
-    await ApiProxy.request(`/apis/${group}`);
+    await request(`/apis/${group}`);
     return true;
   } catch {
     return false;
@@ -67,7 +85,7 @@ async function probeApiGroup(group: string): Promise<boolean> {
 
 async function detectVersion(): Promise<string> {
   try {
-    const resp = (await ApiProxy.request('/apis/kubevirt.io/v1/kubevirts')) as {
+    const resp = (await request('/apis/kubevirt.io/v1/kubevirts')) as {
       items?: Array<{ status?: { observedKubeVirtVersion?: string } }>;
     };
     return resp?.items?.[0]?.status?.observedKubeVirtVersion || '';
@@ -102,7 +120,7 @@ type Schema = Record<string, unknown>;
 async function fetchOpenApiSchema(group: string, kind: string): Promise<Schema | null | undefined> {
   let version: string | undefined;
   try {
-    const discovery = (await ApiProxy.request(`/apis/${group}`)) as {
+    const discovery = (await request(`/apis/${group}`)) as {
       preferredVersion?: { version?: string };
     };
     version = discovery?.preferredVersion?.version;
@@ -111,7 +129,7 @@ async function fetchOpenApiSchema(group: string, kind: string): Promise<Schema |
   }
   if (!version) return null;
   try {
-    const doc = (await ApiProxy.request(`/openapi/v3/apis/${group}/${version}`)) as {
+    const doc = (await request(`/openapi/v3/apis/${group}/${version}`)) as {
       components?: { schemas?: Record<string, Schema> };
     };
     const schemas = doc?.components?.schemas;
@@ -127,7 +145,7 @@ async function fetchOpenApiSchema(group: string, kind: string): Promise<Schema |
 /** Fetch the OpenAPI schema from the CRD itself (needs read access to CRDs). */
 async function probeCrdField(crdName: string, fieldPath: string[]): Promise<boolean> {
   try {
-    const resp = (await ApiProxy.request(
+    const resp = (await request(
       `/apis/apiextensions.k8s.io/v1/customresourcedefinitions/${crdName}`
     )) as {
       spec?: {
@@ -243,8 +261,20 @@ async function detectFeatures(): Promise<KubeVirtCapabilities['features']> {
 
 // ── Public API ────────────────────────────────────────────────────────
 
-export async function detectKubeVirtCapabilities(): Promise<KubeVirtCapabilities> {
+const RETRY_DELAY_MS = 5000;
+const MAX_RETRIES = 12;
+
+export async function detectKubeVirtCapabilities(attempt = 0): Promise<KubeVirtCapabilities> {
+  transientFailure = false;
   const [version, features] = await Promise.all([detectVersion(), detectFeatures()]);
+  if (transientFailure && attempt < MAX_RETRIES) {
+    console.debug(
+      `[kubevirt] Cluster API not answering yet (attempt ${attempt + 1}/${MAX_RETRIES}), ` +
+        `detecting capabilities again in 5s`
+    );
+    await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+    return detectKubeVirtCapabilities(attempt + 1);
+  }
 
   const semver = parseSemver(version);
 
